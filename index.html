@@ -329,11 +329,20 @@
       <div style="height:14px;"></div>
 
       <div class="row">
-        <button class="primary" id="saveBtn">Opslaan</button>
-        <button type="button" id="saveRouteBtn">Route opslaan (meerdere ritten)</button>
-        <button type="button" id="clearFormBtn">Formulier leegmaken</button>
-      </div>
+  <button class="primary" id="saveBtn">Opslaan</button>
+  <button type="button" id="startTripBtn">Start rit</button>
+  <button type="button" id="stopTripBtn">Stop rit</button>
+  <button type="button" id="clearFormBtn">Formulier leegmaken</button>
+</div>
 
+<div id="activeTripBox" style="display:none; margin-top:12px; padding:10px 12px; border:1px solid #e6e8ee; border-radius:10px; background:#fafbfe;">
+  <div class="small" style="font-weight:600;">Actieve rit</div>
+  <div id="activeTripInfo" class="small" style="margin-top:6px; line-height:1.45;"></div>
+  <div class="row" style="margin-top:10px;">
+    <button type="button" id="loadActiveTripBtn">Laad in formulier</button>
+    <button type="button" class="danger" id="cancelActiveTripBtn">Annuleer actieve rit</button>
+  </div>
+</div>
       <p class="muted">
         Tip: screenshots worden als kleine thumbnails opgeslagen, zodat je veel meer ritten kunt bewaren.
       </p>
