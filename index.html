@@ -1075,7 +1075,114 @@ function renderActiveTrip() {
       alert("Kon screenshot niet verwerken.");
     }
   });
+startTripBtn.addEventListener("click", () => {
+  const date = dateEl.value || todayISO();
+  const time = timeEl.value || nowHHMM();
+  const from = fromEl.value.trim();
+  const plate = normalizePlate(plateEl.value);
 
+  if (!from || !plate) {
+    alert("Vul voor Start rit minimaal Van en Kenteken in.");
+    return;
+  }
+
+  const active = {
+    date,
+    time,
+    from,
+    plate,
+    rdw: rdwLast || null
+  };
+
+  saveActiveTrip(active);
+  localStorage.setItem(LS_PLATE, plate);
+
+  toEl.value = "";
+  shotEl.value = "";
+  pendingShotDataUrl = null;
+  shotInfo.textContent = "";
+
+  alert("Actieve rit gestart ✅");
+});
+
+stopTripBtn.addEventListener("click", () => {
+  const active = loadActiveTrip();
+
+  if (!active) {
+    alert("Er is nog geen actieve rit gestart.");
+    return;
+  }
+
+  const to = toEl.value.trim();
+  if (!to) {
+    alert("Vul bij Stop rit eerst 'Naar' in.");
+    toEl.focus();
+    return;
+  }
+
+  const trips = loadTrips();
+  trips.unshift({
+    date: active.date,
+    time: active.time,
+    from: active.from,
+    to,
+    plate: active.plate,
+    screenshot: pendingShotDataUrl || null,
+    rdw: active.rdw || null
+  });
+
+  if (!safeSaveTrips(trips)) return;
+
+  localStorage.setItem(LS_PLATE, active.plate);
+  clearActiveTrip();
+
+  // volgende rit alvast klaarzetten
+  dateEl.value = todayISO();
+  timeEl.value = nowHHMM();
+  fromEl.value = to;
+  toEl.value = "";
+  plateEl.value = active.plate;
+
+  pendingShotDataUrl = null;
+  shotEl.value = "";
+  shotInfo.textContent = "";
+
+  render();
+  plateEl.dispatchEvent(new Event("input"));
+  fromEl.focus();
+
+  alert("Rit opgeslagen ✅");
+});
+
+loadActiveTripBtn.addEventListener("click", () => {
+  const active = loadActiveTrip();
+  if (!active) return;
+
+  dateEl.value = active.date || todayISO();
+  timeEl.value = active.time || nowHHMM();
+  fromEl.value = active.from || "";
+  plateEl.value = active.plate || "";
+
+  rdwLast = active.rdw || null;
+
+  if (rdwLast) {
+    showRDW(
+      `<div><b>${escapeHtml(rdwLast.merk || "—")}</b> ${escapeHtml(rdwLast.handelsbenaming || "")}</div>` +
+      `<div>Inrichting: ${escapeHtml(rdwLast.inrichting || "—")}</div>` +
+      `<div>Eerste toelating: ${escapeHtml(rdwLast.eerste_toelating || "—")}</div>`
+    );
+  } else {
+    plateEl.dispatchEvent(new Event("input"));
+  }
+
+  fromEl.focus();
+});
+
+cancelActiveTripBtn.addEventListener("click", () => {
+  if (confirm("Actieve rit annuleren?")) {
+    clearActiveTrip();
+  }
+});
   $("saveBtn").addEventListener("click", () => {
     const date = dateEl.value || todayISO();
     const time = timeEl.value || nowHHMM();
