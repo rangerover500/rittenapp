@@ -3,95 +3,112 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <title>Ritten Breeland</title>
-<link rel="apple-touch-icon" href="icon.png">
-<style>
 
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ritten">
+<meta name="theme-color" content="#ffffff">
+
+<style>
 body{
-font-family:Arial;
-background:#f4f6fb;
-margin:0;
-padding:20px;
+  font-family:Arial, sans-serif;
+  background:#f4f6fb;
+  margin:0;
+  padding:20px;
 }
 
 .container{
-max-width:900px;
-margin:auto;
-background:white;
-padding:20px;
-border-radius:10px;
+  max-width:900px;
+  margin:auto;
+  background:white;
+  padding:20px;
+  border-radius:10px;
 }
 
 input{
-background:#eaffea;
-padding:8px;
-margin-bottom:6px;
-border-radius:6px;
-border:1px solid #ccd;
-width:100%;
+  background:#eaffea;
+  padding:10px;
+  margin-bottom:8px;
+  border-radius:6px;
+  border:1px solid #ccd;
+  width:100%;
+  box-sizing:border-box;
+  font-size:16px;
 }
 
 button{
-padding:10px;
-margin:4px;
+  padding:10px 12px;
+  margin:4px;
+  border:none;
+  border-radius:6px;
+  font-size:15px;
 }
 
 .primary{
-background:black;
-color:white;
+  background:black;
+  color:white;
 }
 
 .start{
-background:#28a745;
-color:white;
+  background:#28a745;
+  color:white;
 }
 
 .stop{
-background:#d9534f;
-color:white;
+  background:#d9534f;
+  color:white;
 }
 
 .voice{
-background:#007bff;
-color:white;
+  background:#007bff;
+  color:white;
 }
 
-.quick button{
-font-size:13px;
-}
-
+.quick button,
 .plates button{
-font-size:12px;
-background:#f2f2f2;
+  font-size:13px;
+  background:#f2f2f2;
+  color:#111;
+  border:1px solid #ddd;
 }
 
 table{
-width:100%;
-margin-top:20px;
-border-collapse:collapse;
+  width:100%;
+  margin-top:20px;
+  border-collapse:collapse;
 }
 
 td,th{
-border-bottom:1px solid #ddd;
-padding:8px;
+  border-bottom:1px solid #ddd;
+  padding:8px;
+  text-align:left;
 }
 
 .active{
-background:#eef5ff;
-padding:10px;
-margin-top:10px;
+  background:#eef5ff;
+  padding:10px;
+  margin-top:10px;
+  border-radius:6px;
 }
 
 .kmtotal{
-background:#f0f4ff;
-padding:8px;
-margin-bottom:10px;
-font-weight:bold;
+  background:#f0f4ff;
+  padding:8px;
+  margin-bottom:10px;
+  font-weight:bold;
+  border-radius:6px;
 }
 
+#rdw{
+  margin:8px 0 12px 0;
+  font-size:14px;
+  color:#333;
+  min-height:20px;
+}
 </style>
-
 </head>
 
 <body>
@@ -112,23 +129,29 @@ font-weight:bold;
 <input id="from">
 
 <div class="quick">
-
-<button onclick="setFrom('Breeland Rdam')">Breeland R'dam</button>
-<button onclick="setFrom('Wasstraat')">Wasstraat</button>
-<button onclick="setFrom('ABS den Elzen')">ABS den Elzen</button>
-<button onclick="setFrom('Breeland Dordrecht')">Breeland Dordrecht</button>
-<button onclick="setFrom('Breeland Den Haag')">Breeland Den Haag</button>
-<button onclick="setFrom('Breeland Brielle')">Breeland Brielle</button>
-
+  <button onclick="setFrom('Breeland Rdam')">Breeland R'dam</button>
+  <button onclick="setFrom('Wasstraat')">Wasstraat</button>
+  <button onclick="setFrom('ABS den Elzen')">ABS den Elzen</button>
+  <button onclick="setFrom('Breeland Dordrecht')">Breeland Dordrecht</button>
+  <button onclick="setFrom('Breeland Den Haag')">Breeland Den Haag</button>
+  <button onclick="setFrom('Breeland Brielle')">Breeland Brielle</button>
 </div>
 
 <label>Naar</label>
 <input id="to">
 
+<div class="quick">
+  <button onclick="setTo('Breeland Rdam')">Breeland R'dam</button>
+  <button onclick="setTo('Wasstraat')">Wasstraat</button>
+  <button onclick="setTo('ABS den Elzen')">ABS den Elzen</button>
+  <button onclick="setTo('Breeland Dordrecht')">Breeland Dordrecht</button>
+  <button onclick="setTo('Breeland Den Haag')">Breeland Den Haag</button>
+  <button onclick="setTo('Breeland Brielle')">Breeland Brielle</button>
+</div>
+
 <button onclick="swapRoute()">Retour</button>
 
 <label>Spraak invoer</label>
-
 <button class="voice" onclick="startVoice()">🎤 Spreek route</button>
 
 <label>Kenteken</label>
@@ -138,32 +161,29 @@ font-weight:bold;
 
 <div id="rdw"></div>
 
-<br>
-
-<button class="primary" onclick="saveTrip()">Opslaan</button>
-<button class="start" onclick="startTrip()">Start rit</button>
-<button class="stop" onclick="stopTrip()">Stop rit</button>
-<button onclick="clearForm()">Leegmaken</button>
+<div>
+  <button class="primary" onclick="saveTrip()">Opslaan</button>
+  <button class="start" onclick="startTrip()">Start rit</button>
+  <button class="stop" onclick="stopTrip()">Stop rit</button>
+  <button onclick="clearForm()">Leegmaken</button>
+</div>
 
 <div id="activeTrip" class="active" style="display:none"></div>
 
 <h3>Ritten</h3>
 
 <table>
-
-<thead>
-<tr>
-<th>Datum</th>
-<th>Tijd</th>
-<th>Van</th>
-<th>Naar</th>
-<th>Kenteken</th>
-<th>Km</th>
-</tr>
-</thead>
-
-<tbody id="tripTable"></tbody>
-
+  <thead>
+    <tr>
+      <th>Datum</th>
+      <th>Tijd</th>
+      <th>Van</th>
+      <th>Naar</th>
+      <th>Kenteken</th>
+      <th>Km</th>
+    </tr>
+  </thead>
+  <tbody id="tripTable"></tbody>
 </table>
 
 <button onclick="exportCSV()">Export CSV</button>
@@ -172,334 +192,311 @@ font-weight:bold;
 </div>
 
 <script>
+const locationCoords = {
+  "Breeland Rdam": [51.9225, 4.47917],
+  "Wasstraat": [51.9150, 4.4800],
+  "ABS den Elzen": [51.8765, 4.3580],
+  "Breeland Dordrecht": [51.8133, 4.6901],
+  "Breeland Den Haag": [52.0705, 4.3007],
+  "Breeland Brielle": [51.9033, 4.1625]
+};
 
-const locations={
-"breeland":[51.9225,4.47917],
-"wasstraat":[51.9150,4.4800],
-"abs":[51.8765,4.3580],
-"dordrecht":[51.8133,4.6901],
-"den haag":[52.0705,4.3007],
-"brielle":[51.9033,4.1625]
+let trips = JSON.parse(localStorage.getItem("trips") || "[]");
+let activeTrip = JSON.parse(localStorage.getItem("activeTrip") || "null");
+let plates = JSON.parse(localStorage.getItem("plates") || "[]");
+
+function pad(n){
+  return String(n).padStart(2,"0");
 }
-
-function normalizeLocation(text){
-
-text=text.toLowerCase()
-
-if(text.includes("breeland")) return "breeland"
-if(text.includes("wasstraat")) return "wasstraat"
-if(text.includes("abs")) return "abs"
-if(text.includes("dordrecht")) return "dordrecht"
-if(text.includes("den haag")) return "den haag"
-if(text.includes("brielle")) return "brielle"
-
-return text
-
-}
-
-function startVoice(){
-
-const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition
-
-if(!SpeechRecognition){
-alert("Spraak niet ondersteund")
-return
-}
-
-let rec=new SpeechRecognition()
-
-rec.lang="nl-NL"
-
-rec.start()
-
-rec.onresult=function(e){
-
-let text=e.results[0][0].transcript.toLowerCase()
-
-if(text.includes("naar")){
-
-let parts=text.split("naar")
-
-let from=normalizeLocation(parts[0])
-let to=normalizeLocation(parts[1])
-
-document.getElementById("from").value=from
-document.getElementById("to").value=to
-
-}
-
-}
-
-}
-
-let trips=JSON.parse(localStorage.getItem("trips")||"[]")
-let activeTrip=JSON.parse(localStorage.getItem("activeTrip")||"null")
-
-let plates=JSON.parse(localStorage.getItem("plates")||"[]")
-
-function renderPlates(){
-
-plateList.innerHTML=""
-
-plates.slice(0,8).forEach(p=>{
-
-let b=document.createElement("button")
-
-b.innerText=p
-
-b.onclick=function(){
-plate.value=p
-lookupPlate()
-}
-
-plateList.appendChild(b)
-
-})
-
-}
-
-function savePlate(p){
-
-if(!plates.includes(p)){
-
-plates.unshift(p)
-
-localStorage.setItem("plates",JSON.stringify(plates))
-
-renderPlates()
-
-}
-
-}
-
-function pad(n){return String(n).padStart(2,"0")}
 
 function today(){
-let d=new Date()
-return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())
+  const d = new Date();
+  return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 }
 
 function now(){
-let d=new Date()
-return pad(d.getHours())+":"+pad(d.getMinutes())
+  const d = new Date();
+  return pad(d.getHours())+":"+pad(d.getMinutes());
 }
 
-date.value=today()
-time.value=now()
+function setDefaults(){
+  date.value = today();
+  time.value = now();
+}
 
-function setFrom(v){from.value=v}
+function normalizeLocation(text){
+  let t = String(text || "").trim().toLowerCase();
+
+  if ((t.includes("breeland") && (t.includes("rdam") || t.includes("rotterdam"))) || t === "breeland rdam") return "Breeland Rdam";
+  if (t.includes("breeland") && t.includes("dordrecht")) return "Breeland Dordrecht";
+  if (t.includes("breeland") && t.includes("den haag")) return "Breeland Den Haag";
+  if (t.includes("breeland") && t.includes("brielle")) return "Breeland Brielle";
+  if (t.includes("wasstraat")) return "Wasstraat";
+  if (t.includes("abs") || t.includes("den elzen")) return "ABS den Elzen";
+
+  return text;
+}
+
+function setFrom(v){
+  from.value = v;
+}
+
+function setTo(v){
+  to.value = v;
+}
 
 function swapRoute(){
-
-let f=from.value
-let t=to.value
-
-from.value=t
-to.value=f
-
+  const f = normalizeLocation(from.value);
+  const t = normalizeLocation(to.value);
+  from.value = t;
+  to.value = f;
 }
 
-function calcKM(from,to){
+function startVoice(){
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-from=normalizeLocation(from)
-to=normalizeLocation(to)
+  if(!SpeechRecognition){
+    alert("Spraak niet ondersteund op dit apparaat.");
+    return;
+  }
 
-if(!locations[from]||!locations[to]) return 0
+  const rec = new SpeechRecognition();
+  rec.lang = "nl-NL";
+  rec.start();
 
-let [lat1,lon1]=locations[from]
-let [lat2,lon2]=locations[to]
+  rec.onresult = function(e){
+    const text = e.results[0][0].transcript.toLowerCase();
 
-const R=6371
+    if(text.includes("naar")){
+      const parts = text.split("naar");
+      const fromPart = normalizeLocation(parts[0]);
+      const toPart = normalizeLocation(parts[1]);
 
-let dLat=(lat2-lat1)*Math.PI/180
-let dLon=(lon2-lon1)*Math.PI/180
+      from.value = fromPart;
+      to.value = toPart;
+    } else {
+      alert("Zeg bijvoorbeeld: 'Breeland Rdam naar Wasstraat'");
+    }
+  };
+}
 
-let a=Math.sin(dLat/2)*Math.sin(dLat/2)+
-Math.cos(lat1*Math.PI/180)*
-Math.cos(lat2*Math.PI/180)*
-Math.sin(dLon/2)*Math.sin(dLon/2)
+function toRad(v){
+  return v * Math.PI / 180;
+}
 
-let c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))
+function calcKM(fromText, toText){
+  const fromName = normalizeLocation(fromText);
+  const toName = normalizeLocation(toText);
 
-return Math.round(R*c)
+  if(!locationCoords[fromName] || !locationCoords[toName]) return 0;
 
+  const [lat1, lon1] = locationCoords[fromName];
+  const [lat2, lon2] = locationCoords[toName];
+
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return Math.round(R * c);
+}
+
+function savePlate(p){
+  if(!p) return;
+  p = p.toUpperCase();
+
+  plates = plates.filter(x => x !== p);
+  plates.unshift(p);
+  plates = plates.slice(0, 8);
+
+  localStorage.setItem("plates", JSON.stringify(plates));
+  renderPlates();
+}
+
+function renderPlates(){
+  plateList.innerHTML = "";
+
+  plates.forEach(p => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.innerText = p;
+    b.onclick = function(){
+      plate.value = p;
+      lookupPlate();
+    };
+    plateList.appendChild(b);
+  });
 }
 
 async function lookupPlate(){
+  const p = plate.value.toUpperCase().trim();
+  if(!p){
+    rdw.innerText = "";
+    return;
+  }
 
-let p=plate.value.toUpperCase()
+  savePlate(p);
 
-if(!p)return
+  try{
+    const url = "https://opendata.rdw.nl/resource/m9d7-ebf2.json?kenteken=" + encodeURIComponent(p);
+    const r = await fetch(url);
+    const d = await r.json();
 
-savePlate(p)
-
-let url="https://opendata.rdw.nl/resource/m9d7-ebf2.json?kenteken="+p
-
-let r=await fetch(url)
-let d=await r.json()
-
-if(d.length){
-
-rdw.innerText=d[0].merk+" "+d[0].handelsbenaming
-
+    if(d.length){
+      rdw.innerText = (d[0].merk || "") + " " + (d[0].handelsbenaming || "");
+    } else {
+      rdw.innerText = "";
+    }
+  } catch(e){
+    rdw.innerText = "";
+  }
 }
 
-}
-
-plate.addEventListener("input",lookupPlate)
+plate.addEventListener("input", lookupPlate);
 
 function renderTrips(){
+  tripTable.innerHTML = "";
 
-tripTable.innerHTML=""
+  let todayKM = 0;
 
-let todayKM=0
+  trips.forEach(t => {
+    if(t.date === today()) todayKM += t.km || 0;
 
-trips.forEach(t=>{
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${t.date}</td>
+      <td>${t.time}</td>
+      <td>${t.from}</td>
+      <td>${t.to}</td>
+      <td>${t.plate}</td>
+      <td>${t.km}</td>
+    `;
+    tripTable.appendChild(row);
+  });
 
-if(t.date===today()) todayKM+=t.km||0
-
-let row=document.createElement("tr")
-
-row.innerHTML=`
-<td>${t.date}</td>
-<td>${t.time}</td>
-<td>${t.from}</td>
-<td>${t.to}</td>
-<td>${t.plate}</td>
-<td>${t.km}</td>
-`
-
-tripTable.appendChild(row)
-
-})
-
-kmToday.innerText="Vandaag gereden: "+todayKM+" km"
-
-localStorage.setItem("trips",JSON.stringify(trips))
-
-}
-
-function saveTrip(){
-
-let km=calcKM(from.value,to.value)
-
-let p=plate.value.toUpperCase()
-
-savePlate(p)
-
-trips.unshift({
-date:date.value,
-time:time.value,
-from:from.value,
-to:to.value,
-plate:p,
-km:km
-})
-
-renderTrips()
-
-}
-
-function startTrip(){
-
-activeTrip={
-date:date.value,
-time:time.value,
-from:from.value,
-plate:plate.value
-}
-
-localStorage.setItem("activeTrip",JSON.stringify(activeTrip))
-
-renderActive()
-
-}
-
-function stopTrip(){
-
-if(!activeTrip)return
-
-let km=calcKM(activeTrip.from,to.value)
-
-let p=activeTrip.plate.toUpperCase()
-
-savePlate(p)
-
-trips.unshift({
-date:activeTrip.date,
-time:activeTrip.time,
-from:activeTrip.from,
-to:to.value,
-plate:p,
-km:km
-})
-
-localStorage.removeItem("activeTrip")
-
-activeTrip=null
-
-renderTrips()
-renderActive()
-
+  kmToday.innerText = "Vandaag gereden: " + todayKM + " km";
+  localStorage.setItem("trips", JSON.stringify(trips));
 }
 
 function renderActive(){
+  if(!activeTrip){
+    activeTrip.style.display = "none";
+    document.getElementById("activeTrip").style.display = "none";
+    return;
+  }
 
-if(!activeTrip){
-activeTripBox.style.display="none"
-return
+  document.getElementById("activeTrip").style.display = "block";
+  document.getElementById("activeTrip").innerHTML =
+    "Actieve rit: " + activeTrip.from + " → ... (" + activeTrip.plate + ")";
 }
 
-activeTripBox.style.display="block"
-activeTripBox.innerHTML="Actieve rit: "+activeTrip.from+" → ... ("+activeTrip.plate+")"
+function saveTrip(){
+  const p = plate.value.toUpperCase().trim();
+  const km = calcKM(from.value, to.value);
 
+  savePlate(p);
+
+  trips.unshift({
+    date: date.value,
+    time: time.value,
+    from: normalizeLocation(from.value),
+    to: normalizeLocation(to.value),
+    plate: p,
+    km: km
+  });
+
+  renderTrips();
+}
+
+function startTrip(){
+  const p = plate.value.toUpperCase().trim();
+
+  savePlate(p);
+
+  activeTrip = {
+    date: date.value,
+    time: time.value,
+    from: normalizeLocation(from.value),
+    plate: p
+  };
+
+  localStorage.setItem("activeTrip", JSON.stringify(activeTrip));
+  renderActive();
+}
+
+function stopTrip(){
+  if(!activeTrip){
+    alert("Er is nog geen actieve rit gestart.");
+    return;
+  }
+
+  const destination = normalizeLocation(to.value);
+  const km = calcKM(activeTrip.from, destination);
+  const p = String(activeTrip.plate || "").toUpperCase();
+
+  savePlate(p);
+
+  trips.unshift({
+    date: activeTrip.date,
+    time: activeTrip.time,
+    from: activeTrip.from,
+    to: destination,
+    plate: p,
+    km: km
+  });
+
+  localStorage.removeItem("activeTrip");
+  activeTrip = null;
+
+  renderTrips();
+  renderActive();
+
+  // handig voor volgende rit
+  from.value = destination;
+  to.value = "";
+  plate.value = p;
+  lookupPlate();
 }
 
 function exportCSV(){
+  let csv = "Datum;Tijd;Van;Naar;Kenteken;Km\n";
 
-let csv="Datum;Tijd;Van;Naar;Kenteken;Km\n"
+  trips.forEach(t => {
+    csv += `${t.date};${t.time};${t.from};${t.to};${t.plate};${t.km}\n`;
+  });
 
-trips.forEach(t=>{
-csv+=`${t.date};${t.time};${t.from};${t.to};${t.plate};${t.km}\n`
-})
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
 
-let blob=new Blob([csv])
-let url=URL.createObjectURL(blob)
-
-let a=document.createElement("a")
-a.href=url
-a.download="ritten.csv"
-a.click()
-
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "ritten.csv";
+  a.click();
 }
 
 function wipe(){
-
-if(confirm("Alles wissen?")){
-
-trips=[]
-localStorage.removeItem("trips")
-
-renderTrips()
-
-}
-
+  if(confirm("Alles wissen?")){
+    trips = [];
+    localStorage.removeItem("trips");
+    renderTrips();
+  }
 }
 
 function clearForm(){
-
-date.value=today()
-time.value=now()
-
-from.value=""
-to.value=""
-
+  setDefaults();
+  from.value = "";
+  to.value = "";
 }
 
-renderTrips()
-renderActive()
-renderPlates()
-
+setDefaults();
+renderTrips();
+renderPlates();
+renderActive();
 </script>
 
 </body>
