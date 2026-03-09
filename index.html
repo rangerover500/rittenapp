@@ -1319,7 +1319,13 @@ cancelActiveTripBtn.addEventListener("click", () => {
     if (confirm("Alles wissen? Dit verwijdert alle ritten uit deze web-app.")) {
       localStorage.removeItem(LS_KEY);
       render();
-    }
+    setDefaults();
+plateEl.value = localStorage.getItem(LS_PLATE) || "";
+render();
+renderActiveTrip();
+if (plateEl.value) {
+  plateEl.dispatchEvent(new Event("input"));
+}
   });
 
   setDefaults();
