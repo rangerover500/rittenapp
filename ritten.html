@@ -1,0 +1,1167 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rittenadministratie</title>
+  <style>
+    :root {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    body {
+      margin: 0;
+      background: #f6f7f9;
+      color: #111;
+    }
+    header {
+      padding: 16px 16px 10px;
+      background: #fff;
+      border-bottom: 1px solid #e6e8ee;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    h1 {
+      margin: 0;
+      font-size: 18px;
+    }
+    main {
+      padding: 16px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e6e8ee;
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.03);
+      margin-bottom: 16px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 720px) {
+      .grid.two {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    label {
+      font-size: 13px;
+      color: #444;
+      display: block;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d7dbe6;
+      border-radius: 10px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    input:focus {
+      outline: none;
+      border-color: #6b8cff;
+      box-shadow: 0 0 0 3px rgba(107,140,255,.15);
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .field-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .field-row input {
+      flex: 1;
+    }
+    button {
+      padding: 10px 12px;
+      border: 1px solid #d7dbe6;
+      border-radius: 10px;
+      background: #fff;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    button.primary {
+      background: #111;
+      color: #fff;
+      border-color: #111;
+    }
+    button.danger {
+      background: #fff;
+      border-color: #ffccd0;
+      color: #b00020;
+    }
+    button:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+    .muted {
+      color: #666;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    .small {
+      font-size: 12px;
+      color: #666;
+    }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border: 1px solid #e6e8ee;
+      border-radius: 999px;
+      font-size: 12px;
+      color: #444;
+      background: #fff;
+    }
+    #rdwBox {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid #e6e8ee;
+      border-radius: 10px;
+      background: #fafbfe;
+      display: none;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px;
+      border-top: 1px solid #eef0f5;
+      vertical-align: top;
+    }
+    th {
+      color: #555;
+      font-weight: 600;
+      background: #fafbfe;
+    }
+    .thumb {
+      max-width: 110px;
+      max-height: 70px;
+      border: 1px solid #e6e8ee;
+      border-radius: 8px;
+      display: block;
+    }
+    .hint {
+      font-size: 12px;
+      color: #666;
+      margin-top: 6px;
+    }
+
+    .quick-buttons {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .quick-buttons button,
+    .place-chip {
+      padding: 7px 10px;
+      font-size: 13px;
+      border-radius: 999px;
+      background: #fff;
+    }
+    .route-box {
+      margin-top: 14px;
+      padding: 12px;
+      border: 1px dashed #d7dbe6;
+      border-radius: 12px;
+      background: #fafbfe;
+    }
+    .route-preview {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid #e6e8ee;
+      min-height: 20px;
+    }
+    textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d7dbe6;
+      border-radius: 10px;
+      font-size: 16px;
+      box-sizing: border-box;
+      min-height: 72px;
+      resize: vertical;
+      font-family: inherit;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: #6b8cff;
+      box-shadow: 0 0 0 3px rgba(107,140,255,.15);
+    }
+    .checkline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 14px;
+      color: #333;
+    }
+    .checkline input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
+    .actions-top {
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Rittenadministratie</h1>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2 style="margin:0 0 12px;font-size:16px;">Nieuwe rit</h2>
+
+      <div class="grid two">
+        <div>
+          <label for="date">Datum</label>
+          <div class="field-row">
+            <input id="date" type="date" />
+            <button type="button" id="dictDateBtn">🎙 Datum</button>
+          </div>
+          <div class="hint">Zeg bijvoorbeeld: “23 maart” of “23 3”.</div>
+        </div>
+
+        <div>
+          <label for="time">Vertrektijd</label>
+          <div class="field-row">
+            <input id="time" type="time" />
+            <button type="button" id="dictTimeBtn">🎙 Tijd</button>
+          </div>
+          <div class="hint">Zeg bijvoorbeeld: “10 uur 30” of “tien over half elf”.</div>
+        </div>
+      </div>
+
+      <div style="height:12px;"></div>
+
+      <div class="grid two">
+        <div>
+          <label for="from">Van (plaats)</label>
+          <div class="field-row">
+            <input id="from" type="text" placeholder="Bijv. Rotterdam" />
+            <button type="button" id="dictFromBtn">🎙 Dicteer</button>
+          </div>
+          <div class="quick-buttons" id="fromQuickButtons">
+            <button type="button" class="place-chip" data-target="from" data-place="Breeland R'dam">Breeland R'dam</button>
+            <button type="button" class="place-chip" data-target="from" data-place="Wasstraat">Wasstraat</button>
+            <button type="button" class="place-chip" data-target="from" data-place="ABS den Elzen">ABS den Elzen</button>
+            <button type="button" class="place-chip" data-target="from" data-place="Breeland Dordrecht">Breeland Dordrecht</button>
+            <button type="button" class="place-chip" data-target="from" data-place="Breeland Den Haag">Breeland Den Haag</button>
+            <button type="button" class="place-chip" data-target="from" data-place="Breeland Brielle">Breeland Brielle</button>
+          </div>
+        </div>
+
+        <div>
+          <label for="to">Naar (plaats)</label>
+          <div class="field-row">
+            <input id="to" type="text" placeholder="Bijv. Utrecht" />
+            <button type="button" id="dictToBtn">🎙 Dicteer</button>
+          </div>
+          <div class="quick-buttons" id="toQuickButtons">
+            <button type="button" class="place-chip" data-target="to" data-place="Breeland R'dam">Breeland R'dam</button>
+            <button type="button" class="place-chip" data-target="to" data-place="Wasstraat">Wasstraat</button>
+            <button type="button" class="place-chip" data-target="to" data-place="ABS den Elzen">ABS den Elzen</button>
+            <button type="button" class="place-chip" data-target="to" data-place="Breeland Dordrecht">Breeland Dordrecht</button>
+            <button type="button" class="place-chip" data-target="to" data-place="Breeland Den Haag">Breeland Den Haag</button>
+            <button type="button" class="place-chip" data-target="to" data-place="Breeland Brielle">Breeland Brielle</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="route-box">
+        <label for="routeStops">Tussenstops voor route (één per regel of gescheiden met komma’s)</label>
+        <textarea id="routeStops" placeholder="Bijv. Wasstraat, ABS den Elzen&#10;of één stop per regel"></textarea>
+        <label class="checkline">
+          <input type="checkbox" id="routeReturnToStart" />
+          Aan het einde terug naar startpunt
+        </label>
+        <div class="small" style="margin-top:8px;">Voorbeeld: van A naar D met tussenstops B en C wordt A → B, B → C, C → D.</div>
+        <div id="routePreview" class="route-preview small">Nog geen route opgebouwd.</div>
+      </div>
+
+      <div style="height:12px;"></div>
+
+      <div>
+        <label for="plate">Kenteken</label>
+        <div class="field-row">
+          <input id="plate" type="text" placeholder="Bijv. AB-123-C" list="platesList" />
+          <button type="button" id="dictPlateBtn">🎙 Kenteken</button>
+        </div>
+        <datalist id="platesList"></datalist>
+        <div class="muted">Kenteken wordt automatisch hoofdletters en onthouden.</div>
+
+        <div id="rdwBox">
+          <div class="small" style="font-weight:600;">RDW voertuiginfo</div>
+          <div id="rdwInfo" class="small" style="margin-top:6px; line-height:1.45;"></div>
+        </div>
+      </div>
+
+      <div style="height:12px;"></div>
+
+      <div class="row">
+        <button type="button" id="openFinnikBtn">Open Finnik</button>
+        <button type="button" id="pickShotBtn">Screenshot toevoegen</button>
+        <input id="shot" type="file" accept="image/*" style="display:none" />
+        <span class="small" id="shotInfo"></span>
+      </div>
+
+      <div style="height:14px;"></div>
+
+      <div class="row">
+        <button class="primary" id="saveBtn">Opslaan</button>
+        <button type="button" id="saveRouteBtn">Route opslaan (meerdere ritten)</button>
+        <button type="button" id="clearFormBtn">Formulier leegmaken</button>
+      </div>
+
+      <p class="muted">
+        Tip: screenshots worden als kleine thumbnails opgeslagen, zodat je veel meer ritten kunt bewaren.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="row actions-top">
+        <div>
+          <h2 style="margin:0;font-size:16px;">Ritten</h2>
+          <div class="small"><span class="pill" id="countPill">0 ritten</span></div>
+        </div>
+        <div class="row">
+          <button type="button" id="exportBtn">Export CSV</button>
+          <button type="button" class="danger" id="wipeBtn">Alles wissen</button>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Tijd</th>
+            <th>Van</th>
+            <th>Naar</th>
+            <th>Kenteken</th>
+            <th>Voertuig</th>
+            <th>Screenshot</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+  </main>
+
+<script>
+  const LS_KEY = "ritten_v4";
+  const LS_PLATE = "ritten_last_plate_v4";
+
+  const $ = (id) => document.getElementById(id);
+
+  const dateEl = $("date");
+  const timeEl = $("time");
+  const fromEl = $("from");
+  const toEl = $("to");
+  const plateEl = $("plate");
+  const platesList = $("platesList");
+  const shotEl = $("shot");
+  const shotInfo = $("shotInfo");
+  const tbody = $("tbody");
+  const countPill = $("countPill");
+  const rdwBox = $("rdwBox");
+  const rdwInfo = $("rdwInfo");
+  const routeStopsEl = $("routeStops");
+  const routeReturnToStartEl = $("routeReturnToStart");
+  const routePreviewEl = $("routePreview");
+
+  let pendingShotDataUrl = null;
+  let rdwTimer = null;
+  let rdwLast = null;
+  const rdwCache = {};
+
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function todayISO() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  function nowHHMM() {
+    const d = new Date();
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+
+  function setDefaults() {
+    dateEl.value = todayISO();
+    timeEl.value = nowHHMM();
+  }
+
+  function normalizePlate(s) {
+    return (s || "")
+      .toUpperCase()
+      .replace(/\s+/g, "")
+      .trim();
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+
+  function csvEscape(v) {
+    const s = String(v ?? "");
+    if (/[;"\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  }
+
+  function loadTrips() {
+    try {
+      return JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+    } catch {
+      return [];
+    }
+  }
+
+  function isQuotaError(e) {
+    return e && (
+      e.name === "QuotaExceededError" ||
+      e.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+      String(e).toLowerCase().includes("quota")
+    );
+  }
+
+  function safeSaveTrips(trips) {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(trips));
+      return true;
+    } catch (e) {
+      if (isQuotaError(e)) {
+        alert(
+          "Opslaan lukt niet: de opslag voor deze web-app is vol.\n\n" +
+          "Exporteer eerst CSV en verwijder daarna oudere ritten of ritten met screenshots."
+        );
+        return false;
+      }
+      throw e;
+    }
+  }
+
+  function uniquePlates(trips) {
+    const set = new Set();
+    trips.forEach(t => set.add(t.plate));
+    return [...set].filter(Boolean).sort();
+  }
+
+  function render() {
+    const trips = loadTrips();
+    countPill.textContent = `${trips.length} rit${trips.length === 1 ? "" : "ten"}`;
+
+    platesList.innerHTML = "";
+    uniquePlates(trips).forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p;
+      platesList.appendChild(opt);
+    });
+
+    tbody.innerHTML = "";
+    trips.forEach((t, idx) => {
+      const voertuig = t.rdw
+        ? `${escapeHtml(t.rdw.merk || "")} ${escapeHtml(t.rdw.handelsbenaming || "")}`.trim()
+        : "—";
+
+      const shotCell = t.screenshot
+        ? `<a href="${t.screenshot}" target="_blank" rel="noopener"><img class="thumb" src="${t.screenshot}" alt="screenshot" /></a>`
+        : `<span class="small">—</span>`;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(t.date)}</td>
+        <td>${escapeHtml(t.time)}</td>
+        <td>${escapeHtml(t.from)}</td>
+        <td>${escapeHtml(t.to)}</td>
+        <td>${escapeHtml(t.plate)}</td>
+        <td>${voertuig || "—"}</td>
+        <td>${shotCell}</td>
+        <td><button type="button" class="danger" data-del="${idx}">Verwijder</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    tbody.querySelectorAll("button[data-del]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.getAttribute("data-del"));
+        const trips = loadTrips();
+        trips.splice(i, 1);
+        if (safeSaveTrips(trips)) render();
+      });
+    });
+  }
+
+  function makeCSV(trips) {
+    const header = [
+      "Datum",
+      "Vertrektijd",
+      "Van",
+      "Naar",
+      "Kenteken",
+      "Merk",
+      "Handelsbenaming",
+      "Inrichting",
+      "Eerste toelating"
+    ];
+    const lines = [header.join(";")];
+
+    trips.forEach(t => {
+      lines.push([
+        t.date,
+        t.time,
+        t.from,
+        t.to,
+        t.plate,
+        t.rdw?.merk || "",
+        t.rdw?.handelsbenaming || "",
+        t.rdw?.inrichting || "",
+        t.rdw?.eerste_toelating || ""
+      ].map(csvEscape).join(";"));
+    });
+
+    return lines.join("\n");
+  }
+
+  function showRDW(html) {
+    rdwInfo.innerHTML = html;
+    rdwBox.style.display = "block";
+  }
+
+  function hideRDW() {
+    rdwInfo.innerHTML = "";
+    rdwBox.style.display = "none";
+    rdwLast = null;
+  }
+
+  function prettyDateYYYYMMDD(s) {
+    if (!s) return "";
+    return String(s).slice(0, 10);
+  }
+
+  async function fetchRDW(plate) {
+    const k = plate.replace(/[^A-Z0-9]/g, "").toUpperCase();
+    if (!k) return null;
+    if (rdwCache[k]) return rdwCache[k];
+
+    const base = "https://opendata.rdw.nl/resource/m9d7-ebf2.json";
+    const select = "kenteken,merk,handelsbenaming,inrichting,datum_eerste_toelating_dt";
+    const url = `${base}?$select=${encodeURIComponent(select)}&kenteken=${encodeURIComponent(k)}&$limit=1`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("RDW lookup mislukt");
+    const arr = await res.json();
+    const row = arr && arr[0] ? arr[0] : null;
+    rdwCache[k] = row;
+    return row;
+  }
+
+  async function updateRDWInfo() {
+    const plate = normalizePlate(plateEl.value || "");
+    const clean = plate.replace(/[^A-Z0-9]/g, "");
+    if (!clean) {
+      hideRDW();
+      return;
+    }
+
+    showRDW("Zoeken in RDW…");
+
+    try {
+      const row = await fetchRDW(plate);
+      if (!row) {
+        rdwLast = null;
+        showRDW("Geen RDW-resultaat gevonden voor dit kenteken.");
+        return;
+      }
+
+      const merk = row.merk || "—";
+      const hb = row.handelsbenaming || "—";
+      const inrichting = row.inrichting || "—";
+      const toel = prettyDateYYYYMMDD(row.datum_eerste_toelating_dt) || "—";
+
+      rdwLast = {
+        merk,
+        handelsbenaming: hb,
+        inrichting,
+        eerste_toelating: toel
+      };
+
+      showRDW(
+        `<div><b>${escapeHtml(merk)}</b> ${escapeHtml(hb)}</div>` +
+        `<div>Inrichting: ${escapeHtml(inrichting)}</div>` +
+        `<div>Eerste toelating: ${escapeHtml(toel)}</div>`
+      );
+    } catch (e) {
+      rdwLast = null;
+      showRDW("RDW-info kon niet worden opgehaald.");
+    }
+  }
+
+  async function fileToThumbnailDataUrl(file, maxSize = 900, quality = 0.65) {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = URL.createObjectURL(file);
+    });
+
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    const scale = Math.min(1, maxSize / Math.max(w, h));
+    const nw = Math.max(1, Math.round(w * scale));
+    const nh = Math.max(1, Math.round(h * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = nw;
+    canvas.height = nh;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, nw, nh);
+
+    return canvas.toDataURL("image/jpeg", quality);
+  }
+
+  function speechSupported() {
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  }
+
+  function speechHint() {
+    alert(
+      "Als deze knop niet werkt op jouw iPhone, gebruik dan de microfoon op het toetsenbord.\n\n" +
+      "Tik in het veld en spreek daarna in."
+    );
+  }
+
+  function startDictation(onText) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      speechHint();
+      return;
+    }
+
+    const rec = new SR();
+    rec.lang = "nl-NL";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    rec.onresult = (e) => {
+      const text = e.results?.[0]?.[0]?.transcript || "";
+      onText(text);
+    };
+
+    rec.onerror = () => speechHint();
+    rec.start();
+  }
+
+  function normalizeSpokenPlate(text) {
+    let s = String(text || "").toUpperCase().trim();
+    s = s.replace(/\bSTREEPJE\b/g, "-");
+    s = s.replace(/\bSTREEP\b/g, "-");
+    s = s.replace(/\s+/g, "");
+    s = s.replace(/-+/g, "-").replace(/^-|-$/g, "");
+    return s;
+  }
+
+  function spokenDutchNumberToInt(text) {
+    const t = String(text || "").toLowerCase().trim();
+
+    const map = {
+      "nul": 0, "een": 1, "één": 1, "twee": 2, "drie": 3, "vier": 4, "vijf": 5,
+      "zes": 6, "zeven": 7, "acht": 8, "negen": 9, "tien": 10, "elf": 11,
+      "twaalf": 12, "dertien": 13, "veertien": 14, "vijftien": 15, "zestien": 16,
+      "zeventien": 17, "achttien": 18, "negentien": 19, "twintig": 20,
+      "eenentwintig": 21, "tweeëntwintig": 22, "drieëntwintig": 23, "vierentwintig": 24,
+      "vijfentwintig": 25, "zesentwintig": 26, "zevenentwintig": 27, "achtentwintig": 28,
+      "negenentwintig": 29, "dertig": 30, "eenendertig": 31
+    };
+
+    if (/^\d+$/.test(t)) return Number(t);
+    return map[t] ?? null;
+  }
+
+  function parseDutchDateSpeech(text) {
+    let s = String(text || "").toLowerCase().trim()
+      .replace(/\./g, " ")
+      .replace(/\//g, " ")
+      .replace(/\s+/g, " ");
+
+    const months = {
+      "januari": 1, "jan": 1,
+      "februari": 2, "feb": 2,
+      "maart": 3, "mrt": 3,
+      "april": 4, "apr": 4,
+      "mei": 5,
+      "juni": 6, "jun": 6,
+      "juli": 7, "jul": 7,
+      "augustus": 8, "aug": 8,
+      "september": 9, "sep": 9, "sept": 9,
+      "oktober": 10, "okt": 10,
+      "november": 11, "nov": 11,
+      "december": 12, "dec": 12
+    };
+
+    const parts = s.split(" ");
+    const year = new Date().getFullYear();
+
+    if (parts.length >= 2) {
+      const d = spokenDutchNumberToInt(parts[0]);
+      let m = null;
+
+      if (/^\d+$/.test(parts[1])) {
+        m = Number(parts[1]);
+      } else {
+        m = months[parts[1]] ?? null;
+      }
+
+      if (d && m && d >= 1 && d <= 31 && m >= 1 && m <= 12) {
+        return `${year}-${pad2(m)}-${pad2(d)}`;
+      }
+    }
+
+    const matchNumeric = s.match(/^(\d{1,2})\s+(\d{1,2})$/);
+    if (matchNumeric) {
+      const d = Number(matchNumeric[1]);
+      const m = Number(matchNumeric[2]);
+      if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
+        return `${year}-${pad2(m)}-${pad2(d)}`;
+      }
+    }
+
+    return null;
+  }
+
+  function parseHourWord(word) {
+    return spokenDutchNumberToInt(word);
+  }
+
+  function parseDutchTimeSpeech(text) {
+    let s = String(text || "").toLowerCase().trim()
+      .replace(/\./g, " ")
+      .replace(/\s+/g, " ");
+
+    // 10 uur 30 / 10 30
+    let m = s.match(/^(\d{1,2})\s*(uur)?\s*(\d{1,2})$/);
+    if (m) {
+      const hh = Number(m[1]);
+      const mm = Number(m[3]);
+      if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+        return `${pad2(hh)}:${pad2(mm)}`;
+      }
+    }
+
+    // "tien uur dertig"
+    m = s.match(/^([a-zé]+)\s*uur\s*([a-zé]+)$/);
+    if (m) {
+      const hh = parseHourWord(m[1]);
+      const mm = parseHourWord(m[2]);
+      if (hh !== null && mm !== null && hh <= 23 && mm <= 59) {
+        return `${pad2(hh)}:${pad2(mm)}`;
+      }
+    }
+
+    // "half elf" => 10:30
+    m = s.match(/^half\s+([a-zé]+|\d{1,2})$/);
+    if (m) {
+      let nextHour = /^\d+$/.test(m[1]) ? Number(m[1]) : parseHourWord(m[1]);
+      if (nextHour !== null && nextHour >= 1 && nextHour <= 24) {
+        let hh = nextHour - 1;
+        if (hh < 0) hh = 0;
+        return `${pad2(hh)}:30`;
+      }
+    }
+
+    // "tien over half elf" => 10:40
+    m = s.match(/^([a-zé]+|\d{1,2})\s+over\s+half\s+([a-zé]+|\d{1,2})$/);
+    if (m) {
+      const plus = /^\d+$/.test(m[1]) ? Number(m[1]) : parseHourWord(m[1]);
+      let nextHour = /^\d+$/.test(m[2]) ? Number(m[2]) : parseHourWord(m[2]);
+      if (plus !== null && nextHour !== null) {
+        const hh = nextHour - 1;
+        const mm = 30 + plus;
+        if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+          return `${pad2(hh)}:${pad2(mm)}`;
+        }
+      }
+    }
+
+    // "kwart over tien" => 10:15
+    m = s.match(/^kwart\s+over\s+([a-zé]+|\d{1,2})$/);
+    if (m) {
+      const hh = /^\d+$/.test(m[1]) ? Number(m[1]) : parseHourWord(m[1]);
+      if (hh !== null && hh >= 0 && hh <= 23) {
+        return `${pad2(hh)}:15`;
+      }
+    }
+
+    // "kwart voor elf" => 10:45
+    m = s.match(/^kwart\s+voor\s+([a-zé]+|\d{1,2})$/);
+    if (m) {
+      let nextHour = /^\d+$/.test(m[1]) ? Number(m[1]) : parseHourWord(m[1]);
+      if (nextHour !== null && nextHour >= 1 && nextHour <= 24) {
+        return `${pad2(nextHour - 1)}:45`;
+      }
+    }
+
+    // "vijf over tien" => 10:05
+    m = s.match(/^([a-zé]+|\d{1,2})\s+over\s+([a-zé]+|\d{1,2})$/);
+    if (m) {
+      const mm = /^\d+$/.test(m[1]) ? Number(m[1]) : parseHourWord(m[1]);
+      const hh = /^\d+$/.test(m[2]) ? Number(m[2]) : parseHourWord(m[2]);
+      if (hh !== null && mm !== null && hh <= 23 && mm <= 59) {
+        return `${pad2(hh)}:${pad2(mm)}`;
+      }
+    }
+
+    // "tien voor elf" => 10:50
+    m = s.match(/^([a-zé]+|\d{1,2})\s+voor\s+([a-zé]+|\d{1,2})$/);
+    if (m) {
+      const minus = /^\d+$/.test(m[1]) ? Number(m[1]) : parseHourWord(m[1]);
+      let nextHour = /^\d+$/.test(m[2]) ? Number(m[2]) : parseHourWord(m[2]);
+      if (minus !== null && nextHour !== null) {
+        const hh = nextHour - 1;
+        const mm = 60 - minus;
+        if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+          return `${pad2(hh)}:${pad2(mm)}`;
+        }
+      }
+    }
+
+    return null;
+  }
+
+
+  function setPlaceValue(target, value) {
+    if (target === "from") {
+      fromEl.value = value;
+      fromEl.focus();
+    } else {
+      toEl.value = value;
+      toEl.focus();
+    }
+    updateRoutePreview();
+  }
+
+  function parseStopsText(text) {
+    return String(text || "")
+      .split(/\n|,/)
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+
+  function buildRoutePoints() {
+    const from = fromEl.value.trim();
+    const to = toEl.value.trim();
+    const stops = parseStopsText(routeStopsEl.value);
+    if (!from || !to) return [];
+    const points = [from, ...stops, to];
+    if (routeReturnToStartEl.checked) {
+      points.push(from);
+    }
+    return points;
+  }
+
+  function buildRouteSegments() {
+    const points = buildRoutePoints();
+    const segments = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      segments.push({ from: points[i], to: points[i + 1] });
+    }
+    return segments;
+  }
+
+  function addMinutesToTime(timeStr, minutesToAdd) {
+    const base = (timeStr || "00:00").split(":");
+    let h = Number(base[0] || 0);
+    let m = Number(base[1] || 0);
+    let total = h * 60 + m + minutesToAdd;
+    total = ((total % 1440) + 1440) % 1440;
+    return `${pad2(Math.floor(total / 60))}:${pad2(total % 60)}`;
+  }
+
+  function updateRoutePreview() {
+    const segments = buildRouteSegments();
+    if (!segments.length) {
+      routePreviewEl.textContent = "Nog geen route opgebouwd.";
+      return;
+    }
+    routePreviewEl.innerHTML = segments.map((seg, idx) =>
+      `${idx + 1}. ${escapeHtml(seg.from)} → ${escapeHtml(seg.to)}`
+    ).join("<br>");
+  }
+
+  function resetRouteInputs() {
+    routeStopsEl.value = "";
+    routeReturnToStartEl.checked = false;
+    updateRoutePreview();
+  }
+
+  plateEl.addEventListener("input", () => {
+    const up = normalizePlate(plateEl.value);
+    if (plateEl.value !== up) plateEl.value = up;
+
+    clearTimeout(rdwTimer);
+    rdwTimer = setTimeout(updateRDWInfo, 450);
+  });
+
+  $("dictFromBtn").addEventListener("click", () => {
+    startDictation((text) => {
+      fromEl.value = (fromEl.value ? fromEl.value + " " : "") + text.trim();
+      fromEl.focus();
+    });
+  });
+
+  $("dictToBtn").addEventListener("click", () => {
+    startDictation((text) => {
+      toEl.value = (toEl.value ? toEl.value + " " : "") + text.trim();
+      toEl.focus();
+    });
+  });
+
+  $("dictPlateBtn").addEventListener("click", () => {
+    startDictation((text) => {
+      plateEl.value = normalizeSpokenPlate(text);
+      plateEl.dispatchEvent(new Event("input"));
+      plateEl.focus();
+    });
+  });
+
+  $("dictDateBtn").addEventListener("click", () => {
+    startDictation((text) => {
+      const parsed = parseDutchDateSpeech(text);
+      if (!parsed) {
+        alert(`Datum niet herkend uit: "${text}"`);
+        return;
+      }
+      dateEl.value = parsed;
+      dateEl.focus();
+    });
+  });
+
+  $("dictTimeBtn").addEventListener("click", () => {
+    startDictation((text) => {
+      const parsed = parseDutchTimeSpeech(text);
+      if (!parsed) {
+        alert(`Tijd niet herkend uit: "${text}"`);
+        return;
+      }
+      timeEl.value = parsed;
+      timeEl.focus();
+    });
+  });
+
+  document.querySelectorAll(".place-chip").forEach(btn => {
+    btn.addEventListener("click", () => {
+      setPlaceValue(btn.dataset.target, btn.dataset.place);
+    });
+  });
+
+  fromEl.addEventListener("input", updateRoutePreview);
+  toEl.addEventListener("input", updateRoutePreview);
+  routeStopsEl.addEventListener("input", updateRoutePreview);
+  routeReturnToStartEl.addEventListener("change", updateRoutePreview);
+
+  $("openFinnikBtn").addEventListener("click", () => {
+    const plate = normalizePlate(plateEl.value);
+    if (!plate) {
+      alert("Vul eerst een kenteken in.");
+      plateEl.focus();
+      return;
+    }
+    window.open(`https://finnik.nl/kentekenembed/${encodeURIComponent(plate)}`, "_blank", "noopener");
+  });
+
+  $("pickShotBtn").addEventListener("click", () => shotEl.click());
+
+  shotEl.addEventListener("change", async () => {
+    const file = shotEl.files && shotEl.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Kies een afbeelding.");
+      shotEl.value = "";
+      return;
+    }
+
+    try {
+      pendingShotDataUrl = await fileToThumbnailDataUrl(file, 900, 0.65);
+      shotInfo.textContent = "Screenshot-thumbnail klaar ✅";
+    } catch {
+      pendingShotDataUrl = null;
+      shotInfo.textContent = "";
+      alert("Kon screenshot niet verwerken.");
+    }
+  });
+
+  $("saveBtn").addEventListener("click", () => {
+    const date = dateEl.value || todayISO();
+    const time = timeEl.value || nowHHMM();
+    const from = fromEl.value.trim();
+    const to = toEl.value.trim();
+    const plate = normalizePlate(plateEl.value);
+
+    if (!from || !to || !plate) {
+      alert("Vul Van, Naar en Kenteken in.");
+      return;
+    }
+
+    const trips = loadTrips();
+    trips.unshift({
+      date,
+      time,
+      from,
+      to,
+      plate,
+      screenshot: pendingShotDataUrl || null,
+      rdw: rdwLast || null
+    });
+
+    if (!safeSaveTrips(trips)) return;
+
+    localStorage.setItem(LS_PLATE, plate);
+
+    dateEl.value = todayISO();
+    timeEl.value = nowHHMM();
+    fromEl.value = "";
+    toEl.value = "";
+    plateEl.value = plate;
+
+    pendingShotDataUrl = null;
+    shotEl.value = "";
+    shotInfo.textContent = "";
+    resetRouteInputs();
+
+    render();
+    plateEl.dispatchEvent(new Event("input"));
+    fromEl.focus();
+  });
+
+
+  $("saveRouteBtn").addEventListener("click", () => {
+    const date = dateEl.value || todayISO();
+    const time = timeEl.value || nowHHMM();
+    const plate = normalizePlate(plateEl.value);
+    const segments = buildRouteSegments();
+
+    if (!plate) {
+      alert("Vul eerst een kenteken in.");
+      plateEl.focus();
+      return;
+    }
+
+    if (segments.length < 2) {
+      alert("Vul Van, Naar en minimaal één tussenstop in voor een route.");
+      return;
+    }
+
+    const trips = loadTrips();
+    const newTrips = segments.map((seg, idx) => ({
+      date,
+      time: addMinutesToTime(time, idx),
+      from: seg.from,
+      to: seg.to,
+      plate,
+      screenshot: idx === 0 ? (pendingShotDataUrl || null) : null,
+      rdw: rdwLast || null
+    }));
+
+    trips.unshift(...newTrips.reverse());
+
+    if (!safeSaveTrips(trips)) return;
+
+    localStorage.setItem(LS_PLATE, plate);
+
+    dateEl.value = todayISO();
+    timeEl.value = nowHHMM();
+    fromEl.value = "";
+    toEl.value = "";
+    plateEl.value = plate;
+    pendingShotDataUrl = null;
+    shotEl.value = "";
+    shotInfo.textContent = "";
+    resetRouteInputs();
+
+    render();
+    plateEl.dispatchEvent(new Event("input"));
+    fromEl.focus();
+  });
+
+  $("clearFormBtn").addEventListener("click", () => {
+    setDefaults();
+    fromEl.value = "";
+    toEl.value = "";
+    plateEl.value = localStorage.getItem(LS_PLATE) || "";
+    pendingShotDataUrl = null;
+    shotEl.value = "";
+    shotInfo.textContent = "";
+    resetRouteInputs();
+    if (plateEl.value) {
+      plateEl.dispatchEvent(new Event("input"));
+    } else {
+      hideRDW();
+    }
+    fromEl.focus();
+  });
+
+  $("exportBtn").addEventListener("click", () => {
+    const trips = loadTrips();
+    if (!trips.length) {
+      alert("Nog geen ritten om te exporteren.");
+      return;
+    }
+
+    const csv = makeCSV([...trips].reverse());
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    const ts = new Date();
+    const fname = `ritten_${ts.getFullYear()}-${pad2(ts.getMonth()+1)}-${pad2(ts.getDate())}_${pad2(ts.getHours())}${pad2(ts.getMinutes())}.csv`;
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  $("wipeBtn").addEventListener("click", () => {
+    if (confirm("Alles wissen? Dit verwijdert alle ritten uit deze web-app.")) {
+      localStorage.removeItem(LS_KEY);
+      render();
+    }
+  });
+
+  setDefaults();
+  plateEl.value = localStorage.getItem(LS_PLATE) || "";
+  updateRoutePreview();
+  render();
+  if (plateEl.value) {
+    plateEl.dispatchEvent(new Event("input"));
+  }
+</script>
+</body>
+</html>
