@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>Ritten Breeland</title>
 
 <style>
@@ -22,6 +23,15 @@ padding:20px;
 border-radius:10px;
 }
 
+input{
+background:#eaffea;
+padding:8px;
+margin-bottom:6px;
+border-radius:6px;
+border:1px solid #ccd;
+width:100%;
+}
+
 button{
 padding:10px;
 margin:4px;
@@ -32,8 +42,28 @@ background:black;
 color:white;
 }
 
+.start{
+background:#28a745;
+color:white;
+}
+
+.stop{
+background:#d9534f;
+color:white;
+}
+
+.voice{
+background:#007bff;
+color:white;
+}
+
 .quick button{
 font-size:13px;
+}
+
+.plates button{
+font-size:12px;
+background:#f2f2f2;
 }
 
 table{
@@ -56,7 +86,7 @@ margin-top:10px;
 .kmtotal{
 background:#f0f4ff;
 padding:8px;
-margin-top:10px;
+margin-bottom:10px;
 font-weight:bold;
 }
 
@@ -95,37 +125,24 @@ font-weight:bold;
 <label>Naar</label>
 <input id="to">
 
-<h4>Snelle routes</h4>
-
-<div class="quick">
-
-<button onclick="quickRoute('Breeland Rdam','Wasstraat')">Breeland → Wasstraat</button>
-<button onclick="quickRoute('Wasstraat','Breeland Rdam')">Wasstraat → Breeland</button>
-
-<button onclick="quickRoute('Breeland Rdam','ABS den Elzen')">Breeland → ABS</button>
-<button onclick="quickRoute('ABS den Elzen','Breeland Rdam')">ABS → Breeland</button>
-
-<button onclick="quickRoute('Breeland Rdam','Breeland Dordrecht')">Breeland → Dordrecht</button>
-<button onclick="quickRoute('Breeland Rdam','Breeland Den Haag')">Breeland → Den Haag</button>
-<button onclick="quickRoute('Breeland Rdam','Breeland Brielle')">Breeland → Brielle</button>
-
-</div>
-
 <button onclick="swapRoute()">Retour</button>
+
+<label>Spraak invoer</label>
+
+<button class="voice" onclick="startVoice()">🎤 Spreek route</button>
 
 <label>Kenteken</label>
 <input id="plate">
 
-<div id="rdw"></div>
+<div class="plates" id="plateList"></div>
 
-<label>Screenshot</label>
-<input type="file" id="photo">
+<div id="rdw"></div>
 
 <br>
 
 <button class="primary" onclick="saveTrip()">Opslaan</button>
-<button onclick="startTrip()">Start rit</button>
-<button onclick="stopTrip()">Stop rit</button>
+<button class="start" onclick="startTrip()">Start rit</button>
+<button class="stop" onclick="stopTrip()">Stop rit</button>
 <button onclick="clearForm()">Leegmaken</button>
 
 <div id="activeTrip" class="active" style="display:none"></div>
@@ -142,7 +159,6 @@ font-weight:bold;
 <th>Naar</th>
 <th>Kenteken</th>
 <th>Km</th>
-<th>Foto</th>
 </tr>
 </thead>
 
@@ -157,8 +173,104 @@ font-weight:bold;
 
 <script>
 
+const locations={
+"breeland":[51.9225,4.47917],
+"wasstraat":[51.9150,4.4800],
+"abs":[51.8765,4.3580],
+"dordrecht":[51.8133,4.6901],
+"den haag":[52.0705,4.3007],
+"brielle":[51.9033,4.1625]
+}
+
+function normalizeLocation(text){
+
+text=text.toLowerCase()
+
+if(text.includes("breeland")) return "breeland"
+if(text.includes("wasstraat")) return "wasstraat"
+if(text.includes("abs")) return "abs"
+if(text.includes("dordrecht")) return "dordrecht"
+if(text.includes("den haag")) return "den haag"
+if(text.includes("brielle")) return "brielle"
+
+return text
+
+}
+
+function startVoice(){
+
+const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition
+
+if(!SpeechRecognition){
+alert("Spraak niet ondersteund")
+return
+}
+
+let rec=new SpeechRecognition()
+
+rec.lang="nl-NL"
+
+rec.start()
+
+rec.onresult=function(e){
+
+let text=e.results[0][0].transcript.toLowerCase()
+
+if(text.includes("naar")){
+
+let parts=text.split("naar")
+
+let from=normalizeLocation(parts[0])
+let to=normalizeLocation(parts[1])
+
+document.getElementById("from").value=from
+document.getElementById("to").value=to
+
+}
+
+}
+
+}
+
 let trips=JSON.parse(localStorage.getItem("trips")||"[]")
 let activeTrip=JSON.parse(localStorage.getItem("activeTrip")||"null")
+
+let plates=JSON.parse(localStorage.getItem("plates")||"[]")
+
+function renderPlates(){
+
+plateList.innerHTML=""
+
+plates.slice(0,8).forEach(p=>{
+
+let b=document.createElement("button")
+
+b.innerText=p
+
+b.onclick=function(){
+plate.value=p
+lookupPlate()
+}
+
+plateList.appendChild(b)
+
+})
+
+}
+
+function savePlate(p){
+
+if(!plates.includes(p)){
+
+plates.unshift(p)
+
+localStorage.setItem("plates",JSON.stringify(plates))
+
+renderPlates()
+
+}
+
+}
 
 function pad(n){return String(n).padStart(2,"0")}
 
@@ -172,111 +284,96 @@ let d=new Date()
 return pad(d.getHours())+":"+pad(d.getMinutes())
 }
 
-function setDefaults(){
-document.getElementById("date").value=today()
-document.getElementById("time").value=now()
-}
+date.value=today()
+time.value=now()
 
-setDefaults()
-
-function setFrom(v){
-document.getElementById("from").value=v
-}
-
-function quickRoute(from,to){
-document.getElementById("from").value=from
-document.getElementById("to").value=to
-}
+function setFrom(v){from.value=v}
 
 function swapRoute(){
 
-let f=document.getElementById("from").value
-let t=document.getElementById("to").value
+let f=from.value
+let t=to.value
 
-document.getElementById("from").value=t
-document.getElementById("to").value=f
+from.value=t
+to.value=f
+
+}
+
+function calcKM(from,to){
+
+from=normalizeLocation(from)
+to=normalizeLocation(to)
+
+if(!locations[from]||!locations[to]) return 0
+
+let [lat1,lon1]=locations[from]
+let [lat2,lon2]=locations[to]
+
+const R=6371
+
+let dLat=(lat2-lat1)*Math.PI/180
+let dLon=(lon2-lon1)*Math.PI/180
+
+let a=Math.sin(dLat/2)*Math.sin(dLat/2)+
+Math.cos(lat1*Math.PI/180)*
+Math.cos(lat2*Math.PI/180)*
+Math.sin(dLon/2)*Math.sin(dLon/2)
+
+let c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))
+
+return Math.round(R*c)
 
 }
 
 async function lookupPlate(){
 
-let plate=document.getElementById("plate").value.toUpperCase()
+let p=plate.value.toUpperCase()
 
-if(!plate)return
+if(!p)return
 
-let url="https://opendata.rdw.nl/resource/m9d7-ebf2.json?kenteken="+plate
+savePlate(p)
 
-let res=await fetch(url)
-let data=await res.json()
+let url="https://opendata.rdw.nl/resource/m9d7-ebf2.json?kenteken="+p
 
-if(data.length){
+let r=await fetch(url)
+let d=await r.json()
 
-let r=data[0]
+if(d.length){
 
-document.getElementById("rdw").innerText=r.merk+" "+r.handelsbenaming
-
-}
+rdw.innerText=d[0].merk+" "+d[0].handelsbenaming
 
 }
 
-document.getElementById("plate").addEventListener("input",lookupPlate)
-
-function calcKM(from,to){
-
-const routes={
-
-"Breeland Rdam|Wasstraat":6,
-"Wasstraat|Breeland Rdam":6,
-
-"Breeland Rdam|ABS den Elzen":22,
-"ABS den Elzen|Breeland Rdam":22,
-
-"Breeland Rdam|Breeland Dordrecht":19,
-"Breeland Dordrecht|Breeland Rdam":19,
-
-"Breeland Rdam|Breeland Den Haag":27,
-"Breeland Den Haag|Breeland Rdam":27,
-
-"Breeland Rdam|Breeland Brielle":32,
-"Breeland Brielle|Breeland Rdam":32
-
 }
 
-let key=from+"|"+to
-
-return routes[key]||0
-
-}
+plate.addEventListener("input",lookupPlate)
 
 function renderTrips(){
 
-let t=document.getElementById("tripTable")
-
-t.innerHTML=""
+tripTable.innerHTML=""
 
 let todayKM=0
 
-trips.forEach(trip=>{
+trips.forEach(t=>{
 
-if(trip.date===today()) todayKM+=trip.km||0
+if(t.date===today()) todayKM+=t.km||0
 
 let row=document.createElement("tr")
 
 row.innerHTML=`
-<td>${trip.date}</td>
-<td>${trip.time}</td>
-<td>${trip.from}</td>
-<td>${trip.to}</td>
-<td>${trip.plate}</td>
-<td>${trip.km||""}</td>
-<td>${trip.photo?'<img src="'+trip.photo+'" width="60">':''}</td>
+<td>${t.date}</td>
+<td>${t.time}</td>
+<td>${t.from}</td>
+<td>${t.to}</td>
+<td>${t.plate}</td>
+<td>${t.km}</td>
 `
 
-t.appendChild(row)
+tripTable.appendChild(row)
 
 })
 
-document.getElementById("kmToday").innerText="Vandaag gereden: "+todayKM+" km"
+kmToday.innerText="Vandaag gereden: "+todayKM+" km"
 
 localStorage.setItem("trips",JSON.stringify(trips))
 
@@ -284,48 +381,33 @@ localStorage.setItem("trips",JSON.stringify(trips))
 
 function saveTrip(){
 
-let date=document.getElementById("date").value
-let time=document.getElementById("time").value
-let from=document.getElementById("from").value
-let to=document.getElementById("to").value
-let plate=document.getElementById("plate").value.toUpperCase()
+let km=calcKM(from.value,to.value)
 
-let km=calcKM(from,to)
+let p=plate.value.toUpperCase()
 
-let file=document.getElementById("photo").files[0]
+savePlate(p)
 
-if(file){
-
-let reader=new FileReader()
-
-reader.onload=function(){
-
-trips.unshift({date,time,from,to,plate,km,photo:reader.result})
+trips.unshift({
+date:date.value,
+time:time.value,
+from:from.value,
+to:to.value,
+plate:p,
+km:km
+})
 
 renderTrips()
-
-}
-
-reader.readAsDataURL(file)
-
-}else{
-
-trips.unshift({date,time,from,to,plate,km})
-
-renderTrips()
-
-}
 
 }
 
 function startTrip(){
 
-let date=document.getElementById("date").value
-let time=document.getElementById("time").value
-let from=document.getElementById("from").value
-let plate=document.getElementById("plate").value
-
-activeTrip={date,time,from,plate}
+activeTrip={
+date:date.value,
+time:time.value,
+from:from.value,
+plate:plate.value
+}
 
 localStorage.setItem("activeTrip",JSON.stringify(activeTrip))
 
@@ -337,16 +419,18 @@ function stopTrip(){
 
 if(!activeTrip)return
 
-let to=document.getElementById("to").value
+let km=calcKM(activeTrip.from,to.value)
 
-let km=calcKM(activeTrip.from,to)
+let p=activeTrip.plate.toUpperCase()
+
+savePlate(p)
 
 trips.unshift({
 date:activeTrip.date,
 time:activeTrip.time,
 from:activeTrip.from,
-to:to,
-plate:activeTrip.plate,
+to:to.value,
+plate:p,
 km:km
 })
 
@@ -355,25 +439,19 @@ localStorage.removeItem("activeTrip")
 activeTrip=null
 
 renderTrips()
-
 renderActive()
 
 }
 
 function renderActive(){
 
-let box=document.getElementById("activeTrip")
-
 if(!activeTrip){
-
-box.style.display="none"
+activeTripBox.style.display="none"
 return
-
 }
 
-box.style.display="block"
-
-box.innerHTML="Actieve rit: "+activeTrip.from+" → ... ("+activeTrip.plate+")"
+activeTripBox.style.display="block"
+activeTripBox.innerHTML="Actieve rit: "+activeTrip.from+" → ... ("+activeTrip.plate+")"
 
 }
 
@@ -382,20 +460,15 @@ function exportCSV(){
 let csv="Datum;Tijd;Van;Naar;Kenteken;Km\n"
 
 trips.forEach(t=>{
-
 csv+=`${t.date};${t.time};${t.from};${t.to};${t.plate};${t.km}\n`
-
 })
 
 let blob=new Blob([csv])
-
 let url=URL.createObjectURL(blob)
 
 let a=document.createElement("a")
-
 a.href=url
 a.download="ritten.csv"
-
 a.click()
 
 }
@@ -405,7 +478,6 @@ function wipe(){
 if(confirm("Alles wissen?")){
 
 trips=[]
-
 localStorage.removeItem("trips")
 
 renderTrips()
@@ -416,15 +488,17 @@ renderTrips()
 
 function clearForm(){
 
-setDefaults()
+date.value=today()
+time.value=now()
 
-document.getElementById("from").value=""
-document.getElementById("to").value=""
+from.value=""
+to.value=""
 
 }
 
 renderTrips()
 renderActive()
+renderPlates()
 
 </script>
 
