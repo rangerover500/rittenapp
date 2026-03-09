@@ -379,8 +379,9 @@
   </main>
 
 <script>
-  const LS_KEY = "ritten_v4";
-  const LS_PLATE = "ritten_last_plate_v4";
+const LS_KEY = "ritten_v4";
+const LS_PLATE = "ritten_last_plate_v4";
+const LS_ACTIVE_TRIP = "ritten_active_trip_v1";
 
   const $ = (id) => document.getElementById(id);
 
@@ -396,6 +397,12 @@
   const countPill = $("countPill");
   const rdwBox = $("rdwBox");
   const rdwInfo = $("rdwInfo");
+  const activeTripBox = $("activeTripBox");
+  const activeTripInfo = $("activeTripInfo");
+  const startTripBtn = $("startTripBtn");
+  const stopTripBtn = $("stopTripBtn");
+  const loadActiveTripBtn = $("loadActiveTripBtn");
+  const cancelActiveTripBtn = $("cancelActiveTripBtn");
   const routeStopsEl = $("routeStops");
   const routeReturnToStartEl = $("routeReturnToStart");
   const routePreviewEl = $("routePreview");
@@ -454,7 +461,47 @@
       return [];
     }
   }
+  function loadActiveTrip() {
+  try {
+    return JSON.parse(localStorage.getItem(LS_ACTIVE_TRIP) || "null");
+  } catch {
+    return null;
+  }
+}
 
+function saveActiveTrip(trip) {
+  localStorage.setItem(LS_ACTIVE_TRIP, JSON.stringify(trip));
+  renderActiveTrip();
+}
+
+function clearActiveTrip() {
+  localStorage.removeItem(LS_ACTIVE_TRIP);
+  renderActiveTrip();
+}
+
+function renderActiveTrip() {
+  const active = loadActiveTrip();
+
+  if (!active) {
+    activeTripBox.style.display = "none";
+    activeTripInfo.innerHTML = "";
+    startTripBtn.textContent = "Start rit";
+    return;
+  }
+
+  activeTripBox.style.display = "block";
+  startTripBtn.textContent = "Start rit bijwerken";
+
+  const voertuig = active.rdw
+    ? `${escapeHtml(active.rdw.merk || "")} ${escapeHtml(active.rdw.handelsbenaming || "")}`.trim()
+    : "—";
+
+  activeTripInfo.innerHTML =
+    `<div><b>${escapeHtml(active.from)}</b> → ...</div>` +
+    `<div>Datum: ${escapeHtml(active.date)} | Tijd: ${escapeHtml(active.time)}</div>` +
+    `<div>Kenteken: ${escapeHtml(active.plate)}</div>` +
+    `<div>Voertuig: ${escapeHtml(voertuig)}</div>`;
+}
   function isQuotaError(e) {
     return e && (
       e.name === "QuotaExceededError" ||
