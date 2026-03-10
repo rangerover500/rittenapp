@@ -150,9 +150,9 @@ td,th{
 <input id="from">
 
 <div class="quick">
-  <button type="button" onclick="setFrom('Breeland Rdam')">Breeland R'dam</button>
+  <button type="button" onclick="setFrom('Breeland Rotterdam')">Breeland Rotterdam</button>
   <button type="button" onclick="setFrom('Wasstraat')">Wasstraat</button>
-  <button type="button" onclick="setFrom('ABS den Elzen')">ABS den Elzen</button>
+  <button type="button" onclick="setFrom('ABS Den Elzen')">ABS Den Elzen</button>
   <button type="button" onclick="setFrom('Breeland Dordrecht')">Breeland Dordrecht</button>
   <button type="button" onclick="setFrom('Breeland Den Haag')">Breeland Den Haag</button>
   <button type="button" onclick="setFrom('Breeland Brielle')">Breeland Brielle</button>
@@ -162,9 +162,9 @@ td,th{
 <input id="to">
 
 <div class="quick">
-  <button type="button" onclick="setTo('Breeland Rdam')">Breeland R'dam</button>
+  <button type="button" onclick="setTo('Breeland Rotterdam')">Breeland Rotterdam</button>
   <button type="button" onclick="setTo('Wasstraat')">Wasstraat</button>
-  <button type="button" onclick="setTo('ABS den Elzen')">ABS den Elzen</button>
+  <button type="button" onclick="setTo('ABS Den Elzen')">ABS Den Elzen</button>
   <button type="button" onclick="setTo('Breeland Dordrecht')">Breeland Dordrecht</button>
   <button type="button" onclick="setTo('Breeland Den Haag')">Breeland Den Haag</button>
   <button type="button" onclick="setTo('Breeland Brielle')">Breeland Brielle</button>
@@ -173,12 +173,12 @@ td,th{
 <button type="button" onclick="swapRoute()">Retour</button>
 
 <label>Tussenstop(s)</label>
-<input id="stops" placeholder="Bijv. Wasstraat, ABS den Elzen, Breeland Dordrecht">
+<input id="stops" placeholder="Bijv. Wasstraat, ABS Den Elzen, Breeland Dordrecht">
 <div class="note">Meerdere tussenstops scheiden met komma’s.</div>
 
 <label>Spraak invoer</label>
 <button class="voice" type="button" onclick="startVoice()">🎤 Spreek route</button>
-<div class="note">Zeg bijvoorbeeld: “Breeland Rdam naar Wasstraat”.</div>
+<div class="note">Zeg bijvoorbeeld: “Breeland Rotterdam naar Wasstraat”.</div>
 
 <label>Kenteken</label>
 <input id="plate" placeholder="Bijv. X-605-VJ" oninput="this.value=this.value.toUpperCase()">
@@ -234,12 +234,12 @@ td,th{
 
 <script>
 const locationCoords = {
-  "Breeland Rdam": [51.9225, 4.47917],
-  "Wasstraat": [51.9150, 4.4800],
-  "ABS den Elzen": [51.8765, 4.3580],
-  "Breeland Dordrecht": [51.8133, 4.6901],
-  "Breeland Den Haag": [52.0705, 4.3007],
-  "Breeland Brielle": [51.9033, 4.1625]
+  "Breeland Rotterdam": [51.92258, 4.53331],
+  "Breeland Den Haag": [52.05191, 4.51663],
+  "Breeland Brielle": [51.86839, 4.14706],
+  "Breeland Dordrecht": [51.78864, 4.67544],
+  "ABS Den Elzen": [51.88879, 4.47728],
+  "Wasstraat": [51.92754, 4.57869]
 };
 
 const mandatoryOdoPlates = ["X-605-VJ", "Z-406-BG"];
@@ -264,10 +264,10 @@ const workStartEl = $("workStart");
 const workEndEl = $("workEnd");
 const dayHoursInfoEl = $("dayHoursInfo");
 
-let trips = JSON.parse(localStorage.getItem("trips_v4") || "[]");
-let activeTrip = JSON.parse(localStorage.getItem("activeTrip_v4") || "null");
-let plates = JSON.parse(localStorage.getItem("plates_v4") || "[]");
-let dayData = JSON.parse(localStorage.getItem("dayData_v4") || "{}");
+let trips = JSON.parse(localStorage.getItem("trips_v5") || "[]");
+let activeTrip = JSON.parse(localStorage.getItem("activeTrip_v5") || "null");
+let plates = JSON.parse(localStorage.getItem("plates_v5") || "[]");
+let dayData = JSON.parse(localStorage.getItem("dayData_v5") || "{}");
 
 function pad(n){ return String(n).padStart(2,"0"); }
 
@@ -283,12 +283,14 @@ function now(){
 
 function normalizeLocation(text){
   let t = String(text || "").trim().toLowerCase();
-  if ((t.includes("breeland") && (t.includes("rdam") || t.includes("rotterdam"))) || t === "breeland rdam") return "Breeland Rdam";
+
+  if ((t.includes("breeland") && t.includes("rotterdam")) || t === "breeland rotterdam" || t === "breeland rdam") return "Breeland Rotterdam";
   if (t.includes("breeland") && t.includes("dordrecht")) return "Breeland Dordrecht";
   if (t.includes("breeland") && t.includes("den haag")) return "Breeland Den Haag";
   if (t.includes("breeland") && t.includes("brielle")) return "Breeland Brielle";
   if (t.includes("wasstraat")) return "Wasstraat";
-  if (t.includes("abs") || t.includes("den elzen")) return "ABS den Elzen";
+  if (t.includes("abs") || t.includes("den elzen")) return "ABS Den Elzen";
+
   return String(text || "").trim();
 }
 
@@ -340,7 +342,7 @@ function startVoice(){
       fromEl.value = normalizeLocation(parts[0]);
       toEl.value = normalizeLocation(parts[1]);
     } else {
-      alert("Zeg bijvoorbeeld: 'Breeland Rdam naar Wasstraat'");
+      alert("Zeg bijvoorbeeld: 'Breeland Rotterdam naar Wasstraat'");
     }
   };
 }
@@ -387,7 +389,7 @@ function updateDayHours(){
     workStart: workStartEl.value || "",
     workEnd: workEndEl.value || ""
   };
-  localStorage.setItem("dayData_v4", JSON.stringify(dayData));
+  localStorage.setItem("dayData_v5", JSON.stringify(dayData));
 
   const hours = timeDiffHours(workStartEl.value, workEndEl.value);
   dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + hours.toFixed(2).replace(".", ",");
@@ -419,7 +421,7 @@ function savePlate(p){
   plates.unshift(p);
   plates = plates.slice(0, 10);
 
-  localStorage.setItem("plates_v4", JSON.stringify(plates));
+  localStorage.setItem("plates_v5", JSON.stringify(plates));
   renderPlates();
 }
 
@@ -586,7 +588,7 @@ async function saveTrip(){
   trips.unshift(trip);
 
   try{
-    localStorage.setItem("trips_v4", JSON.stringify(trips));
+    localStorage.setItem("trips_v5", JSON.stringify(trips));
   } catch(e){
     alert("Opslaan lukt niet. Waarschijnlijk is de foto te groot of is de opslag vol.");
     trips.shift();
@@ -639,7 +641,7 @@ async function saveRoute(){
   trips = [...newTrips.reverse(), ...trips];
 
   try{
-    localStorage.setItem("trips_v4", JSON.stringify(trips));
+    localStorage.setItem("trips_v5", JSON.stringify(trips));
   } catch(e){
     alert("Opslaan lukt niet. Waarschijnlijk is de foto te groot of is de opslag vol.");
     trips = trips.slice(newTrips.length);
@@ -668,7 +670,7 @@ function startTrip(){
     plate: p
   };
 
-  localStorage.setItem("activeTrip_v4", JSON.stringify(activeTrip));
+  localStorage.setItem("activeTrip_v5", JSON.stringify(activeTrip));
   renderActive();
 }
 
@@ -687,14 +689,14 @@ async function stopTrip(){
   trips.unshift(trip);
 
   try{
-    localStorage.setItem("trips_v4", JSON.stringify(trips));
+    localStorage.setItem("trips_v5", JSON.stringify(trips));
   } catch(e){
     alert("Opslaan lukt niet. Waarschijnlijk is de foto te groot of is de opslag vol.");
     trips.shift();
     return;
   }
 
-  localStorage.removeItem("activeTrip_v4");
+  localStorage.removeItem("activeTrip_v5");
   activeTrip = null;
 
   renderTrips();
@@ -741,7 +743,7 @@ function exportCSV(){
 function wipe(){
   if(confirm("Alles wissen?")){
     trips = [];
-    localStorage.removeItem("trips_v4");
+    localStorage.removeItem("trips_v5");
     renderTrips();
   }
 }
