@@ -20,7 +20,7 @@ body{
   padding:20px;
 }
 .container{
-  max-width:950px;
+  max-width:980px;
   margin:auto;
   background:white;
   padding:20px;
@@ -53,6 +53,10 @@ button{
 }
 .stop{
   background:#d9534f;
+  color:white;
+}
+.voice{
+  background:#007bff;
   color:white;
 }
 .quick button,
@@ -112,6 +116,11 @@ td,th{
   grid-template-columns:1fr 1fr;
   gap:10px;
 }
+@media (max-width:700px){
+  .row2{
+    grid-template-columns:1fr;
+  }
+}
 </style>
 </head>
 
@@ -156,38 +165,46 @@ td,th{
 <input id="from">
 
 <div class="quick">
-  <button onclick="setFrom('Breeland Rdam')">Breeland R'dam</button>
-  <button onclick="setFrom('Wasstraat')">Wasstraat</button>
-  <button onclick="setFrom('ABS den Elzen')">ABS den Elzen</button>
-  <button onclick="setFrom('Breeland Dordrecht')">Breeland Dordrecht</button>
-  <button onclick="setFrom('Breeland Den Haag')">Breeland Den Haag</button>
-  <button onclick="setFrom('Breeland Brielle')">Breeland Brielle</button>
+  <button type="button" onclick="setFrom('Breeland Rdam')">Breeland R'dam</button>
+  <button type="button" onclick="setFrom('Wasstraat')">Wasstraat</button>
+  <button type="button" onclick="setFrom('ABS den Elzen')">ABS den Elzen</button>
+  <button type="button" onclick="setFrom('Breeland Dordrecht')">Breeland Dordrecht</button>
+  <button type="button" onclick="setFrom('Breeland Den Haag')">Breeland Den Haag</button>
+  <button type="button" onclick="setFrom('Breeland Brielle')">Breeland Brielle</button>
 </div>
 
 <label>Naar</label>
 <input id="to">
 
 <div class="quick">
-  <button onclick="setTo('Breeland Rdam')">Breeland R'dam</button>
-  <button onclick="setTo('Wasstraat')">Wasstraat</button>
-  <button onclick="setTo('ABS den Elzen')">ABS den Elzen</button>
-  <button onclick="setTo('Breeland Dordrecht')">Breeland Dordrecht</button>
-  <button onclick="setTo('Breeland Den Haag')">Breeland Den Haag</button>
-  <button onclick="setTo('Breeland Brielle')">Breeland Brielle</button>
+  <button type="button" onclick="setTo('Breeland Rdam')">Breeland R'dam</button>
+  <button type="button" onclick="setTo('Wasstraat')">Wasstraat</button>
+  <button type="button" onclick="setTo('ABS den Elzen')">ABS den Elzen</button>
+  <button type="button" onclick="setTo('Breeland Dordrecht')">Breeland Dordrecht</button>
+  <button type="button" onclick="setTo('Breeland Den Haag')">Breeland Den Haag</button>
+  <button type="button" onclick="setTo('Breeland Brielle')">Breeland Brielle</button>
 </div>
 
-<button onclick="swapRoute()">Retour</button>
+<button type="button" onclick="swapRoute()">Retour</button>
+
+<label>Tussenstop(s)</label>
+<input id="stops" placeholder="Bijv. Wasstraat, ABS den Elzen, Breeland Dordrecht">
+<div class="note">Meerdere tussenstops scheiden met komma’s.</div>
+
+<label>Spraak invoer</label>
+<button class="voice" type="button" onclick="startVoice()">🎤 Spreek route</button>
+<div class="note">Zeg bijvoorbeeld: “Breeland Rdam naar Wasstraat”.</div>
 
 <label>Kenteken</label>
-<input id="plate" placeholder="Bijv. AB-123-C" oninput="this.value=this.value.toUpperCase()">
+<input id="plate" placeholder="Bijv. X-605-VJ" oninput="this.value=this.value.toUpperCase()">
 
 <div class="plates" id="plateList"></div>
 
 <div id="rdw"></div>
 
 <label>Kentekenfoto / thumbnail</label>
-<input type="file" id="photo" accept="image/*" capture="environment">
-<div class="note">Tik hierop om direct een foto van het kenteken te maken of een foto te kiezen.</div>
+<input type="file" id="photo" accept="image/*">
+<div class="note">Je kunt nu kiezen uit Camera, Fotobibliotheek of Bestanden.</div>
 
 <label id="odoLabel">Km-stand na rit (alleen verplicht voor bepaalde auto's)</label>
 <input id="odometer" type="number" inputmode="numeric" placeholder="Bijv. 123456">
@@ -197,10 +214,11 @@ td,th{
 </div>
 
 <div>
-  <button class="primary" onclick="saveTrip()">Opslaan</button>
-  <button class="start" onclick="startTrip()">Start rit</button>
-  <button class="stop" onclick="stopTrip()">Stop rit</button>
-  <button onclick="clearForm()">Leegmaken</button>
+  <button class="primary" type="button" onclick="saveTrip()">Opslaan</button>
+  <button type="button" onclick="saveRoute()">Route met tussenstops opslaan</button>
+  <button class="start" type="button" onclick="startTrip()">Start rit</button>
+  <button class="stop" type="button" onclick="stopTrip()">Stop rit</button>
+  <button type="button" onclick="clearForm()">Leegmaken</button>
 </div>
 
 <div id="activeTripBox" class="active" style="display:none;"></div>
@@ -224,8 +242,8 @@ td,th{
   <tbody id="tripTable"></tbody>
 </table>
 
-<button onclick="exportCSV()">Export CSV</button>
-<button onclick="wipe()">Alles wissen</button>
+<button type="button" onclick="exportCSV()">Export CSV</button>
+<button type="button" onclick="wipe()">Alles wissen</button>
 
 </div>
 
@@ -239,13 +257,12 @@ const locationCoords = {
   "Breeland Brielle": [51.9033, 4.1625]
 };
 
-// VERVANG DEZE 2 KENTEKENS DOOR JOUW ECHTE KENTEKENS
-const mandatoryOdoPlates = ["AB-123-C", "XY-456-Z"];
+const mandatoryOdoPlates = ["X-605-VJ", "Z-406-BG"];
 
-let trips = JSON.parse(localStorage.getItem("trips_v2") || "[]");
-let activeTrip = JSON.parse(localStorage.getItem("activeTrip_v2") || "null");
-let plates = JSON.parse(localStorage.getItem("plates_v2") || "[]");
-let dayData = JSON.parse(localStorage.getItem("dayData_v2") || "{}");
+let trips = JSON.parse(localStorage.getItem("trips_v3") || "[]");
+let activeTrip = JSON.parse(localStorage.getItem("activeTrip_v3") || "null");
+let plates = JSON.parse(localStorage.getItem("plates_v3") || "[]");
+let dayData = JSON.parse(localStorage.getItem("dayData_v3") || "{}");
 
 function pad(n){
   return String(n).padStart(2,"0");
@@ -286,6 +303,9 @@ function setDefaults(){
   if(dayData[today()]){
     workStart.value = dayData[today()].workStart || "";
     workEnd.value = dayData[today()].workEnd || "";
+  } else {
+    workStart.value = "";
+    workEnd.value = "";
   }
   updateDayHours();
 }
@@ -303,6 +323,34 @@ function swapRoute(){
   const t = normalizeLocation(to.value);
   from.value = t;
   to.value = f;
+}
+
+function startVoice(){
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if(!SpeechRecognition){
+    alert("Spraak niet ondersteund op dit apparaat.");
+    return;
+  }
+
+  const rec = new SpeechRecognition();
+  rec.lang = "nl-NL";
+  rec.start();
+
+  rec.onresult = function(e){
+    const text = e.results[0][0].transcript.toLowerCase();
+
+    if(text.includes("naar")){
+      const parts = text.split("naar");
+      const fromPart = normalizeLocation(parts[0]);
+      const toPart = normalizeLocation(parts[1]);
+
+      from.value = fromPart;
+      to.value = toPart;
+    } else {
+      alert("Zeg bijvoorbeeld: 'Breeland Rdam naar Wasstraat'");
+    }
+  };
 }
 
 function toRad(v){
@@ -351,11 +399,8 @@ function updateDayHours(){
   const ws = workStart.value || "";
   const we = workEnd.value || "";
 
-  dayData[d] = {
-    workStart: ws,
-    workEnd: we
-  };
-  localStorage.setItem("dayData_v2", JSON.stringify(dayData));
+  dayData[d] = { workStart: ws, workEnd: we };
+  localStorage.setItem("dayData_v3", JSON.stringify(dayData));
 
   const hours = timeDiffHours(ws, we);
   dayHoursInfo.innerText = "Totaal gewerkte uren vandaag: " + hours.toFixed(2).replace(".", ",");
@@ -388,7 +433,7 @@ function savePlate(p){
   plates.unshift(p);
   plates = plates.slice(0, 10);
 
-  localStorage.setItem("plates_v2", JSON.stringify(plates));
+  localStorage.setItem("plates_v3", JSON.stringify(plates));
   renderPlates();
 }
 
@@ -486,11 +531,11 @@ function withPhoto(callback){
   reader.readAsDataURL(file);
 }
 
-function buildTripObject(photoData, startFromActive){
+function buildTripObject(photoData, startFromActive, fromValue, toValue){
   const d = date.value || today();
   const p = normalizePlate(startFromActive ? activeTrip.plate : plate.value);
-  const fromVal = normalizeLocation(startFromActive ? activeTrip.from : from.value);
-  const toVal = normalizeLocation(to.value);
+  const fromVal = normalizeLocation(fromValue);
+  const toVal = normalizeLocation(toValue);
   const ts = startFromActive ? activeTrip.timeStart : timeStart.value;
   const te = timeEnd.value;
   const km = calcKM(fromVal, toVal);
@@ -520,7 +565,7 @@ function validateTrip(trip){
   }
 
   if(isMandatoryOdoPlate(trip.plate) && !trip.odometer){
-    alert("Voor dit kenteken is km-stand na rit verplicht.");
+    alert("Voor dit kenteken is km-stand invullen verplicht.");
     return false;
   }
 
@@ -529,16 +574,68 @@ function validateTrip(trip){
 
 function saveTrip(){
   withPhoto(function(photoData){
-    const trip = buildTripObject(photoData, false);
+    const trip = buildTripObject(photoData, false, from.value, to.value);
 
     if(!validateTrip(trip)) return;
 
     savePlate(trip.plate);
     trips.unshift(trip);
 
-    localStorage.setItem("trips_v2", JSON.stringify(trips));
+    localStorage.setItem("trips_v3", JSON.stringify(trips));
     renderTrips();
     clearForm();
+  });
+}
+
+function saveRoute(){
+  withPhoto(function(photoData){
+    const p = normalizePlate(plate.value);
+    const rawStops = stops.value.trim();
+
+    if(!date.value || !timeStart.value || !timeEnd.value || !from.value || !to.value || !p){
+      alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
+      return;
+    }
+
+    if(isMandatoryOdoPlate(p) && !odometer.value.trim()){
+      alert("Voor dit kenteken is km-stand invullen verplicht.");
+      return;
+    }
+
+    const stopList = rawStops
+      ? rawStops.split(",").map(s => normalizeLocation(s.trim())).filter(Boolean)
+      : [];
+
+    const points = [
+      normalizeLocation(from.value),
+      ...stopList,
+      normalizeLocation(to.value)
+    ];
+
+    if(points.length < 2){
+      alert("Te weinig routepunten.");
+      return;
+    }
+
+    savePlate(p);
+
+    for(let i = 0; i < points.length - 1; i++){
+      const trip = buildTripObject(
+        i === 0 ? photoData : "",
+        false,
+        points[i],
+        points[i + 1]
+      );
+
+      if(!validateTrip(trip)) return;
+
+      trips.unshift(trip);
+    }
+
+    localStorage.setItem("trips_v3", JSON.stringify(trips));
+    renderTrips();
+    clearForm();
+    stops.value = "";
   });
 }
 
@@ -559,7 +656,7 @@ function startTrip(){
     plate: p
   };
 
-  localStorage.setItem("activeTrip_v2", JSON.stringify(activeTrip));
+  localStorage.setItem("activeTrip_v3", JSON.stringify(activeTrip));
   renderActive();
 }
 
@@ -570,24 +667,24 @@ function stopTrip(){
   }
 
   withPhoto(function(photoData){
-    const trip = buildTripObject(photoData, true);
+    const trip = buildTripObject(photoData, true, activeTrip.from, to.value);
 
     if(!validateTrip(trip)) return;
 
     savePlate(trip.plate);
     trips.unshift(trip);
 
-    localStorage.setItem("trips_v2", JSON.stringify(trips));
+    localStorage.setItem("trips_v3", JSON.stringify(trips));
 
-    localStorage.removeItem("activeTrip_v2");
+    localStorage.removeItem("activeTrip_v3");
     activeTrip = null;
 
     renderTrips();
     renderActive();
 
-    // handig voor volgende rit
     from.value = trip.to;
     to.value = "";
+    stops.value = "";
     plate.value = trip.plate;
     timeStart.value = trip.timeEnd || now();
     timeEnd.value = trip.timeEnd || now();
@@ -628,7 +725,7 @@ function exportCSV(){
 function wipe(){
   if(confirm("Alles wissen?")){
     trips = [];
-    localStorage.removeItem("trips_v2");
+    localStorage.removeItem("trips_v3");
     renderTrips();
   }
 }
@@ -640,6 +737,7 @@ function clearForm(){
   timeEnd.value = now();
   from.value = "";
   to.value = "";
+  stops.value = "";
   odometer.value = "";
   photo.value = "";
   rdw.innerText = "";
