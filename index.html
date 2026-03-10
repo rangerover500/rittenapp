@@ -264,10 +264,10 @@ const workStartEl = $("workStart");
 const workEndEl = $("workEnd");
 const dayHoursInfoEl = $("dayHoursInfo");
 
-let trips = JSON.parse(localStorage.getItem("trips_v5") || "[]");
-let activeTrip = JSON.parse(localStorage.getItem("activeTrip_v5") || "null");
-let plates = JSON.parse(localStorage.getItem("plates_v5") || "[]");
-let dayData = JSON.parse(localStorage.getItem("dayData_v5") || "{}");
+let trips = JSON.parse(localStorage.getItem("trips_v7") || "[]");
+let activeTrip = JSON.parse(localStorage.getItem("activeTrip_v7") || "null");
+let plates = JSON.parse(localStorage.getItem("plates_v7") || "[]");
+let dayData = JSON.parse(localStorage.getItem("dayData_v7") || "{}");
 
 function pad(n){ return String(n).padStart(2,"0"); }
 
@@ -389,7 +389,7 @@ function updateDayHours(){
     workStart: workStartEl.value || "",
     workEnd: workEndEl.value || ""
   };
-  localStorage.setItem("dayData_v5", JSON.stringify(dayData));
+  localStorage.setItem("dayData_v7", JSON.stringify(dayData));
 
   const hours = timeDiffHours(workStartEl.value, workEndEl.value);
   dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + hours.toFixed(2).replace(".", ",");
@@ -421,7 +421,7 @@ function savePlate(p){
   plates.unshift(p);
   plates = plates.slice(0, 10);
 
-  localStorage.setItem("plates_v5", JSON.stringify(plates));
+  localStorage.setItem("plates_v7", JSON.stringify(plates));
   renderPlates();
 }
 
@@ -588,7 +588,7 @@ async function saveTrip(){
   trips.unshift(trip);
 
   try{
-    localStorage.setItem("trips_v5", JSON.stringify(trips));
+    localStorage.setItem("trips_v7", JSON.stringify(trips));
   } catch(e){
     alert("Opslaan lukt niet. Waarschijnlijk is de foto te groot of is de opslag vol.");
     trips.shift();
@@ -641,7 +641,7 @@ async function saveRoute(){
   trips = [...newTrips.reverse(), ...trips];
 
   try{
-    localStorage.setItem("trips_v5", JSON.stringify(trips));
+    localStorage.setItem("trips_v7", JSON.stringify(trips));
   } catch(e){
     alert("Opslaan lukt niet. Waarschijnlijk is de foto te groot of is de opslag vol.");
     trips = trips.slice(newTrips.length);
@@ -670,7 +670,7 @@ function startTrip(){
     plate: p
   };
 
-  localStorage.setItem("activeTrip_v5", JSON.stringify(activeTrip));
+  localStorage.setItem("activeTrip_v7", JSON.stringify(activeTrip));
   renderActive();
 }
 
@@ -689,14 +689,14 @@ async function stopTrip(){
   trips.unshift(trip);
 
   try{
-    localStorage.setItem("trips_v5", JSON.stringify(trips));
+    localStorage.setItem("trips_v7", JSON.stringify(trips));
   } catch(e){
     alert("Opslaan lukt niet. Waarschijnlijk is de foto te groot of is de opslag vol.");
     trips.shift();
     return;
   }
 
-  localStorage.removeItem("activeTrip_v5");
+  localStorage.removeItem("activeTrip_v7");
   activeTrip = null;
 
   renderTrips();
@@ -713,7 +713,7 @@ async function stopTrip(){
   lookupPlate();
 }
 
-function exportCSV(){
+async function exportCSV(){
   let csv = "Datum;Starttijd;Eindtijd;Van;Naar;Kenteken;Km route;Km-stand;Aanwezig vanaf;Klaar om;Gewerkte uren dag\n";
 
   trips.forEach(t => {
@@ -732,18 +732,45 @@ function exportCSV(){
     ].join(";") + "\n";
   });
 
-  const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  const nowDate = new Date();
+  const filename =
+    "ritten_" +
+    nowDate.getFullYear() + "-" +
+    String(nowDate.getMonth()+1).padStart(2,"0") + "-" +
+    String(nowDate.getDate()).padStart(2,"0") + "_" +
+    String(nowDate.getHours()).padStart(2,"0") + "-" +
+    String(nowDate.getMinutes()).padStart(2,"0") +
+    ".csv";
+
+  const file = new File([csv], filename, { type: "text/csv;charset=utf-8" });
+
+  try{
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title: filename
+      });
+      return;
+    }
+  } catch (e) {
+      // gebruiker annuleert of delen lukt niet; dan fallback hieronder
+  }
+
+  const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "ritten.csv";
+  a.download = filename;
   a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  alert("Export gemaakt als " + filename + ". Kijk in Downloads.");
 }
 
 function wipe(){
   if(confirm("Alles wissen?")){
     trips = [];
-    localStorage.removeItem("trips_v5");
+    localStorage.removeItem("trips_v7");
     renderTrips();
   }
 }
