@@ -1,4 +1,4 @@
-const CACHE_NAME = "rittenapp-v1";
+const CACHE_NAME = "rittenapp-v2"; 
 
 self.addEventListener("install", event => {
   event.waitUntil(
