@@ -19,15 +19,13 @@ body{
   margin:0;
   padding:20px;
 }
-
 .container{
-  max-width:900px;
+  max-width:950px;
   margin:auto;
   background:white;
   padding:20px;
   border-radius:10px;
 }
-
 input{
   background:#eaffea;
   padding:10px;
@@ -38,7 +36,6 @@ input{
   box-sizing:border-box;
   font-size:16px;
 }
-
 button{
   padding:10px 12px;
   margin:4px;
@@ -46,27 +43,18 @@ button{
   border-radius:6px;
   font-size:15px;
 }
-
 .primary{
   background:black;
   color:white;
 }
-
 .start{
   background:#28a745;
   color:white;
 }
-
 .stop{
   background:#d9534f;
   color:white;
 }
-
-.voice{
-  background:#007bff;
-  color:white;
-}
-
 .quick button,
 .plates button{
   font-size:13px;
@@ -74,39 +62,55 @@ button{
   color:#111;
   border:1px solid #ddd;
 }
-
 table{
   width:100%;
   margin-top:20px;
   border-collapse:collapse;
 }
-
 td,th{
   border-bottom:1px solid #ddd;
   padding:8px;
   text-align:left;
+  vertical-align:top;
 }
-
 .active{
   background:#eef5ff;
   padding:10px;
   margin-top:10px;
   border-radius:6px;
 }
-
-.kmtotal{
+.daybox{
   background:#f0f4ff;
-  padding:8px;
-  margin-bottom:10px;
-  font-weight:bold;
+  padding:10px;
+  margin-bottom:12px;
   border-radius:6px;
 }
-
 #rdw{
   margin:8px 0 12px 0;
   font-size:14px;
   color:#333;
   min-height:20px;
+}
+.thumb{
+  width:70px;
+  height:auto;
+  border-radius:6px;
+  border:1px solid #ddd;
+}
+.note{
+  font-size:13px;
+  color:#666;
+  margin-top:-4px;
+  margin-bottom:8px;
+}
+.warning{
+  color:#b00020;
+  font-weight:bold;
+}
+.row2{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
 }
 </style>
 </head>
@@ -117,13 +121,36 @@ td,th{
 
 <h2>Rittenadministratie</h2>
 
-<div id="kmToday" class="kmtotal"></div>
+<div class="daybox">
+  <h3 style="margin-top:0;">Werkdag</h3>
+
+  <div class="row2">
+    <div>
+      <label>Aanwezig vanaf</label>
+      <input type="time" id="workStart">
+    </div>
+    <div>
+      <label>Klaar om</label>
+      <input type="time" id="workEnd">
+    </div>
+  </div>
+
+  <div id="dayHoursInfo" style="font-weight:bold; margin-top:8px;">Totaal gewerkte uren vandaag: 0,00</div>
+</div>
 
 <label>Datum</label>
 <input type="date" id="date">
 
-<label>Tijd</label>
-<input type="time" id="time">
+<div class="row2">
+  <div>
+    <label>Starttijd rit</label>
+    <input type="time" id="timeStart">
+  </div>
+  <div>
+    <label>Eindtijd rit</label>
+    <input type="time" id="timeEnd">
+  </div>
+</div>
 
 <label>Van</label>
 <input id="from">
@@ -151,15 +178,23 @@ td,th{
 
 <button onclick="swapRoute()">Retour</button>
 
-<label>Spraak invoer</label>
-<button class="voice" onclick="startVoice()">🎤 Spreek route</button>
-
 <label>Kenteken</label>
-<input id="plate">
+<input id="plate" placeholder="Bijv. AB-123-C">
 
 <div class="plates" id="plateList"></div>
 
 <div id="rdw"></div>
+
+<label>Kentekenfoto / thumbnail</label>
+<input type="file" id="photo" accept="image/*" capture="environment">
+<div class="note">Tik hierop om direct een foto van het kenteken te maken of een foto te kiezen.</div>
+
+<label id="odoLabel">Km-stand na rit (alleen verplicht voor bepaalde auto's)</label>
+<input id="odometer" type="number" inputmode="numeric" placeholder="Bijv. 123456">
+
+<div id="odoWarning" class="warning" style="display:none;">
+  Voor dit kenteken is km-stand invullen verplicht.
+</div>
 
 <div>
   <button class="primary" onclick="saveTrip()">Opslaan</button>
@@ -168,7 +203,7 @@ td,th{
   <button onclick="clearForm()">Leegmaken</button>
 </div>
 
-<div id="activeTrip" class="active" style="display:none"></div>
+<div id="activeTripBox" class="active" style="display:none;"></div>
 
 <h3>Ritten</h3>
 
@@ -176,11 +211,14 @@ td,th{
   <thead>
     <tr>
       <th>Datum</th>
-      <th>Tijd</th>
+      <th>Start</th>
+      <th>Eind</th>
       <th>Van</th>
       <th>Naar</th>
       <th>Kenteken</th>
-      <th>Km</th>
+      <th>Km route</th>
+      <th>Km-stand</th>
+      <th>Foto</th>
     </tr>
   </thead>
   <tbody id="tripTable"></tbody>
@@ -201,9 +239,13 @@ const locationCoords = {
   "Breeland Brielle": [51.9033, 4.1625]
 };
 
-let trips = JSON.parse(localStorage.getItem("trips") || "[]");
-let activeTrip = JSON.parse(localStorage.getItem("activeTrip") || "null");
-let plates = JSON.parse(localStorage.getItem("plates") || "[]");
+// VERVANG DEZE 2 KENTEKENS DOOR JOUW ECHTE KENTEKENS
+const mandatoryOdoPlates = ["AB-123-C", "XY-456-Z"];
+
+let trips = JSON.parse(localStorage.getItem("trips_v2") || "[]");
+let activeTrip = JSON.parse(localStorage.getItem("activeTrip_v2") || "null");
+let plates = JSON.parse(localStorage.getItem("plates_v2") || "[]");
+let dayData = JSON.parse(localStorage.getItem("dayData_v2") || "{}");
 
 function pad(n){
   return String(n).padStart(2,"0");
@@ -219,11 +261,6 @@ function now(){
   return pad(d.getHours())+":"+pad(d.getMinutes());
 }
 
-function setDefaults(){
-  date.value = today();
-  time.value = now();
-}
-
 function normalizeLocation(text){
   let t = String(text || "").trim().toLowerCase();
 
@@ -235,6 +272,22 @@ function normalizeLocation(text){
   if (t.includes("abs") || t.includes("den elzen")) return "ABS den Elzen";
 
   return text;
+}
+
+function normalizePlate(p){
+  return String(p || "").toUpperCase().trim();
+}
+
+function setDefaults(){
+  date.value = today();
+  timeStart.value = now();
+  timeEnd.value = now();
+
+  if(dayData[today()]){
+    workStart.value = dayData[today()].workStart || "";
+    workEnd.value = dayData[today()].workEnd || "";
+  }
+  updateDayHours();
 }
 
 function setFrom(v){
@@ -250,34 +303,6 @@ function swapRoute(){
   const t = normalizeLocation(to.value);
   from.value = t;
   to.value = f;
-}
-
-function startVoice(){
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-  if(!SpeechRecognition){
-    alert("Spraak niet ondersteund op dit apparaat.");
-    return;
-  }
-
-  const rec = new SpeechRecognition();
-  rec.lang = "nl-NL";
-  rec.start();
-
-  rec.onresult = function(e){
-    const text = e.results[0][0].transcript.toLowerCase();
-
-    if(text.includes("naar")){
-      const parts = text.split("naar");
-      const fromPart = normalizeLocation(parts[0]);
-      const toPart = normalizeLocation(parts[1]);
-
-      from.value = fromPart;
-      to.value = toPart;
-    } else {
-      alert("Zeg bijvoorbeeld: 'Breeland Rdam naar Wasstraat'");
-    }
-  };
 }
 
 function toRad(v){
@@ -306,15 +331,64 @@ function calcKM(fromText, toText){
   return Math.round(R * c);
 }
 
+function timeDiffHours(start, end){
+  if(!start || !end) return 0;
+
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+
+  const startMin = sh * 60 + sm;
+  const endMin = eh * 60 + em;
+
+  let diff = endMin - startMin;
+  if(diff < 0) diff = 0;
+
+  return diff / 60;
+}
+
+function updateDayHours(){
+  const d = date.value || today();
+  const ws = workStart.value || "";
+  const we = workEnd.value || "";
+
+  dayData[d] = {
+    workStart: ws,
+    workEnd: we
+  };
+  localStorage.setItem("dayData_v2", JSON.stringify(dayData));
+
+  const hours = timeDiffHours(ws, we);
+  dayHoursInfo.innerText = "Totaal gewerkte uren vandaag: " + hours.toFixed(2).replace(".", ",");
+}
+
+workStart.addEventListener("input", updateDayHours);
+workEnd.addEventListener("input", updateDayHours);
+date.addEventListener("input", () => {
+  const d = date.value || today();
+  workStart.value = (dayData[d] && dayData[d].workStart) || "";
+  workEnd.value = (dayData[d] && dayData[d].workEnd) || "";
+  updateDayHours();
+});
+
+function isMandatoryOdoPlate(p){
+  return mandatoryOdoPlates.includes(normalizePlate(p));
+}
+
+function updateOdoRequirement(){
+  const p = normalizePlate(plate.value);
+  const required = isMandatoryOdoPlate(p);
+  odoWarning.style.display = required ? "block" : "none";
+}
+
 function savePlate(p){
+  p = normalizePlate(p);
   if(!p) return;
-  p = p.toUpperCase();
 
   plates = plates.filter(x => x !== p);
   plates.unshift(p);
-  plates = plates.slice(0, 8);
+  plates = plates.slice(0, 10);
 
-  localStorage.setItem("plates", JSON.stringify(plates));
+  localStorage.setItem("plates_v2", JSON.stringify(plates));
   renderPlates();
 }
 
@@ -328,13 +402,17 @@ function renderPlates(){
     b.onclick = function(){
       plate.value = p;
       lookupPlate();
+      updateOdoRequirement();
     };
     plateList.appendChild(b);
   });
 }
 
 async function lookupPlate(){
-  const p = plate.value.toUpperCase().trim();
+  const p = normalizePlate(plate.value);
+  plate.value = p;
+  updateOdoRequirement();
+
   if(!p){
     rdw.innerText = "";
     return;
@@ -362,70 +440,126 @@ plate.addEventListener("input", lookupPlate);
 function renderTrips(){
   tripTable.innerHTML = "";
 
-  let todayKM = 0;
-
   trips.forEach(t => {
-    if(t.date === today()) todayKM += t.km || 0;
-
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${t.date}</td>
-      <td>${t.time}</td>
-      <td>${t.from}</td>
-      <td>${t.to}</td>
-      <td>${t.plate}</td>
-      <td>${t.km}</td>
+      <td>${t.date || ""}</td>
+      <td>${t.timeStart || ""}</td>
+      <td>${t.timeEnd || ""}</td>
+      <td>${t.from || ""}</td>
+      <td>${t.to || ""}</td>
+      <td>${t.plate || ""}</td>
+      <td>${t.km || ""}</td>
+      <td>${t.odometer || ""}</td>
+      <td>${t.photo ? `<img class="thumb" src="${t.photo}" alt="kentekenfoto">` : ""}</td>
     `;
     tripTable.appendChild(row);
   });
-
-  kmToday.innerText = "Vandaag gereden: " + todayKM + " km";
-  localStorage.setItem("trips", JSON.stringify(trips));
 }
 
 function renderActive(){
   if(!activeTrip){
-    activeTrip.style.display = "none";
-    document.getElementById("activeTrip").style.display = "none";
+    activeTripBox.style.display = "none";
+    activeTripBox.innerHTML = "";
     return;
   }
 
-  document.getElementById("activeTrip").style.display = "block";
-  document.getElementById("activeTrip").innerHTML =
-    "Actieve rit: " + activeTrip.from + " → ... (" + activeTrip.plate + ")";
+  activeTripBox.style.display = "block";
+  activeTripBox.innerHTML =
+    "Actieve rit: " + (activeTrip.from || "") +
+    " → ... (" + (activeTrip.plate || "") + ")" +
+    "<br>Starttijd: " + (activeTrip.timeStart || "");
+}
+
+function withPhoto(callback){
+  const file = photo.files[0];
+
+  if(!file){
+    callback("");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(){
+    callback(reader.result);
+  };
+  reader.readAsDataURL(file);
+}
+
+function buildTripObject(photoData, startFromActive){
+  const d = date.value || today();
+  const p = normalizePlate(startFromActive ? activeTrip.plate : plate.value);
+  const fromVal = normalizeLocation(startFromActive ? activeTrip.from : from.value);
+  const toVal = normalizeLocation(to.value);
+  const ts = startFromActive ? activeTrip.timeStart : timeStart.value;
+  const te = timeEnd.value;
+  const km = calcKM(fromVal, toVal);
+  const odo = odometer.value.trim();
+  const workHours = timeDiffHours(workStart.value, workEnd.value);
+
+  return {
+    date: d,
+    timeStart: ts,
+    timeEnd: te,
+    from: fromVal,
+    to: toVal,
+    plate: p,
+    km: km,
+    odometer: odo,
+    photo: photoData,
+    workStart: workStart.value || "",
+    workEnd: workEnd.value || "",
+    workHours: workHours.toFixed(2)
+  };
+}
+
+function validateTrip(trip){
+  if(!trip.from || !trip.to || !trip.plate || !trip.timeStart || !trip.timeEnd){
+    alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
+    return false;
+  }
+
+  if(isMandatoryOdoPlate(trip.plate) && !trip.odometer){
+    alert("Voor dit kenteken is km-stand na rit verplicht.");
+    return false;
+  }
+
+  return true;
 }
 
 function saveTrip(){
-  const p = plate.value.toUpperCase().trim();
-  const km = calcKM(from.value, to.value);
+  withPhoto(function(photoData){
+    const trip = buildTripObject(photoData, false);
 
-  savePlate(p);
+    if(!validateTrip(trip)) return;
 
-  trips.unshift({
-    date: date.value,
-    time: time.value,
-    from: normalizeLocation(from.value),
-    to: normalizeLocation(to.value),
-    plate: p,
-    km: km
+    savePlate(trip.plate);
+    trips.unshift(trip);
+
+    localStorage.setItem("trips_v2", JSON.stringify(trips));
+    renderTrips();
+    clearForm();
   });
-
-  renderTrips();
 }
 
 function startTrip(){
-  const p = plate.value.toUpperCase().trim();
+  const p = normalizePlate(plate.value);
+
+  if(!from.value || !p || !timeStart.value){
+    alert("Vul bij Start rit minimaal Van, Kenteken en Starttijd rit in.");
+    return;
+  }
 
   savePlate(p);
 
   activeTrip = {
-    date: date.value,
-    time: time.value,
+    date: date.value || today(),
+    timeStart: timeStart.value,
     from: normalizeLocation(from.value),
     plate: p
   };
 
-  localStorage.setItem("activeTrip", JSON.stringify(activeTrip));
+  localStorage.setItem("activeTrip_v2", JSON.stringify(activeTrip));
   renderActive();
 }
 
@@ -435,39 +569,51 @@ function stopTrip(){
     return;
   }
 
-  const destination = normalizeLocation(to.value);
-  const km = calcKM(activeTrip.from, destination);
-  const p = String(activeTrip.plate || "").toUpperCase();
+  withPhoto(function(photoData){
+    const trip = buildTripObject(photoData, true);
 
-  savePlate(p);
+    if(!validateTrip(trip)) return;
 
-  trips.unshift({
-    date: activeTrip.date,
-    time: activeTrip.time,
-    from: activeTrip.from,
-    to: destination,
-    plate: p,
-    km: km
+    savePlate(trip.plate);
+    trips.unshift(trip);
+
+    localStorage.setItem("trips_v2", JSON.stringify(trips));
+
+    localStorage.removeItem("activeTrip_v2");
+    activeTrip = null;
+
+    renderTrips();
+    renderActive();
+
+    // handig voor volgende rit
+    from.value = trip.to;
+    to.value = "";
+    plate.value = trip.plate;
+    timeStart.value = trip.timeEnd || now();
+    timeEnd.value = trip.timeEnd || now();
+    odometer.value = "";
+    photo.value = "";
+    lookupPlate();
   });
-
-  localStorage.removeItem("activeTrip");
-  activeTrip = null;
-
-  renderTrips();
-  renderActive();
-
-  // handig voor volgende rit
-  from.value = destination;
-  to.value = "";
-  plate.value = p;
-  lookupPlate();
 }
 
 function exportCSV(){
-  let csv = "Datum;Tijd;Van;Naar;Kenteken;Km\n";
+  let csv = "Datum;Starttijd;Eindtijd;Van;Naar;Kenteken;Km route;Km-stand;Aanwezig vanaf;Klaar om;Gewerkte uren dag\n";
 
   trips.forEach(t => {
-    csv += `${t.date};${t.time};${t.from};${t.to};${t.plate};${t.km}\n`;
+    csv += [
+      t.date || "",
+      t.timeStart || "",
+      t.timeEnd || "",
+      t.from || "",
+      t.to || "",
+      t.plate || "",
+      t.km || "",
+      t.odometer || "",
+      t.workStart || "",
+      t.workEnd || "",
+      t.workHours || ""
+    ].join(";") + "\n";
   });
 
   const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
@@ -482,21 +628,28 @@ function exportCSV(){
 function wipe(){
   if(confirm("Alles wissen?")){
     trips = [];
-    localStorage.removeItem("trips");
+    localStorage.removeItem("trips_v2");
     renderTrips();
   }
 }
 
 function clearForm(){
-  setDefaults();
+  const d = date.value || today();
+  date.value = d;
+  timeStart.value = now();
+  timeEnd.value = now();
   from.value = "";
   to.value = "";
+  odometer.value = "";
+  photo.value = "";
+  rdw.innerText = "";
 }
 
 setDefaults();
 renderTrips();
 renderPlates();
 renderActive();
+updateOdoRequirement();
 </script>
 
 </body>
