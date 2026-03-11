@@ -75,7 +75,7 @@ td, th{
   border-radius: 6px;
 }
 #rdw{
-  margin: 8px 0 12px 0;
+  margin: 8px 0 6px 0;
   font-size: 14px;
   color: #333;
   min-height: 20px;
@@ -169,7 +169,17 @@ td, th{
 
 <label>Tussenstop(s)</label>
 <input id="stops" placeholder="Bijv. Wasstraat, ABS Den Elzen, Breeland Dordrecht">
-<div class="note">Meerdere tussenstops scheiden met komma’s.</div>
+
+<div class="quick">
+  <button type="button" onclick="addStop('Breeland Rotterdam')">Breeland Rotterdam</button>
+  <button type="button" onclick="addStop('Wasstraat')">Wasstraat</button>
+  <button type="button" onclick="addStop('ABS Den Elzen')">ABS Den Elzen</button>
+  <button type="button" onclick="addStop('Breeland Dordrecht')">Breeland Dordrecht</button>
+  <button type="button" onclick="addStop('Breeland Den Haag')">Breeland Den Haag</button>
+  <button type="button" onclick="addStop('Breeland Brielle')">Breeland Brielle</button>
+</div>
+
+<div class="note">Meerdere tussenstops worden automatisch met komma’s toegevoegd.</div>
 
 <label>Spraak invoer</label>
 <button class="voice" type="button" onclick="startVoice()">🎤 Spreek route</button>
@@ -209,9 +219,6 @@ td, th{
       <th>Kenteken</th>
       <th>Auto</th>
       <th>Km-stand</th>
-      <th>Aanwezig vanaf</th>
-      <th>Klaar om</th>
-      <th>Gewerkte tijd</th>
     </tr>
   </thead>
   <tbody id="tripTable"></tbody>
@@ -244,9 +251,9 @@ const workStartEl = $("workStart");
 const workEndEl = $("workEnd");
 const dayHoursInfoEl = $("dayHoursInfo");
 
-let trips = JSON.parse(localStorage.getItem("trips_v9") || "[]");
-let plates = JSON.parse(localStorage.getItem("plates_v9") || "[]");
-let dayData = JSON.parse(localStorage.getItem("dayData_v9") || "{}");
+let trips = JSON.parse(localStorage.getItem("trips_v10") || "[]");
+let plates = JSON.parse(localStorage.getItem("plates_v10") || "[]");
+let dayData = JSON.parse(localStorage.getItem("dayData_v10") || "{}");
 
 function pad(n){
   return String(n).padStart(2, "0");
@@ -352,15 +359,19 @@ function buildVehicleDescription(d){
 
   parts.push(handelsbenaming);
 
-  if (commercial && !handelsbenaming.toLowerCase().includes(commercial.toLowerCase())) {
+  if (commercial && handelsbenaming && !handelsbenaming.toLowerCase().includes(commercial.toLowerCase())) {
     parts.push(commercial);
   }
 
-  if (type && !handelsbenaming.toLowerCase().includes(type.toLowerCase())) {
+  if (type && handelsbenaming && !handelsbenaming.toLowerCase().includes(type.toLowerCase())) {
+    parts.push(type);
+  } else if (type && !handelsbenaming) {
     parts.push(type);
   }
 
-  if (variant && !handelsbenaming.toLowerCase().includes(variant.toLowerCase())) {
+  if (variant && handelsbenaming && !handelsbenaming.toLowerCase().includes(variant.toLowerCase())) {
+    parts.push(variant);
+  } else if (variant && !handelsbenaming) {
     parts.push(variant);
   }
 
@@ -406,8 +417,27 @@ function setDefaults(){
   updateDayHours();
 }
 
-function setFrom(v){ fromEl.value = v; }
-function setTo(v){ toEl.value = v; }
+function setFrom(v){
+  fromEl.value = v;
+}
+
+function setTo(v){
+  toEl.value = v;
+}
+
+function addStop(v){
+  const current = stopsEl.value.trim();
+
+  if(!current){
+    stopsEl.value = v;
+    return;
+  }
+
+  const parts = current.split(",").map(x => x.trim()).filter(Boolean);
+  if(parts.includes(v)) return;
+
+  stopsEl.value = current + ", " + v;
+}
 
 function swapRoute(){
   const f = normalizeLocation(fromEl.value);
@@ -468,7 +498,7 @@ function updateDayHours(){
     workEnd: workEndEl.value || ""
   };
 
-  localStorage.setItem("dayData_v9", JSON.stringify(dayData));
+  localStorage.setItem("dayData_v10", JSON.stringify(dayData));
 
   const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
   dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
@@ -491,7 +521,7 @@ function savePlate(p){
   plates.unshift(p);
   plates = plates.slice(0, 10);
 
-  localStorage.setItem("plates_v9", JSON.stringify(plates));
+  localStorage.setItem("plates_v10", JSON.stringify(plates));
   renderPlates();
 }
 
@@ -584,9 +614,6 @@ function renderTrips(){
       <td>${escapeHtml(t.plate || "")}</td>
       <td>${escapeHtml(t.vehicle || "")}</td>
       <td>${escapeHtml(t.odometer || "")}</td>
-      <td>${escapeHtml(t.workStart || "")}</td>
-      <td>${escapeHtml(t.workEnd || "")}</td>
-      <td>${escapeHtml(t.workHours || "")}</td>
     `;
     tripTableEl.appendChild(row);
   });
@@ -639,7 +666,7 @@ async function saveTrip(){
 
   savePlate(trip.plate);
   trips.unshift(trip);
-  localStorage.setItem("trips_v9", JSON.stringify(trips));
+  localStorage.setItem("trips_v10", JSON.stringify(trips));
 
   renderTrips();
   clearForm();
@@ -686,7 +713,7 @@ async function saveRoute(){
   }
 
   trips = [...newTrips.reverse(), ...trips];
-  localStorage.setItem("trips_v9", JSON.stringify(trips));
+  localStorage.setItem("trips_v10", JSON.stringify(trips));
 
   renderTrips();
   clearForm();
@@ -715,7 +742,7 @@ function calcExcelColumnWidths(rows){
 
 function exportExcel(){
   const rows = [
-    ["Datum", "Starttijd", "Eindtijd", "Van", "Naar", "Kenteken", "Auto", "Km-stand", "Aanwezig vanaf", "Klaar om", "Gewerkte tijd"],
+    ["Datum", "Starttijd", "Eindtijd", "Van", "Naar", "Kenteken", "Auto", "Km-stand"],
     ...trips.map(t => [
       t.date || "",
       t.timeStart || "",
@@ -724,10 +751,7 @@ function exportExcel(){
       t.to || "",
       t.plate || "",
       t.vehicle || "",
-      t.odometer || "",
-      t.workStart || "",
-      t.workEnd || "",
-      t.workHours || ""
+      t.odometer || ""
     ])
   ];
 
@@ -757,9 +781,9 @@ function wipe(){
     plates = [];
     dayData = {};
 
-    localStorage.removeItem("trips_v9");
-    localStorage.removeItem("plates_v9");
-    localStorage.removeItem("dayData_v9");
+    localStorage.removeItem("trips_v10");
+    localStorage.removeItem("plates_v10");
+    localStorage.removeItem("dayData_v10");
 
     renderTrips();
     renderPlates();
