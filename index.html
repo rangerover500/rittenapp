@@ -193,12 +193,12 @@ td, th{
 <div id="rdw"></div>
 <div id="rdwPrice" class="small-muted"></div>
 
-<label>Km-stand na rit (alleen verplicht voor bepaalde auto's)</label>
-<input id="odometer" type="number" inputmode="numeric" placeholder="Bijv. 123456">
-
-<div id="odoWarning" class="warning" style="display:none;">
-  Voor dit kenteken is km-stand invullen verplicht.
+<div id="odoWarning" class="warning" style="display:none; margin-bottom:8px;">
+  Let op: km-stand invullen!
 </div>
+
+<label>Km-stand na rit</label>
+<input id="odometer" type="number" inputmode="numeric" placeholder="Bijv. 123456">
 
 <div>
   <button class="primary" type="button" onclick="saveTrip()">Opslaan</button>
@@ -251,9 +251,9 @@ const workStartEl = $("workStart");
 const workEndEl = $("workEnd");
 const dayHoursInfoEl = $("dayHoursInfo");
 
-let trips = JSON.parse(localStorage.getItem("trips_v10") || "[]");
-let plates = JSON.parse(localStorage.getItem("plates_v10") || "[]");
-let dayData = JSON.parse(localStorage.getItem("dayData_v10") || "{}");
+let trips = JSON.parse(localStorage.getItem("trips_v11") || "[]");
+let plates = JSON.parse(localStorage.getItem("plates_v11") || "[]");
+let dayData = JSON.parse(localStorage.getItem("dayData_v11") || "{}");
 
 function pad(n){
   return String(n).padStart(2, "0");
@@ -498,7 +498,7 @@ function updateDayHours(){
     workEnd: workEndEl.value || ""
   };
 
-  localStorage.setItem("dayData_v10", JSON.stringify(dayData));
+  localStorage.setItem("dayData_v11", JSON.stringify(dayData));
 
   const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
   dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
@@ -521,7 +521,7 @@ function savePlate(p){
   plates.unshift(p);
   plates = plates.slice(0, 10);
 
-  localStorage.setItem("plates_v10", JSON.stringify(plates));
+  localStorage.setItem("plates_v11", JSON.stringify(plates));
   renderPlates();
 }
 
@@ -650,11 +650,6 @@ function validateTrip(trip){
     return false;
   }
 
-  if(isMandatoryOdoPlate(trip.plate) && !trip.odometer){
-    alert("Voor dit kenteken is km-stand invullen verplicht.");
-    return false;
-  }
-
   return true;
 }
 
@@ -666,7 +661,7 @@ async function saveTrip(){
 
   savePlate(trip.plate);
   trips.unshift(trip);
-  localStorage.setItem("trips_v10", JSON.stringify(trips));
+  localStorage.setItem("trips_v11", JSON.stringify(trips));
 
   renderTrips();
   clearForm();
@@ -678,11 +673,6 @@ async function saveRoute(){
 
   if(!dateEl.value || !timeStartEl.value || !timeEndEl.value || !fromEl.value || !toEl.value || !p){
     alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
-    return;
-  }
-
-  if(isMandatoryOdoPlate(p) && !odometerEl.value.trim()){
-    alert("Voor dit kenteken is km-stand invullen verplicht.");
     return;
   }
 
@@ -713,7 +703,7 @@ async function saveRoute(){
   }
 
   trips = [...newTrips.reverse(), ...trips];
-  localStorage.setItem("trips_v10", JSON.stringify(trips));
+  localStorage.setItem("trips_v11", JSON.stringify(trips));
 
   renderTrips();
   clearForm();
@@ -781,9 +771,9 @@ function wipe(){
     plates = [];
     dayData = {};
 
-    localStorage.removeItem("trips_v10");
-    localStorage.removeItem("plates_v10");
-    localStorage.removeItem("dayData_v10");
+    localStorage.removeItem("trips_v11");
+    localStorage.removeItem("plates_v11");
+    localStorage.removeItem("dayData_v11");
 
     renderTrips();
     renderPlates();
@@ -803,6 +793,7 @@ function clearForm(){
   odometerEl.value = "";
   rdwEl.innerText = "";
   rdwPriceEl.innerText = "";
+  updateOdoRequirement();
 }
 
 setDefaults();
