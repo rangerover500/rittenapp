@@ -22,7 +22,7 @@ body{
   padding: 20px;
 }
 .container{
-  max-width: 1100px;
+  max-width: 1200px;
   margin: auto;
   background: white;
   padding: 20px;
@@ -48,7 +48,8 @@ button{
 }
 .primary{ background: black; color: white; }
 .voice{ background: #007bff; color: white; }
-
+.editbtn{ background:#fff3cd; color:#222; border:1px solid #e0c36c; }
+.deletebtn{ background:#f8d7da; color:#222; border:1px solid #d9a3aa; }
 .quick button,
 .plates button{
   font-size: 13px;
@@ -56,10 +57,9 @@ button{
   color: #111;
   border: 1px solid #ddd;
 }
-
 table{
   width: 100%;
-  margin-top: 20px;
+  margin-top: 12px;
   border-collapse: collapse;
 }
 td, th{
@@ -101,6 +101,21 @@ td, th{
 .small-muted{
   color:#666;
   font-size:13px;
+}
+.toolbar{
+  margin-top:10px;
+  margin-bottom:10px;
+}
+.section{
+  margin-top: 24px;
+}
+.fileinput{
+  margin: 8px 0 12px 0;
+}
+.status{
+  font-size:13px;
+  color:#444;
+  margin: 6px 0 10px 0;
 }
 </style>
 </head>
@@ -200,32 +215,69 @@ td, th{
 <label>Km-stand na rit</label>
 <input id="odometer" type="number" inputmode="numeric" placeholder="Bijv. 123456">
 
-<div>
+<div class="toolbar">
   <button class="primary" type="button" onclick="saveTrip()">Opslaan</button>
   <button type="button" onclick="saveRoute()">Route met tussenstops opslaan</button>
   <button type="button" onclick="clearForm()">Leegmaken</button>
 </div>
 
-<h3>Ritten</h3>
+<div id="editStatus" class="status"></div>
 
-<table>
-  <thead>
-    <tr>
-      <th>Datum</th>
-      <th>Start</th>
-      <th>Eind</th>
-      <th>Van</th>
-      <th>Naar</th>
-      <th>Kenteken</th>
-      <th>Auto</th>
-      <th>Km-stand</th>
-    </tr>
-  </thead>
-  <tbody id="tripTable"></tbody>
-</table>
+<div class="section">
+  <h3>Ritten</h3>
 
-<button type="button" onclick="exportExcel()">Export Excel</button>
-<button type="button" onclick="wipe()">Alles wissen</button>
+  <table>
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Start</th>
+        <th>Eind</th>
+        <th>Van</th>
+        <th>Naar</th>
+        <th>Kenteken</th>
+        <th>Auto</th>
+        <th>Km-stand</th>
+        <th>Acties</th>
+      </tr>
+    </thead>
+    <tbody id="tripTable"></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>Werkdagen</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Aanwezig vanaf</th>
+        <th>Klaar om</th>
+        <th>Gewerkte tijd</th>
+        <th>Acties</th>
+      </tr>
+    </thead>
+    <tbody id="workdayTable"></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>Export / Import</h3>
+  <button type="button" onclick="exportExcel()">Export Excel</button>
+  <button type="button" onclick="wipe()">Alles wissen</button>
+
+  <div class="fileinput">
+    <label>Importeer Excel-bestand</label>
+    <input type="file" id="importFile" accept=".xlsx,.xls">
+  </div>
+
+  <button type="button" onclick="importExcel(false)">Import aanvullen</button>
+  <button type="button" onclick="importExcel(true)">Import en vervangen</button>
+
+  <div class="note">
+    Export maakt 2 tabbladen: <strong>Ritten</strong> en <strong>Werkdagen</strong>.
+    Importeren leest deze tabbladen weer terug in de app.
+  </div>
+</div>
 
 </div>
 
@@ -247,13 +299,18 @@ const rdwPriceEl = $("rdwPrice");
 const odometerEl = $("odometer");
 const odoWarningEl = $("odoWarning");
 const tripTableEl = $("tripTable");
+const workdayTableEl = $("workdayTable");
 const workStartEl = $("workStart");
 const workEndEl = $("workEnd");
 const dayHoursInfoEl = $("dayHoursInfo");
+const editStatusEl = $("editStatus");
+const importFileEl = $("importFile");
 
 let trips = JSON.parse(localStorage.getItem("trips_v12") || "[]");
 let plates = JSON.parse(localStorage.getItem("plates_v12") || "[]");
 let dayData = JSON.parse(localStorage.getItem("dayData_v12") || "{}");
+
+let editingTripIndex = -1;
 
 function pad(n){
   return String(n).padStart(2, "0");
@@ -290,15 +347,19 @@ function normalizePlateForCompare(p){
   return normalizePlate(p).replace(/[^A-Z0-9]/g, "");
 }
 
+function formatPlateForDisplay(p){
+  const cleaned = normalizePlateForCompare(p);
+  if(cleaned.length !== 6) return normalizePlate(p);
+  return cleaned.slice(0,1) + "-" + cleaned.slice(1,4) + "-" + cleaned.slice(4);
+}
+
 function isLikelyCompletePlate(p){
   const cleaned = normalizePlateForCompare(p);
   return cleaned.length >= 6;
 }
 
 function cleanVehicleText(value){
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 function uniqueParts(parts){
@@ -403,14 +464,39 @@ function buildVehicleDescription(d){
 
 function isMandatoryOdoPlate(p){
   const cleaned = normalizePlateForCompare(p);
-  return mandatoryOdoPlates
-    .map(normalizePlateForCompare)
-    .includes(cleaned);
+  return mandatoryOdoPlates.map(normalizePlateForCompare).includes(cleaned);
 }
 
 function updateOdoRequirement(){
   const p = normalizePlate(plateEl.value);
   odoWarningEl.style.display = isMandatoryOdoPlate(p) ? "block" : "none";
+}
+
+function timeDiffMinutes(start, end){
+  if(!start || !end) return 0;
+
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+
+  const startMin = sh * 60 + sm;
+  const endMin = eh * 60 + em;
+
+  let diff = endMin - startMin;
+  if(diff < 0) diff = 0;
+
+  return diff;
+}
+
+function formatMinutesDutch(totalMinutes){
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return h + " uur en " + m + " minuten";
+}
+
+function saveAll(){
+  localStorage.setItem("trips_v12", JSON.stringify(trips));
+  localStorage.setItem("plates_v12", JSON.stringify(plates));
+  localStorage.setItem("dayData_v12", JSON.stringify(dayData));
 }
 
 function setDefaults(){
@@ -424,13 +510,8 @@ function setDefaults(){
   updateDayHours();
 }
 
-function setFrom(v){
-  fromEl.value = v;
-}
-
-function setTo(v){
-  toEl.value = v;
-}
+function setFrom(v){ fromEl.value = v; }
+function setTo(v){ toEl.value = v; }
 
 function addStop(v){
   const current = stopsEl.value.trim();
@@ -476,27 +557,6 @@ function startVoice(){
   };
 }
 
-function timeDiffMinutes(start, end){
-  if(!start || !end) return 0;
-
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-
-  const startMin = sh * 60 + sm;
-  const endMin = eh * 60 + em;
-
-  let diff = endMin - startMin;
-  if(diff < 0) diff = 0;
-
-  return diff;
-}
-
-function formatMinutesDutch(totalMinutes){
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return h + " uur en " + m + " minuten";
-}
-
 function updateDayHours(){
   const d = dateEl.value || today();
 
@@ -505,14 +565,17 @@ function updateDayHours(){
     workEnd: workEndEl.value || ""
   };
 
-  localStorage.setItem("dayData_v12", JSON.stringify(dayData));
+  saveAll();
 
   const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
   dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
+
+  renderWorkdays();
 }
 
 workStartEl.addEventListener("input", updateDayHours);
 workEndEl.addEventListener("input", updateDayHours);
+
 dateEl.addEventListener("input", () => {
   const d = dateEl.value || today();
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
@@ -521,14 +584,14 @@ dateEl.addEventListener("input", () => {
 });
 
 function savePlate(p){
-  p = normalizePlate(p);
+  p = formatPlateForDisplay(p);
   if(!p || !isLikelyCompletePlate(p)) return;
 
   plates = plates.filter(x => normalizePlateForCompare(x) !== normalizePlateForCompare(p));
   plates.unshift(p);
   plates = plates.slice(0, 10);
 
-  localStorage.setItem("plates_v12", JSON.stringify(plates));
+  saveAll();
   renderPlates();
 }
 
@@ -549,11 +612,12 @@ function renderPlates(){
 }
 
 async function lookupPlate(){
-  const p = normalizePlate(plateEl.value);
+  const raw = plateEl.value;
+  const p = formatPlateForDisplay(raw);
   plateEl.value = p;
   updateOdoRequirement();
 
-  if(!p){
+  if(!raw){
     rdwEl.innerText = "";
     rdwPriceEl.innerText = "";
     return { vehicleText: "", priceText: "" };
@@ -610,7 +674,7 @@ function escapeHtml(value){
 function renderTrips(){
   tripTableEl.innerHTML = "";
 
-  trips.forEach(t => {
+  trips.forEach((t, index) => {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${escapeHtml(t.date || "")}</td>
@@ -621,33 +685,48 @@ function renderTrips(){
       <td>${escapeHtml(t.plate || "")}</td>
       <td>${escapeHtml(t.vehicle || "")}</td>
       <td>${escapeHtml(t.odometer || "")}</td>
+      <td>
+        <button type="button" class="editbtn" onclick="editTrip(${index})">Bewerk</button>
+        <button type="button" class="deletebtn" onclick="deleteTrip(${index})">Verwijder</button>
+      </td>
     `;
     tripTableEl.appendChild(row);
   });
 }
 
-function buildTripObject(fromValue, toValue, vehicleText){
-  const d = dateEl.value || today();
-  const p = normalizePlate(plateEl.value);
-  const fromVal = normalizeLocation(fromValue);
-  const toVal = normalizeLocation(toValue);
-  const ts = timeStartEl.value;
-  const te = timeEndEl.value;
-  const odo = odometerEl.value.trim();
-  const workMinutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
+function renderWorkdays(){
+  workdayTableEl.innerHTML = "";
 
+  const dates = Object.keys(dayData).sort((a,b) => b.localeCompare(a));
+
+  dates.forEach(d => {
+    const item = dayData[d] || {};
+    const minutes = timeDiffMinutes(item.workStart || "", item.workEnd || "");
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${escapeHtml(d)}</td>
+      <td>${escapeHtml(item.workStart || "")}</td>
+      <td>${escapeHtml(item.workEnd || "")}</td>
+      <td>${escapeHtml(formatMinutesDutch(minutes))}</td>
+      <td>
+        <button type="button" class="editbtn" onclick="editWorkday('${d}')">Open</button>
+        <button type="button" class="deletebtn" onclick="deleteWorkday('${d}')">Verwijder</button>
+      </td>
+    `;
+    workdayTableEl.appendChild(row);
+  });
+}
+
+function buildTripObject(fromValue, toValue, vehicleText){
   return {
-    date: d,
-    timeStart: ts,
-    timeEnd: te,
-    from: fromVal,
-    to: toVal,
-    plate: p,
+    date: dateEl.value || today(),
+    timeStart: timeStartEl.value,
+    timeEnd: timeEndEl.value,
+    from: normalizeLocation(fromValue),
+    to: normalizeLocation(toValue),
+    plate: formatPlateForDisplay(plateEl.value),
     vehicle: vehicleText || rdwEl.innerText || "",
-    odometer: odo,
-    workStart: workStartEl.value || "",
-    workEnd: workEndEl.value || "",
-    workHours: formatMinutesDutch(workMinutes)
+    odometer: odometerEl.value.trim()
   };
 }
 
@@ -656,8 +735,16 @@ function validateTrip(trip){
     alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
     return false;
   }
-
   return true;
+}
+
+function setEditMode(index){
+  editingTripIndex = index;
+  if(index >= 0){
+    editStatusEl.innerText = "Je bewerkt nu een bestaande rit. Opslaan werkt de rit bij.";
+  } else {
+    editStatusEl.innerText = "";
+  }
 }
 
 async function saveTrip(){
@@ -667,15 +754,20 @@ async function saveTrip(){
   if(!validateTrip(trip)) return;
 
   savePlate(trip.plate);
-  trips.unshift(trip);
-  localStorage.setItem("trips_v12", JSON.stringify(trips));
 
+  if(editingTripIndex >= 0){
+    trips[editingTripIndex] = trip;
+  } else {
+    trips.unshift(trip);
+  }
+
+  saveAll();
   renderTrips();
   clearForm();
 }
 
 async function saveRoute(){
-  const p = normalizePlate(plateEl.value);
+  const p = formatPlateForDisplay(plateEl.value);
   const rawStops = stopsEl.value.trim();
 
   if(!dateEl.value || !timeStartEl.value || !timeEndEl.value || !fromEl.value || !toEl.value || !p){
@@ -700,20 +792,93 @@ async function saveRoute(){
     return;
   }
 
+  if(editingTripIndex >= 0){
+    if(!confirm("Je staat in bewerkmodus. Een route met tussenstops opslaan maakt meerdere nieuwe ritten. Doorgaan?")){
+      return;
+    }
+    editingTripIndex = -1;
+    editStatusEl.innerText = "";
+  }
+
   savePlate(p);
 
   const newTrips = [];
   for(let i = 0; i < points.length - 1; i++){
-    const trip = buildTripObject(points[i], points[i + 1], info.vehicleText);
+    const trip = {
+      date: dateEl.value || today(),
+      timeStart: timeStartEl.value,
+      timeEnd: timeEndEl.value,
+      from: points[i],
+      to: points[i + 1],
+      plate: p,
+      vehicle: info.vehicleText || rdwEl.innerText || "",
+      odometer: odometerEl.value.trim()
+    };
     if(!validateTrip(trip)) return;
     newTrips.push(trip);
   }
 
   trips = [...newTrips.reverse(), ...trips];
-  localStorage.setItem("trips_v12", JSON.stringify(trips));
-
+  saveAll();
   renderTrips();
   clearForm();
+}
+
+function editTrip(index){
+  const t = trips[index];
+  if(!t) return;
+
+  dateEl.value = t.date || today();
+  timeStartEl.value = t.timeStart || "";
+  timeEndEl.value = t.timeEnd || "";
+  fromEl.value = t.from || "";
+  toEl.value = t.to || "";
+  stopsEl.value = "";
+  plateEl.value = t.plate || "";
+  odometerEl.value = t.odometer || "";
+  rdwEl.innerText = t.vehicle || "";
+  rdwPriceEl.innerText = "";
+
+  const d = dateEl.value || today();
+  workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
+  workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
+  updateDayHours();
+  updateOdoRequirement();
+  setEditMode(index);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function deleteTrip(index){
+  if(!confirm("Deze rit verwijderen?")) return;
+  trips.splice(index, 1);
+  saveAll();
+  renderTrips();
+  if(editingTripIndex === index){
+    clearForm();
+  } else if(editingTripIndex > index){
+    editingTripIndex--;
+  }
+}
+
+function editWorkday(d){
+  dateEl.value = d;
+  workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
+  workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
+  updateDayHours();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function deleteWorkday(d){
+  if(!confirm("Werkdag van " + d + " verwijderen?")) return;
+  delete dayData[d];
+  saveAll();
+  renderWorkdays();
+
+  if(dateEl.value === d){
+    workStartEl.value = "";
+    workEndEl.value = "";
+    updateDayHours();
+  }
 }
 
 function calcExcelColumnWidths(rows){
@@ -724,12 +889,10 @@ function calcExcelColumnWidths(rows){
 
   for(let c = 0; c < colCount; c++){
     let maxLen = 10;
-
     for(let r = 0; r < rows.length; r++){
       const cell = rows[r][c] == null ? "" : String(rows[r][c]);
       maxLen = Math.max(maxLen, cell.length);
     }
-
     widths.push({ wch: Math.min(maxLen + 2, 60) });
   }
 
@@ -737,7 +900,7 @@ function calcExcelColumnWidths(rows){
 }
 
 function exportExcel(){
-  const rows = [
+  const tripRows = [
     ["Datum", "Starttijd", "Eindtijd", "Van", "Naar", "Kenteken", "Auto", "Km-stand"],
     ...trips.map(t => [
       t.date || "",
@@ -751,16 +914,32 @@ function exportExcel(){
     ])
   ];
 
+  const workdayRows = [
+    ["Datum", "Aanwezig vanaf", "Klaar om", "Gewerkte tijd"],
+    ...Object.keys(dayData).sort((a,b) => b.localeCompare(a)).map(d => {
+      const item = dayData[d] || {};
+      return [
+        d,
+        item.workStart || "",
+        item.workEnd || "",
+        formatMinutesDutch(timeDiffMinutes(item.workStart || "", item.workEnd || ""))
+      ];
+    })
+  ];
+
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
 
-  ws["!cols"] = calcExcelColumnWidths(rows);
+  const wsTrips = XLSX.utils.aoa_to_sheet(tripRows);
+  wsTrips["!cols"] = calcExcelColumnWidths(tripRows);
+  XLSX.utils.book_append_sheet(wb, wsTrips, "Ritten");
 
-  XLSX.utils.book_append_sheet(wb, ws, "Ritten");
+  const wsWorkdays = XLSX.utils.aoa_to_sheet(workdayRows);
+  wsWorkdays["!cols"] = calcExcelColumnWidths(workdayRows);
+  XLSX.utils.book_append_sheet(wb, wsWorkdays, "Werkdagen");
 
   const nowDate = new Date();
   const filename =
-    "ritten_" +
+    "ritten_werkdagen_" +
     nowDate.getFullYear() + "-" +
     pad(nowDate.getMonth()+1) + "-" +
     pad(nowDate.getDate()) + "_" +
@@ -771,18 +950,105 @@ function exportExcel(){
   XLSX.writeFile(wb, filename);
 }
 
+function importExcel(replaceExisting){
+  const file = importFileEl.files[0];
+  if(!file){
+    alert("Kies eerst een Excel-bestand.");
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = function(e){
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: "array" });
+
+      let importedTrips = [];
+      let importedDayData = {};
+
+      const tripSheetName =
+        wb.SheetNames.find(n => n.toLowerCase() === "ritten") ||
+        wb.SheetNames[0];
+
+      if(tripSheetName){
+        const tripSheet = wb.Sheets[tripSheetName];
+        const rows = XLSX.utils.sheet_to_json(tripSheet, { defval: "" });
+
+        importedTrips = rows.map(r => ({
+          date: String(r["Datum"] || "").trim(),
+          timeStart: String(r["Starttijd"] || "").trim(),
+          timeEnd: String(r["Eindtijd"] || "").trim(),
+          from: normalizeLocation(r["Van"] || ""),
+          to: normalizeLocation(r["Naar"] || ""),
+          plate: formatPlateForDisplay(r["Kenteken"] || ""),
+          vehicle: String(r["Auto"] || "").trim(),
+          odometer: String(r["Km-stand"] || "").trim()
+        })).filter(t => t.date || t.timeStart || t.timeEnd || t.from || t.to || t.plate);
+      }
+
+      const workdaySheetName =
+        wb.SheetNames.find(n => n.toLowerCase() === "werkdagen");
+
+      if(workdaySheetName){
+        const workSheet = wb.Sheets[workdaySheetName];
+        const rows = XLSX.utils.sheet_to_json(workSheet, { defval: "" });
+
+        rows.forEach(r => {
+          const date = String(r["Datum"] || "").trim();
+          if(!date) return;
+
+          importedDayData[date] = {
+            workStart: String(r["Aanwezig vanaf"] || "").trim(),
+            workEnd: String(r["Klaar om"] || "").trim()
+          };
+        });
+      }
+
+      if(replaceExisting){
+        trips = importedTrips;
+        dayData = importedDayData;
+      } else {
+        trips = [...importedTrips, ...trips];
+
+        Object.keys(importedDayData).forEach(d => {
+          dayData[d] = importedDayData[d];
+        });
+      }
+
+      trips.forEach(t => {
+        if(t.plate) savePlate(t.plate);
+      });
+
+      saveAll();
+      renderTrips();
+      renderWorkdays();
+
+      const d = dateEl.value || today();
+      workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
+      workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
+      updateDayHours();
+
+      alert("Import gelukt.");
+    } catch(err){
+      alert("Import mislukt. Controleer of het een geldig Excel-bestand is.");
+    }
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
 function wipe(){
   if(confirm("Alles wissen? Dit verwijdert ritten, kentekens en werkdaggegevens.")){
     trips = [];
     plates = [];
     dayData = {};
+    editingTripIndex = -1;
 
-    localStorage.removeItem("trips_v12");
-    localStorage.removeItem("plates_v12");
-    localStorage.removeItem("dayData_v12");
-
+    saveAll();
     renderTrips();
     renderPlates();
+    renderWorkdays();
     setDefaults();
     clearForm();
   }
@@ -796,15 +1062,22 @@ function clearForm(){
   fromEl.value = "";
   toEl.value = "";
   stopsEl.value = "";
+  plateEl.value = "";
   odometerEl.value = "";
   rdwEl.innerText = "";
   rdwPriceEl.innerText = "";
   updateOdoRequirement();
+  setEditMode(-1);
+
+  workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
+  workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
+  updateDayHours();
 }
 
 setDefaults();
 renderTrips();
 renderPlates();
+renderWorkdays();
 updateOdoRequirement();
 </script>
 
