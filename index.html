@@ -251,9 +251,9 @@ const workStartEl = $("workStart");
 const workEndEl = $("workEnd");
 const dayHoursInfoEl = $("dayHoursInfo");
 
-let trips = JSON.parse(localStorage.getItem("trips_v11") || "[]");
-let plates = JSON.parse(localStorage.getItem("plates_v11") || "[]");
-let dayData = JSON.parse(localStorage.getItem("dayData_v11") || "{}");
+let trips = JSON.parse(localStorage.getItem("trips_v12") || "[]");
+let plates = JSON.parse(localStorage.getItem("plates_v12") || "[]");
+let dayData = JSON.parse(localStorage.getItem("dayData_v12") || "{}");
 
 function pad(n){
   return String(n).padStart(2, "0");
@@ -286,8 +286,12 @@ function normalizePlate(p){
   return String(p || "").toUpperCase().trim();
 }
 
+function normalizePlateForCompare(p){
+  return normalizePlate(p).replace(/[^A-Z0-9]/g, "");
+}
+
 function isLikelyCompletePlate(p){
-  const cleaned = normalizePlate(p).replace(/[^A-Z0-9]/g, "");
+  const cleaned = normalizePlateForCompare(p);
   return cleaned.length >= 6;
 }
 
@@ -398,7 +402,10 @@ function buildVehicleDescription(d){
 }
 
 function isMandatoryOdoPlate(p){
-  return mandatoryOdoPlates.includes(normalizePlate(p));
+  const cleaned = normalizePlateForCompare(p);
+  return mandatoryOdoPlates
+    .map(normalizePlateForCompare)
+    .includes(cleaned);
 }
 
 function updateOdoRequirement(){
@@ -498,7 +505,7 @@ function updateDayHours(){
     workEnd: workEndEl.value || ""
   };
 
-  localStorage.setItem("dayData_v11", JSON.stringify(dayData));
+  localStorage.setItem("dayData_v12", JSON.stringify(dayData));
 
   const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
   dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
@@ -517,11 +524,11 @@ function savePlate(p){
   p = normalizePlate(p);
   if(!p || !isLikelyCompletePlate(p)) return;
 
-  plates = plates.filter(x => x !== p);
+  plates = plates.filter(x => normalizePlateForCompare(x) !== normalizePlateForCompare(p));
   plates.unshift(p);
   plates = plates.slice(0, 10);
 
-  localStorage.setItem("plates_v11", JSON.stringify(plates));
+  localStorage.setItem("plates_v12", JSON.stringify(plates));
   renderPlates();
 }
 
@@ -553,7 +560,7 @@ async function lookupPlate(){
   }
 
   try{
-    const url = "https://opendata.rdw.nl/resource/m9d7-ebf2.json?kenteken=" + encodeURIComponent(p);
+    const url = "https://opendata.rdw.nl/resource/m9d7-ebf2.json?kenteken=" + encodeURIComponent(normalizePlateForCompare(p));
     const r = await fetch(url);
     const d = await r.json();
 
@@ -661,7 +668,7 @@ async function saveTrip(){
 
   savePlate(trip.plate);
   trips.unshift(trip);
-  localStorage.setItem("trips_v11", JSON.stringify(trips));
+  localStorage.setItem("trips_v12", JSON.stringify(trips));
 
   renderTrips();
   clearForm();
@@ -703,11 +710,10 @@ async function saveRoute(){
   }
 
   trips = [...newTrips.reverse(), ...trips];
-  localStorage.setItem("trips_v11", JSON.stringify(trips));
+  localStorage.setItem("trips_v12", JSON.stringify(trips));
 
   renderTrips();
   clearForm();
-  stopsEl.value = "";
 }
 
 function calcExcelColumnWidths(rows){
@@ -771,9 +777,9 @@ function wipe(){
     plates = [];
     dayData = {};
 
-    localStorage.removeItem("trips_v11");
-    localStorage.removeItem("plates_v11");
-    localStorage.removeItem("dayData_v11");
+    localStorage.removeItem("trips_v12");
+    localStorage.removeItem("plates_v12");
+    localStorage.removeItem("dayData_v12");
 
     renderTrips();
     renderPlates();
