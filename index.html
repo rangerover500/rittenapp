@@ -50,6 +50,7 @@ button{
 .voice{ background: #007bff; color: white; }
 .editbtn{ background:#fff3cd; color:#222; border:1px solid #e0c36c; }
 .deletebtn{ background:#f8d7da; color:#222; border:1px solid #d9a3aa; }
+
 .quick button,
 .plates button{
   font-size: 13px;
@@ -57,6 +58,7 @@ button{
   color: #111;
   border: 1px solid #ddd;
 }
+
 table{
   width: 100%;
   margin-top: 12px;
@@ -221,12 +223,11 @@ td, th{
   <button type="button" onclick="clearForm()">Leegmaken</button>
   <button type="button" id="cancelEditBtn" onclick="cancelEdit()" style="display:none;">Bewerken annuleren</button>
 </div>
-  
+
 <div id="editStatus" class="status"></div>
 
 <div class="section">
   <h3>Ritten</h3>
-
   <table>
     <thead>
       <tr>
@@ -308,6 +309,7 @@ const editStatusEl = $("editStatus");
 const importFileEl = $("importFile");
 const saveBtnEl = $("saveBtn");
 const cancelEditBtnEl = $("cancelEditBtn");
+
 let trips = JSON.parse(localStorage.getItem("trips_v12") || "[]");
 let plates = JSON.parse(localStorage.getItem("plates_v12") || "[]");
 let dayData = JSON.parse(localStorage.getItem("dayData_v12") || "{}");
@@ -580,6 +582,7 @@ function updateDayHours(){
 
   renderWorkdays();
 }
+
 workStartEl.addEventListener("input", updateDayHours);
 workEndEl.addEventListener("input", updateDayHours);
 
@@ -587,7 +590,9 @@ dateEl.addEventListener("input", () => {
   const d = dateEl.value || today();
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-  updateDayHours();
+
+  const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
+  dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
 });
 
 function savePlate(p){
@@ -704,7 +709,12 @@ function renderTrips(){
 function renderWorkdays(){
   workdayTableEl.innerHTML = "";
 
-  const dates = Object.keys(dayData).sort((a,b) => b.localeCompare(a));
+  const dates = Object.keys(dayData)
+    .filter(d => {
+      const item = dayData[d] || {};
+      return (item.workStart || "").trim() || (item.workEnd || "").trim();
+    })
+    .sort((a,b) => b.localeCompare(a));
 
   dates.forEach(d => {
     const item = dayData[d] || {};
@@ -747,11 +757,20 @@ function validateTrip(trip){
 
 function setEditMode(index){
   editingTripIndex = index;
+
   if(index >= 0){
-    editStatusEl.innerText = "Je bewerkt nu een bestaande rit. Opslaan werkt de rit bij.";
+    editStatusEl.innerText = "Je bewerkt nu een bestaande rit. Klik op Opslaan om de wijziging te bewaren.";
+    saveBtnEl.innerText = "Wijziging opslaan";
+    cancelEditBtnEl.style.display = "inline-block";
   } else {
     editStatusEl.innerText = "";
+    saveBtnEl.innerText = "Opslaan";
+    cancelEditBtnEl.style.display = "none";
   }
+}
+
+function cancelEdit(){
+  clearForm();
 }
 
 async function saveTrip(){
@@ -803,8 +822,7 @@ async function saveRoute(){
     if(!confirm("Je staat in bewerkmodus. Een route met tussenstops opslaan maakt meerdere nieuwe ritten. Doorgaan?")){
       return;
     }
-    editingTripIndex = -1;
-    editStatusEl.innerText = "";
+    setEditMode(-1);
   }
 
   savePlate(p);
@@ -849,8 +867,12 @@ function editTrip(index){
   const d = dateEl.value || today();
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-  updateDayHours();
+
   updateOdoRequirement();
+
+  const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
+  dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
+
   setEditMode(index);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -860,6 +882,7 @@ function deleteTrip(index){
   trips.splice(index, 1);
   saveAll();
   renderTrips();
+
   if(editingTripIndex === index){
     clearForm();
   } else if(editingTripIndex > index){
@@ -871,12 +894,16 @@ function editWorkday(d){
   dateEl.value = d;
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-  updateDayHours();
+
+  const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
+  dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
+
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function deleteWorkday(d){
   if(!confirm("Werkdag van " + d + " verwijderen?")) return;
+
   delete dayData[d];
   saveAll();
   renderWorkdays();
@@ -884,7 +911,7 @@ function deleteWorkday(d){
   if(dateEl.value === d){
     workStartEl.value = "";
     workEndEl.value = "";
-    updateDayHours();
+    dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: 0 uur en 0 minuten";
   }
 }
 
@@ -923,15 +950,21 @@ function exportExcel(){
 
   const workdayRows = [
     ["Datum", "Aanwezig vanaf", "Klaar om", "Gewerkte tijd"],
-    ...Object.keys(dayData).sort((a,b) => b.localeCompare(a)).map(d => {
-      const item = dayData[d] || {};
-      return [
-        d,
-        item.workStart || "",
-        item.workEnd || "",
-        formatMinutesDutch(timeDiffMinutes(item.workStart || "", item.workEnd || ""))
-      ];
-    })
+    ...Object.keys(dayData)
+      .filter(d => {
+        const item = dayData[d] || {};
+        return (item.workStart || "").trim() || (item.workEnd || "").trim();
+      })
+      .sort((a,b) => b.localeCompare(a))
+      .map(d => {
+        const item = dayData[d] || {};
+        return [
+          d,
+          item.workStart || "",
+          item.workEnd || "",
+          formatMinutesDutch(timeDiffMinutes(item.workStart || "", item.workEnd || ""))
+        ];
+      })
   ];
 
   const wb = XLSX.utils.book_new();
@@ -1003,11 +1036,15 @@ function importExcel(replaceExisting){
 
         rows.forEach(r => {
           const date = String(r["Datum"] || "").trim();
+          const workStart = String(r["Aanwezig vanaf"] || "").trim();
+          const workEnd = String(r["Klaar om"] || "").trim();
+
           if(!date) return;
+          if(!workStart && !workEnd) return;
 
           importedDayData[date] = {
-            workStart: String(r["Aanwezig vanaf"] || "").trim(),
-            workEnd: String(r["Klaar om"] || "").trim()
+            workStart,
+            workEnd
           };
         });
       }
@@ -1034,7 +1071,9 @@ function importExcel(replaceExisting){
       const d = dateEl.value || today();
       workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
       workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-      updateDayHours();
+
+      const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
+      dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
 
       alert("Import gelukt.");
     } catch(err){
@@ -1063,6 +1102,7 @@ function wipe(){
 
 function clearForm(){
   const d = dateEl.value || today();
+
   dateEl.value = d;
   timeStartEl.value = now();
   timeEndEl.value = now();
@@ -1078,7 +1118,9 @@ function clearForm(){
 
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-  updateDayHours();
+
+  const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
+  dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
 }
 
 setDefaults();
