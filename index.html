@@ -216,11 +216,12 @@ td, th{
 <input id="odometer" type="number" inputmode="numeric" placeholder="Bijv. 123456">
 
 <div class="toolbar">
-  <button class="primary" type="button" onclick="saveTrip()">Opslaan</button>
+  <button class="primary" type="button" id="saveBtn" onclick="saveTrip()">Opslaan</button>
   <button type="button" onclick="saveRoute()">Route met tussenstops opslaan</button>
   <button type="button" onclick="clearForm()">Leegmaken</button>
+  <button type="button" id="cancelEditBtn" onclick="cancelEdit()" style="display:none;">Bewerken annuleren</button>
 </div>
-
+  
 <div id="editStatus" class="status"></div>
 
 <div class="section">
@@ -305,7 +306,8 @@ const workEndEl = $("workEnd");
 const dayHoursInfoEl = $("dayHoursInfo");
 const editStatusEl = $("editStatus");
 const importFileEl = $("importFile");
-
+const saveBtnEl = $("saveBtn");
+const cancelEditBtnEl = $("cancelEditBtn");
 let trips = JSON.parse(localStorage.getItem("trips_v12") || "[]");
 let plates = JSON.parse(localStorage.getItem("plates_v12") || "[]");
 let dayData = JSON.parse(localStorage.getItem("dayData_v12") || "{}");
@@ -559,20 +561,25 @@ function startVoice(){
 
 function updateDayHours(){
   const d = dateEl.value || today();
+  const workStart = workStartEl.value || "";
+  const workEnd = workEndEl.value || "";
 
-  dayData[d] = {
-    workStart: workStartEl.value || "",
-    workEnd: workEndEl.value || ""
-  };
+  if(workStart || workEnd){
+    dayData[d] = {
+      workStart,
+      workEnd
+    };
+  } else {
+    delete dayData[d];
+  }
 
   saveAll();
 
-  const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
+  const minutes = timeDiffMinutes(workStart, workEnd);
   dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
 
   renderWorkdays();
 }
-
 workStartEl.addEventListener("input", updateDayHours);
 workEndEl.addEventListener("input", updateDayHours);
 
