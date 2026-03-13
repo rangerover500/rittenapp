@@ -203,7 +203,7 @@ td, th{
 <div class="note">Zeg bijvoorbeeld: “Breeland Rotterdam naar Wasstraat”.</div>
 
 <label>Kenteken</label>
-<input id="plate" placeholder="Bijv. X-605-VJ" oninput="this.value=this.value.toUpperCase()">
+<input id="plate" placeholder="Bijv. X605VJ" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
 
 <div class="plates" id="plateList"></div>
 
@@ -284,7 +284,7 @@ td, th{
 </div>
 
 <script>
-const mandatoryOdoPlates = ["X-605-VJ", "Z-406-BG"];
+const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 
 const $ = (id) => document.getElementById(id);
 
@@ -344,17 +344,18 @@ function normalizeLocation(text){
 }
 
 function normalizePlate(p){
-  return String(p || "").toUpperCase().trim();
+  return String(p || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .trim();
 }
 
 function normalizePlateForCompare(p){
-  return normalizePlate(p).replace(/[^A-Z0-9]/g, "");
+  return normalizePlate(p);
 }
 
 function formatPlateForDisplay(p){
-  const cleaned = normalizePlateForCompare(p);
-  if(cleaned.length !== 6) return normalizePlate(p);
-  return cleaned.slice(0,1) + "-" + cleaned.slice(1,4) + "-" + cleaned.slice(4);
+  return normalizePlate(p);
 }
 
 function isLikelyCompletePlate(p){
@@ -467,8 +468,8 @@ function buildVehicleDescription(d){
 }
 
 function isMandatoryOdoPlate(p){
-  const cleaned = normalizePlateForCompare(p);
-  return mandatoryOdoPlates.map(normalizePlateForCompare).includes(cleaned);
+  const cleaned = normalizePlate(p);
+  return mandatoryOdoPlates.includes(cleaned);
 }
 
 function updateOdoRequirement(){
