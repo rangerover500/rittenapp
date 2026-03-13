@@ -503,6 +503,14 @@ function saveAll(){
   localStorage.setItem("dayData_v12", JSON.stringify(dayData));
 }
 
+function sortTrips(){
+  trips.sort((a, b) => {
+    const aKey = (a.date || "") + " " + (a.timeStart || "");
+    const bKey = (b.date || "") + " " + (b.timeStart || "");
+    return bKey.localeCompare(aKey);
+  });
+}
+
 function setDefaults(){
   dateEl.value = today();
   timeStartEl.value = now();
@@ -784,9 +792,10 @@ async function saveTrip(){
   if(editingTripIndex >= 0){
     trips[editingTripIndex] = trip;
   } else {
-    trips.unshift(trip);
+    trips.push(trip);
   }
 
+  sortTrips();
   saveAll();
   renderTrips();
   clearForm();
@@ -843,7 +852,8 @@ async function saveRoute(){
     newTrips.push(trip);
   }
 
-  trips = [...newTrips.reverse(), ...trips];
+  trips = [...newTrips, ...trips];
+  sortTrips();
   saveAll();
   renderTrips();
   clearForm();
@@ -1064,6 +1074,7 @@ function importExcel(replaceExisting){
         if(t.plate) savePlate(t.plate);
       });
 
+      sortTrips();
       saveAll();
       renderTrips();
       renderWorkdays();
@@ -1123,6 +1134,7 @@ function clearForm(){
   dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
 }
 
+sortTrips();
 setDefaults();
 renderTrips();
 renderPlates();
