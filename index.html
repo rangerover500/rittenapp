@@ -272,12 +272,11 @@ td, th{
     <input type="file" id="importFile" accept=".xlsx,.xls">
   </div>
 
-  <button type="button" onclick="importExcel(false)">Import aanvullen</button>
-  <button type="button" onclick="importExcel(true)">Import en vervangen</button>
+  <button type="button" onclick="importExcelReplace()">Import en vervang</button>
 
   <div class="note">
     Export maakt 2 tabbladen: <strong>Ritten</strong> en <strong>Werkdagen</strong>.
-    Importeren leest deze tabbladen weer terug in de app.
+    Importeren vervangt de huidige gegevens volledig door de inhoud van het Excel-bestand.
   </div>
 </div>
 
@@ -758,10 +757,47 @@ function buildTripObject(fromValue, toValue, vehicleText){
 
 function validateTrip(trip){
   if(!trip.date || !trip.timeStart || !trip.timeEnd || !trip.from || !trip.to || !trip.plate){
-    alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
     return false;
   }
   return true;
+}
+
+function hasCurrentTripDraft(){
+  const draft = {
+    date: dateEl.value || "",
+    timeStart: timeStartEl.value || "",
+    timeEnd: timeEndEl.value || "",
+    from: fromEl.value || "",
+    to: toEl.value || "",
+    plate: plateEl.value || "",
+    odometer: odometerEl.value || ""
+  };
+
+  return Object.values(draft).some(v => String(v).trim() !== "");
+}
+
+async function buildCurrentDraftTripForExport(){
+  if(editingTripIndex >= 0) return null;
+  if(!hasCurrentTripDraft()) return null;
+
+  const info = await lookupPlate();
+  const trip = buildTripObject(fromEl.value, toEl.value, info.vehicleText);
+
+  if(!validateTrip(trip)) return null;
+
+  const exists = trips.some(t =>
+    (t.date || "") === (trip.date || "") &&
+    (t.timeStart || "") === (trip.timeStart || "") &&
+    (t.timeEnd || "") === (trip.timeEnd || "") &&
+    (t.from || "") === (trip.from || "") &&
+    (t.to || "") === (trip.to || "") &&
+    normalizePlate(t.plate || "") === normalizePlate(trip.plate || "") &&
+    (t.odometer || "") === (trip.odometer || "")
+  );
+
+  if(exists) return null;
+
+  return trip;
 }
 
 function setEditMode(index){
@@ -786,7 +822,10 @@ async function saveTrip(){
   const info = await lookupPlate();
   const trip = buildTripObject(fromEl.value, toEl.value, info.vehicleText);
 
-  if(!validateTrip(trip)) return;
+  if(!validateTrip(trip)){
+    alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
+    return;
+  }
 
   savePlate(trip.plate);
 
@@ -944,10 +983,23 @@ function calcExcelColumnWidths(rows){
   return widths;
 }
 
-function exportExcel(){
+async function exportExcel(){
+  const draftTrip = await buildCurrentDraftTripForExport();
+
+  let exportTrips = [...trips];
+  if(draftTrip){
+    exportTrips.push(draftTrip);
+  }
+
+  exportTrips.sort((a, b) => {
+    const aKey = (a.date || "") + " " + (a.timeStart || "");
+    const bKey = (b.date || "") + " " + (b.timeStart || "");
+    return bKey.localeCompare(aKey);
+  });
+
   const tripRows = [
     ["Datum", "Starttijd", "Eindtijd", "Van", "Naar", "Kenteken", "Auto", "Km-stand"],
-    ...trips.map(t => [
+    ...exportTrips.map(t => [
       t.date || "",
       t.timeStart || "",
       t.timeEnd || "",
@@ -1001,7 +1053,7 @@ function exportExcel(){
   XLSX.writeFile(wb, filename);
 }
 
-function importExcel(replaceExisting){
+function importExcelReplace(){
   const file = importFileEl.files[0];
   if(!file){
     alert("Kies eerst een Excel-bestand.");
@@ -1060,24 +1112,25 @@ function importExcel(replaceExisting){
         });
       }
 
-      if(replaceExisting){
-        trips = importedTrips;
-        dayData = importedDayData;
-      } else {
-        trips = [...importedTrips, ...trips];
-
-        Object.keys(importedDayData).forEach(d => {
-          dayData[d] = importedDayData[d];
-        });
-      }
+      trips = importedTrips;
+      dayData = importedDayData;
+      plates = [];
 
       trips.forEach(t => {
-        if(t.plate) savePlate(t.plate);
+        if(t.plate){
+          const p = formatPlateForDisplay(t.plate);
+          if(p && !plates.includes(p)){
+            plates.push(p);
+          }
+        }
       });
+
+      plates = plates.slice(0, 10);
 
       sortTrips();
       saveAll();
       renderTrips();
+      renderPlates();
       renderWorkdays();
 
       const d = dateEl.value || today();
@@ -1087,7 +1140,7 @@ function importExcel(replaceExisting){
       const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
       dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
 
-      alert("Import gelukt.");
+      alert("Import gelukt. De huidige gegevens zijn vervangen.");
     } catch(err){
       alert("Import mislukt. Controleer of het een geldig Excel-bestand is.");
     }
