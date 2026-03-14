@@ -46,8 +46,8 @@ button{
   font-size: 15px;
   cursor: pointer;
 }
-.primary{ background: black; color: white; }
-.voice{ background: #007bff; color: white; }
+.primary{ background:black; color:white; }
+.voice{ background:#007bff; color:white; }
 .editbtn{ background:#fff3cd; color:#222; border:1px solid #e0c36c; }
 .deletebtn{ background:#f8d7da; color:#222; border:1px solid #d9a3aa; }
 
@@ -118,6 +118,11 @@ td, th{
   font-size:13px;
   color:#444;
   margin: 6px 0 10px 0;
+}
+.info{
+  font-size:13px;
+  color:#0b5394;
+  margin: 0 0 8px 0;
 }
 </style>
 </head>
@@ -196,14 +201,14 @@ td, th{
   <button type="button" onclick="addStop('Breeland Brielle')">Breeland Brielle</button>
 </div>
 
-<div class="note">Meerdere tussenstops worden automatisch met komma’s toegevoegd.</div>
+<div class="note">Tussenstops worden alleen gebruikt bij ‘Route met tussenstops opslaan’.</div>
 
 <label>Spraak invoer</label>
 <button class="voice" type="button" onclick="startVoice()">🎤 Spreek route</button>
 <div class="note">Zeg bijvoorbeeld: “Breeland Rotterdam naar Wasstraat”.</div>
 
 <label>Kenteken</label>
-<input id="plate" placeholder="Bijv. X605VJ" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+<input id="plate" placeholder="Bijv. X605VJ" oninput="this.value=normalizePlate(this.value)">
 
 <div class="plates" id="plateList"></div>
 
@@ -225,6 +230,7 @@ td, th{
 </div>
 
 <div id="editStatus" class="status"></div>
+<div id="formInfo" class="info"></div>
 
 <div class="section">
   <h3>Ritten</h3>
@@ -305,6 +311,7 @@ const workStartEl = $("workStart");
 const workEndEl = $("workEnd");
 const dayHoursInfoEl = $("dayHoursInfo");
 const editStatusEl = $("editStatus");
+const formInfoEl = $("formInfo");
 const importFileEl = $("importFile");
 const saveBtnEl = $("saveBtn");
 const cancelEditBtnEl = $("cancelEditBtn");
@@ -313,7 +320,7 @@ let trips = JSON.parse(localStorage.getItem("trips_v12") || "[]");
 let plates = JSON.parse(localStorage.getItem("plates_v12") || "[]");
 let dayData = JSON.parse(localStorage.getItem("dayData_v12") || "{}");
 
-let editingTripIndex = -1;
+let editingTripId = null;
 
 function pad(n){
   return String(n).padStart(2, "0");
@@ -327,6 +334,22 @@ function today(){
 function now(){
   const d = new Date();
   return pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+
+function createTripId(){
+  return "trip_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+}
+
+function ensureTripIds(){
+  let changed = false;
+  trips = trips.map(t => {
+    if(!t.id){
+      changed = true;
+      return { ...t, id: createTripId() };
+    }
+    return t;
+  });
+  if(changed) saveAll();
 }
 
 function normalizeLocation(text){
@@ -349,17 +372,8 @@ function normalizePlate(p){
     .trim();
 }
 
-function normalizePlateForCompare(p){
-  return normalizePlate(p);
-}
-
-function formatPlateForDisplay(p){
-  return normalizePlate(p);
-}
-
 function isLikelyCompletePlate(p){
-  const cleaned = normalizePlateForCompare(p);
-  return cleaned.length >= 6;
+  return normalizePlate(p).length >= 6;
 }
 
 function cleanVehicleText(value){
@@ -466,14 +480,70 @@ function buildVehicleDescription(d){
   return result || "Voertuig niet gevonden";
 }
 
+async function fetchPlateInfo(plate){
+  const p = normalizePlate(plate);
+  if(!p) return { vehicleText: "", priceText: "" };
+
+  try{
+    const url = "https://opendata.rdw.nl/resource/m9d7-ebf2.json?kenteken=" + encodeURIComponent(p);
+    const r = await fetch(url);
+    const d = await r.json();
+
+    if(!d.length){
+      return { vehicleText: "", priceText: "" };
+    }
+
+    const row = d[0];
+    const vehicleText = buildVehicleDescription(row);
+
+    let priceText = "";
+    const rawPrice =
+      row.catalogusprijs ||
+      row.catalogusprijs_inclusief_bpm ||
+      row.nieuwprijs ||
+      row.bruto_bpm;
+
+    const formattedPrice = formatPrice(rawPrice);
+    if(formattedPrice){
+      priceText = "Nieuwprijs: " + formattedPrice;
+    }
+
+    return { vehicleText, priceText };
+  } catch(e){
+    return { vehicleText: "", priceText: "" };
+  }
+}
+
+async function lookupPlate(){
+  const p = normalizePlate(plateEl.value);
+  plateEl.value = p;
+  updateOdoRequirement();
+
+  if(!p){
+    rdwEl.innerText = "";
+    rdwPriceEl.innerText = "";
+    return { vehicleText: "", priceText: "" };
+  }
+
+  const info = await fetchPlateInfo(p);
+
+  if(info.vehicleText){
+    rdwEl.innerText = info.vehicleText;
+    rdwPriceEl.innerText = info.priceText || "";
+  } else {
+    rdwEl.innerText = "Geen voertuiggegevens gevonden";
+    rdwPriceEl.innerText = "";
+  }
+
+  return info;
+}
+
 function isMandatoryOdoPlate(p){
-  const cleaned = normalizePlate(p);
-  return mandatoryOdoPlates.includes(cleaned);
+  return mandatoryOdoPlates.includes(normalizePlate(p));
 }
 
 function updateOdoRequirement(){
-  const p = normalizePlate(plateEl.value);
-  odoWarningEl.style.display = isMandatoryOdoPlate(p) ? "block" : "none";
+  odoWarningEl.style.display = isMandatoryOdoPlate(plateEl.value) ? "block" : "none";
 }
 
 function timeDiffMinutes(start, end){
@@ -510,7 +580,6 @@ function sortTrips(){
     return bKey.localeCompare(aKey);
   });
 }
-
 function setDefaults(){
   dateEl.value = today();
   timeStartEl.value = now();
@@ -604,11 +673,11 @@ dateEl.addEventListener("input", () => {
 });
 
 function savePlate(p){
-  p = formatPlateForDisplay(p);
-  if(!p || !isLikelyCompletePlate(p)) return;
+  const plate = normalizePlate(p);
+  if(!plate || !isLikelyCompletePlate(plate)) return;
 
-  plates = plates.filter(x => normalizePlateForCompare(x) !== normalizePlateForCompare(p));
-  plates.unshift(p);
+  plates = plates.filter(x => normalizePlate(x) !== plate);
+  plates.unshift(plate);
   plates = plates.slice(0, 10);
 
   saveAll();
@@ -622,62 +691,13 @@ function renderPlates(){
     const b = document.createElement("button");
     b.type = "button";
     b.innerText = p;
-    b.onclick = function(){
+    b.addEventListener("click", async function(){
       plateEl.value = p;
-      lookupPlate();
+      await lookupPlate();
       updateOdoRequirement();
-    };
+    });
     plateListEl.appendChild(b);
   });
-}
-
-async function lookupPlate(){
-  const raw = plateEl.value;
-  const p = formatPlateForDisplay(raw);
-  plateEl.value = p;
-  updateOdoRequirement();
-
-  if(!raw){
-    rdwEl.innerText = "";
-    rdwPriceEl.innerText = "";
-    return { vehicleText: "", priceText: "" };
-  }
-
-  try{
-    const url = "https://opendata.rdw.nl/resource/m9d7-ebf2.json?kenteken=" + encodeURIComponent(normalizePlateForCompare(p));
-    const r = await fetch(url);
-    const d = await r.json();
-
-    if(d.length){
-      const row = d[0];
-      const vehicleText = buildVehicleDescription(row);
-
-      let priceText = "";
-      const rawPrice =
-        row.catalogusprijs ||
-        row.catalogusprijs_inclusief_bpm ||
-        row.nieuwprijs ||
-        row.bruto_bpm;
-
-      const formattedPrice = formatPrice(rawPrice);
-      if(formattedPrice){
-        priceText = "Nieuwprijs: " + formattedPrice;
-      }
-
-      rdwEl.innerText = vehicleText;
-      rdwPriceEl.innerText = priceText;
-
-      return { vehicleText, priceText };
-    }
-
-    rdwEl.innerText = "Geen voertuiggegevens gevonden";
-    rdwPriceEl.innerText = "";
-    return { vehicleText: "", priceText: "" };
-  } catch(e){
-    rdwEl.innerText = "RDW-gegevens konden niet worden opgehaald";
-    rdwPriceEl.innerText = "";
-    return { vehicleText: "", priceText: "" };
-  }
 }
 
 plateEl.addEventListener("input", lookupPlate);
@@ -694,7 +714,7 @@ function escapeHtml(value){
 function renderTrips(){
   tripTableEl.innerHTML = "";
 
-  trips.forEach((t, index) => {
+  trips.forEach((t) => {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${escapeHtml(t.date || "")}</td>
@@ -706,8 +726,8 @@ function renderTrips(){
       <td>${escapeHtml(t.vehicle || "")}</td>
       <td>${escapeHtml(t.odometer || "")}</td>
       <td>
-        <button type="button" class="editbtn" onclick="editTrip(${index})">Bewerk</button>
-        <button type="button" class="deletebtn" onclick="deleteTrip(${index})">Verwijder</button>
+        <button type="button" class="editbtn trip-action" data-action="edit" data-id="${escapeHtml(t.id)}">Bewerk</button>
+        <button type="button" class="deletebtn trip-action" data-action="delete" data-id="${escapeHtml(t.id)}">Verwijder</button>
       </td>
     `;
     tripTableEl.appendChild(row);
@@ -734,22 +754,47 @@ function renderWorkdays(){
       <td>${escapeHtml(item.workEnd || "")}</td>
       <td>${escapeHtml(formatMinutesDutch(minutes))}</td>
       <td>
-        <button type="button" class="editbtn" onclick="editWorkday('${d}')">Open</button>
-        <button type="button" class="deletebtn" onclick="deleteWorkday('${d}')">Verwijder</button>
+        <button type="button" class="editbtn workday-action" data-action="open" data-date="${escapeHtml(d)}">Open</button>
+        <button type="button" class="deletebtn workday-action" data-action="delete" data-date="${escapeHtml(d)}">Verwijder</button>
       </td>
     `;
     workdayTableEl.appendChild(row);
   });
 }
 
-function buildTripObject(fromValue, toValue, vehicleText){
+tripTableEl.addEventListener("click", function(e){
+  const btn = e.target.closest("button.trip-action");
+  if(!btn) return;
+
+  const action = btn.dataset.action;
+  const id = btn.dataset.id;
+  if(!id) return;
+
+  if(action === "edit") editTripById(id);
+  if(action === "delete") deleteTripById(id);
+});
+
+workdayTableEl.addEventListener("click", function(e){
+  const btn = e.target.closest("button.workday-action");
+  if(!btn) return;
+
+  const action = btn.dataset.action;
+  const d = btn.dataset.date;
+  if(!d) return;
+
+  if(action === "open") editWorkday(d);
+  if(action === "delete") deleteWorkday(d);
+});
+
+function buildTripObject(fromValue, toValue, vehicleText, existingId = null){
   return {
+    id: existingId || createTripId(),
     date: dateEl.value || today(),
     timeStart: timeStartEl.value,
     timeEnd: timeEndEl.value,
     from: normalizeLocation(fromValue),
     to: normalizeLocation(toValue),
-    plate: formatPlateForDisplay(plateEl.value),
+    plate: normalizePlate(plateEl.value),
     vehicle: vehicleText || rdwEl.innerText || "",
     odometer: odometerEl.value.trim()
   };
@@ -777,10 +822,10 @@ function hasCurrentTripDraft(){
 }
 
 async function buildCurrentDraftTripForExport(){
-  if(editingTripIndex >= 0) return null;
+  if(editingTripId) return null;
   if(!hasCurrentTripDraft()) return null;
 
-  const info = await lookupPlate();
+  const info = await fetchPlateInfo(plateEl.value);
   const trip = buildTripObject(fromEl.value, toEl.value, info.vehicleText);
 
   if(!validateTrip(trip)) return null;
@@ -800,10 +845,10 @@ async function buildCurrentDraftTripForExport(){
   return trip;
 }
 
-function setEditMode(index){
-  editingTripIndex = index;
+function setEditMode(id){
+  editingTripId = id;
 
-  if(index >= 0){
+  if(id){
     editStatusEl.innerText = "Je bewerkt nu een bestaande rit. Klik op Opslaan om de wijziging te bewaren.";
     saveBtnEl.innerText = "Wijziging opslaan";
     cancelEditBtnEl.style.display = "inline-block";
@@ -819,8 +864,14 @@ function cancelEdit(){
 }
 
 async function saveTrip(){
+  if(stopsEl.value.trim()){
+    alert("Tussenstops worden alleen gebruikt bij 'Route met tussenstops opslaan'.");
+    return;
+  }
+
   const info = await lookupPlate();
-  const trip = buildTripObject(fromEl.value, toEl.value, info.vehicleText);
+  const existingTrip = editingTripId ? trips.find(t => t.id === editingTripId) : null;
+  const trip = buildTripObject(fromEl.value, toEl.value, info.vehicleText, existingTrip ? existingTrip.id : null);
 
   if(!validateTrip(trip)){
     alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
@@ -829,8 +880,8 @@ async function saveTrip(){
 
   savePlate(trip.plate);
 
-  if(editingTripIndex >= 0){
-    trips[editingTripIndex] = trip;
+  if(editingTripId){
+    trips = trips.map(t => t.id === editingTripId ? trip : t);
   } else {
     trips.push(trip);
   }
@@ -841,8 +892,12 @@ async function saveTrip(){
   clearForm();
 }
 
+function removeConsecutiveDuplicates(points){
+  return points.filter((p, i) => i === 0 || p !== points[i - 1]);
+}
+
 async function saveRoute(){
-  const p = formatPlateForDisplay(plateEl.value);
+  const p = normalizePlate(plateEl.value);
   const rawStops = stopsEl.value.trim();
 
   if(!dateEl.value || !timeStartEl.value || !timeEndEl.value || !fromEl.value || !toEl.value || !p){
@@ -856,22 +911,24 @@ async function saveRoute(){
     ? rawStops.split(",").map(s => normalizeLocation(s.trim())).filter(Boolean)
     : [];
 
-  const points = [
+  let points = [
     normalizeLocation(fromEl.value),
     ...stopList,
     normalizeLocation(toEl.value)
   ];
+
+  points = removeConsecutiveDuplicates(points);
 
   if(points.length < 2){
     alert("Te weinig routepunten.");
     return;
   }
 
-  if(editingTripIndex >= 0){
+  if(editingTripId){
     if(!confirm("Je staat in bewerkmodus. Een route met tussenstops opslaan maakt meerdere nieuwe ritten. Doorgaan?")){
       return;
     }
-    setEditMode(-1);
+    setEditMode(null);
   }
 
   savePlate(p);
@@ -879,6 +936,7 @@ async function saveRoute(){
   const newTrips = [];
   for(let i = 0; i < points.length - 1; i++){
     const trip = {
+      id: createTripId(),
       date: dateEl.value || today(),
       timeStart: timeStartEl.value,
       timeEnd: timeEndEl.value,
@@ -899,8 +957,8 @@ async function saveRoute(){
   clearForm();
 }
 
-function editTrip(index){
-  const t = trips[index];
+function editTripById(id){
+  const t = trips.find(trip => trip.id === id);
   if(!t) return;
 
   dateEl.value = t.date || today();
@@ -909,7 +967,7 @@ function editTrip(index){
   fromEl.value = t.from || "";
   toEl.value = t.to || "";
   stopsEl.value = "";
-  plateEl.value = t.plate || "";
+  plateEl.value = normalizePlate(t.plate || "");
   odometerEl.value = t.odometer || "";
   rdwEl.innerText = t.vehicle || "";
   rdwPriceEl.innerText = "";
@@ -923,20 +981,19 @@ function editTrip(index){
   const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
   dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
 
-  setEditMode(index);
+  setEditMode(t.id);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function deleteTrip(index){
+function deleteTripById(id){
   if(!confirm("Deze rit verwijderen?")) return;
-  trips.splice(index, 1);
+
+  trips = trips.filter(trip => trip.id !== id);
   saveAll();
   renderTrips();
 
-  if(editingTripIndex === index){
+  if(editingTripId === id){
     clearForm();
-  } else if(editingTripIndex > index){
-    editingTripIndex--;
   }
 }
 
@@ -964,7 +1021,6 @@ function deleteWorkday(d){
     dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: 0 uur en 0 minuten";
   }
 }
-
 function calcExcelColumnWidths(rows){
   if(!rows.length) return [];
 
@@ -998,8 +1054,9 @@ async function exportExcel(){
   });
 
   const tripRows = [
-    ["Datum", "Starttijd", "Eindtijd", "Van", "Naar", "Kenteken", "Auto", "Km-stand"],
+    ["ID", "Datum", "Starttijd", "Eindtijd", "Van", "Naar", "Kenteken", "Auto", "Km-stand"],
     ...exportTrips.map(t => [
+      t.id || "",
       t.date || "",
       t.timeStart || "",
       t.timeEnd || "",
@@ -1079,12 +1136,13 @@ function importExcelReplace(){
         const rows = XLSX.utils.sheet_to_json(tripSheet, { defval: "" });
 
         importedTrips = rows.map(r => ({
+          id: String(r["ID"] || "").trim() || createTripId(),
           date: String(r["Datum"] || "").trim(),
           timeStart: String(r["Starttijd"] || "").trim(),
           timeEnd: String(r["Eindtijd"] || "").trim(),
           from: normalizeLocation(r["Van"] || ""),
           to: normalizeLocation(r["Naar"] || ""),
-          plate: formatPlateForDisplay(r["Kenteken"] || ""),
+          plate: normalizePlate(r["Kenteken"] || ""),
           vehicle: String(r["Auto"] || "").trim(),
           odometer: String(r["Km-stand"] || "").trim()
         })).filter(t => t.date || t.timeStart || t.timeEnd || t.from || t.to || t.plate);
@@ -1118,7 +1176,7 @@ function importExcelReplace(){
 
       trips.forEach(t => {
         if(t.plate){
-          const p = formatPlateForDisplay(t.plate);
+          const p = normalizePlate(t.plate);
           if(p && !plates.includes(p)){
             plates.push(p);
           }
@@ -1154,7 +1212,7 @@ function wipe(){
     trips = [];
     plates = [];
     dayData = {};
-    editingTripIndex = -1;
+    editingTripId = null;
 
     saveAll();
     renderTrips();
@@ -1178,8 +1236,9 @@ function clearForm(){
   odometerEl.value = "";
   rdwEl.innerText = "";
   rdwPriceEl.innerText = "";
+  formInfoEl.innerText = "";
   updateOdoRequirement();
-  setEditMode(-1);
+  setEditMode(null);
 
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
@@ -1188,6 +1247,7 @@ function clearForm(){
   dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
 }
 
+ensureTripIds();
 sortTrips();
 setDefaults();
 renderTrips();
