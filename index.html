@@ -302,7 +302,7 @@ td, th{
 <div class="versionbox" id="versionBox">
   <strong>App-versie:</strong> v13<br>
   <strong>Opslagformaat:</strong> trips_v13 / plates_v13 / dayData_v13<br>
-  <strong>Laatste update:</strong> unieke rit-ID’s, stabiel bewerken/verwijderen, kenteken-normalisatie, km-stand waarschuwing, tussenstops, werkdag in uren/minuten, Excel export/import, sortering op datum/tijd, ongeopslagen rit meenemen in export, RDW voertuigomschrijving en versieblok.
+  <strong>Laatste update:</strong> unieke rit-ID’s, stabiel bewerken/verwijderen, kenteken-normalisatie, km-stand reminder voor X605VJ en Z406BG, tussenstops kiezen met knoppen, werkdag in uren en minuten, Excel export met automatische kolombreedte, Excel import vervangt bestaande data, ritsortering op datum/tijd, ongeopslagen rit wordt meegenomen in export, voertuigomschrijving via RDW, versieblok onderaan de app.
 </div>
 
 </div>
@@ -1030,6 +1030,7 @@ function editTripById(id){
   const d = dateEl.value || today();
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
+
   updateOdoRequirement();
   updateDayHoursDisplayOnly();
 
@@ -1053,6 +1054,7 @@ function editWorkday(d){
   dateEl.value = d;
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
+
   updateDayHoursDisplayOnly();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1244,6 +1246,7 @@ function importExcelReplace(){
       const d = dateEl.value || today();
       workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
       workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
+
       updateDayHoursDisplayOnly();
 
       alert("Import gelukt. De huidige gegevens zijn vervangen.");
