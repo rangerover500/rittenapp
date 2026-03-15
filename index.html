@@ -124,6 +124,19 @@ td, th{
   color:#0b5394;
   margin: 0 0 8px 0;
 }
+.versionbox{
+  margin-top: 28px;
+  padding: 12px 14px;
+  background: #f7f7f7;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #444;
+  line-height: 1.5;
+}
+.versionbox strong{
+  color: #111;
+}
 </style>
 </head>
 
@@ -208,7 +221,7 @@ td, th{
 <div class="note">Zeg bijvoorbeeld: “Breeland Rotterdam naar Wasstraat”.</div>
 
 <label>Kenteken</label>
-<input id="plate" placeholder="Bijv. X605VJ" oninput="this.value=normalizePlate(this.value)">
+<input id="plate" placeholder="Bijv. X-605-VJ" oninput="this.value=normalizePlate(this.value)">
 
 <div class="plates" id="plateList"></div>
 
@@ -286,9 +299,20 @@ td, th{
   </div>
 </div>
 
+<div class="versionbox" id="versionBox">
+  <strong>App-versie:</strong> v13<br>
+  <strong>Opslagformaat:</strong> trips_v13 / plates_v13 / dayData_v13<br>
+  <strong>Laatste update:</strong> unieke rit-ID’s, stabiel bewerken/verwijderen, kenteken-normalisatie, km-stand waarschuwing, tussenstops, werkdag in uren/minuten, Excel export/import, sortering op datum/tijd, ongeopslagen rit meenemen in export, RDW voertuigomschrijving en versieblok.
+</div>
+
 </div>
 
 <script>
+const APP_VERSION = "v13";
+const STORAGE_TRIPS = "trips_v13";
+const STORAGE_PLATES = "plates_v13";
+const STORAGE_DAYDATA = "dayData_v13";
+
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 
 const $ = (id) => document.getElementById(id);
@@ -316,11 +340,30 @@ const importFileEl = $("importFile");
 const saveBtnEl = $("saveBtn");
 const cancelEditBtnEl = $("cancelEditBtn");
 
-let trips = JSON.parse(localStorage.getItem("trips_v12") || "[]");
-let plates = JSON.parse(localStorage.getItem("plates_v12") || "[]");
-let dayData = JSON.parse(localStorage.getItem("dayData_v12") || "{}");
+let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v12"], []);
+let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v12"], []);
+let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v12"], {});
 
 let editingTripId = null;
+
+function loadStorageWithFallback(primaryKey, fallbackKeys, defaultValue){
+  try{
+    const primary = localStorage.getItem(primaryKey);
+    if(primary !== null){
+      return JSON.parse(primary);
+    }
+
+    for(const key of fallbackKeys){
+      const value = localStorage.getItem(key);
+      if(value !== null){
+        return JSON.parse(value);
+      }
+    }
+  } catch(e){
+    console.error("Fout bij laden storage", e);
+  }
+  return defaultValue;
+}
 
 function pad(n){
   return String(n).padStart(2, "0");
@@ -337,7 +380,7 @@ function now(){
 }
 
 function createTripId(){
-  return "trip_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+  return "trip_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
 }
 
 function ensureTripIds(){
@@ -489,7 +532,7 @@ async function fetchPlateInfo(plate){
     const r = await fetch(url);
     const d = await r.json();
 
-    if(!d.length){
+    if(!Array.isArray(d) || !d.length){
       return { vehicleText: "", priceText: "" };
     }
 
@@ -568,9 +611,9 @@ function formatMinutesDutch(totalMinutes){
 }
 
 function saveAll(){
-  localStorage.setItem("trips_v12", JSON.stringify(trips));
-  localStorage.setItem("plates_v12", JSON.stringify(plates));
-  localStorage.setItem("dayData_v12", JSON.stringify(dayData));
+  localStorage.setItem(STORAGE_TRIPS, JSON.stringify(trips));
+  localStorage.setItem(STORAGE_PLATES, JSON.stringify(plates));
+  localStorage.setItem(STORAGE_DAYDATA, JSON.stringify(dayData));
 }
 
 function sortTrips(){
@@ -580,6 +623,7 @@ function sortTrips(){
     return bKey.localeCompare(aKey);
   });
 }
+
 function setDefaults(){
   dateEl.value = today();
   timeStartEl.value = now();
@@ -588,7 +632,7 @@ function setDefaults(){
   const d = today();
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-  updateDayHours();
+  updateDayHoursDisplayOnly();
 }
 
 function setFrom(v){ fromEl.value = v; }
@@ -638,6 +682,11 @@ function startVoice(){
   };
 }
 
+function updateDayHoursDisplayOnly(){
+  const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
+  dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
+}
+
 function updateDayHours(){
   const d = dateEl.value || today();
   const workStart = workStartEl.value || "";
@@ -653,10 +702,7 @@ function updateDayHours(){
   }
 
   saveAll();
-
-  const minutes = timeDiffMinutes(workStart, workEnd);
-  dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
-
+  updateDayHoursDisplayOnly();
   renderWorkdays();
 }
 
@@ -667,9 +713,7 @@ dateEl.addEventListener("input", () => {
   const d = dateEl.value || today();
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-
-  const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
-  dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
+  updateDayHoursDisplayOnly();
 });
 
 function savePlate(p){
@@ -804,6 +848,12 @@ function validateTrip(trip){
   if(!trip.date || !trip.timeStart || !trip.timeEnd || !trip.from || !trip.to || !trip.plate){
     return false;
   }
+
+  if(isMandatoryOdoPlate(trip.plate) && !String(trip.odometer || "").trim()){
+    alert("Voor kenteken " + trip.plate + " moet je een km-stand invullen.");
+    return false;
+  }
+
   return true;
 }
 
@@ -905,6 +955,11 @@ async function saveRoute(){
     return;
   }
 
+  if(isMandatoryOdoPlate(p) && !String(odometerEl.value || "").trim()){
+    alert("Voor kenteken " + p + " moet je een km-stand invullen.");
+    return;
+  }
+
   const info = await lookupPlate();
 
   const stopList = rawStops
@@ -975,11 +1030,8 @@ function editTripById(id){
   const d = dateEl.value || today();
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-
   updateOdoRequirement();
-
-  const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
-  dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
+  updateDayHoursDisplayOnly();
 
   setEditMode(t.id);
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1001,10 +1053,7 @@ function editWorkday(d){
   dateEl.value = d;
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-
-  const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
-  dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
-
+  updateDayHoursDisplayOnly();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1018,9 +1067,10 @@ function deleteWorkday(d){
   if(dateEl.value === d){
     workStartEl.value = "";
     workEndEl.value = "";
-    dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: 0 uur en 0 minuten";
+    updateDayHoursDisplayOnly();
   }
 }
+
 function calcExcelColumnWidths(rows){
   if(!rows.length) return [];
 
@@ -1194,9 +1244,7 @@ function importExcelReplace(){
       const d = dateEl.value || today();
       workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
       workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-
-      const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
-      dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
+      updateDayHoursDisplayOnly();
 
       alert("Import gelukt. De huidige gegevens zijn vervangen.");
     } catch(err){
@@ -1242,9 +1290,7 @@ function clearForm(){
 
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-
-  const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
-  dayHoursInfoEl.innerText = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
+  updateDayHoursDisplayOnly();
 }
 
 ensureTripIds();
