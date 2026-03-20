@@ -176,6 +176,21 @@ td, th{
   </div>
 </div>
 
+<label>Kenteken</label>
+<input id="plate" placeholder="Bijv. X-605-VJ" oninput="this.value=normalizePlate(this.value)">
+
+<div class="plates" id="plateList"></div>
+
+<div id="rdw"></div>
+<div id="rdwPrice" class="small-muted"></div>
+
+<div id="odoWarning" class="warning" style="display:none; margin-bottom:8px;">
+  Let op: km-stand invullen!
+</div>
+
+<label>Km-stand na rit</label>
+<input id="odometer" type="number" inputmode="numeric" placeholder="Bijv. 123456">
+
 <label>Van</label>
 <input id="from">
 
@@ -219,21 +234,6 @@ td, th{
 <label>Spraak invoer</label>
 <button class="voice" type="button" onclick="startVoice()">🎤 Spreek route</button>
 <div class="note">Zeg bijvoorbeeld: “Breeland Rotterdam naar Wasstraat”.</div>
-
-<label>Kenteken</label>
-<input id="plate" placeholder="Bijv. X-605-VJ" oninput="this.value=normalizePlate(this.value)">
-
-<div class="plates" id="plateList"></div>
-
-<div id="rdw"></div>
-<div id="rdwPrice" class="small-muted"></div>
-
-<div id="odoWarning" class="warning" style="display:none; margin-bottom:8px;">
-  Let op: km-stand invullen!
-</div>
-
-<label>Km-stand na rit</label>
-<input id="odometer" type="number" inputmode="numeric" placeholder="Bijv. 123456">
 
 <div class="toolbar">
   <button class="primary" type="button" id="saveBtn" onclick="saveTrip()">Opslaan</button>
@@ -291,27 +291,29 @@ td, th{
     <input type="file" id="importFile" accept=".xlsx,.xls">
   </div>
 
+  <button type="button" onclick="importExcelMerge()">Import en samenvoegen</button>
   <button type="button" onclick="importExcelReplace()">Import en vervang</button>
 
   <div class="note">
     Export maakt 2 tabbladen: <strong>Ritten</strong> en <strong>Werkdagen</strong>.
-    Importeren vervangt de huidige gegevens volledig door de inhoud van het Excel-bestand.
+    <br>Import en samenvoegen voegt nieuwe ritten en werkdagen toe.
+    <br>Import en vervang vervangt de huidige gegevens volledig.
   </div>
 </div>
 
 <div class="versionbox" id="versionBox">
-  <strong>App-versie:</strong> v13<br>
-  <strong>Opslagformaat:</strong> trips_v13 / plates_v13 / dayData_v13<br>
-  <strong>Laatste update:</strong> unieke rit-ID’s, stabiel bewerken/verwijderen, kenteken-normalisatie, km-stand reminder voor X605VJ en Z406BG, tussenstops kiezen met knoppen, werkdag in uren en minuten, Excel export met automatische kolombreedte, Excel import vervangt bestaande data, ritsortering op datum/tijd, ongeopslagen rit wordt meegenomen in export, voertuigomschrijving via RDW, versieblok onderaan de app.
+  <strong>App-versie:</strong> v14<br>
+  <strong>Opslagformaat:</strong> trips_v14 / plates_v14 / dayData_v14<br>
+  <strong>Laatste update:</strong> kentekenblok hoger geplaatst, km-stand voor X605VJ en Z406BG alleen reminder en niet verplicht, autoweergave opgeschoond naar merk/model/bouwjaar/nieuwprijs, import en samenvoegen toegevoegd.
 </div>
 
 </div>
 
 <script>
-const APP_VERSION = "v13";
-const STORAGE_TRIPS = "trips_v13";
-const STORAGE_PLATES = "plates_v13";
-const STORAGE_DAYDATA = "dayData_v13";
+const APP_VERSION = "v14";
+const STORAGE_TRIPS = "trips_v14";
+const STORAGE_PLATES = "plates_v14";
+const STORAGE_DAYDATA = "dayData_v14";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 
@@ -340,9 +342,9 @@ const importFileEl = $("importFile");
 const saveBtnEl = $("saveBtn");
 const cancelEditBtnEl = $("cancelEditBtn");
 
-let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v12"], []);
-let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v12"], []);
-let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v12"], {});
+let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v13", "trips_v12"], []);
+let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v13", "plates_v12"], []);
+let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v13", "dayData_v12"], {});
 
 let editingTripId = null;
 
@@ -423,22 +425,6 @@ function cleanVehicleText(value){
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
-function uniqueParts(parts){
-  const out = [];
-  const seen = new Set();
-
-  parts.forEach(part => {
-    const p = cleanVehicleText(part);
-    if(!p) return;
-    const key = p.toLowerCase();
-    if(seen.has(key)) return;
-    seen.add(key);
-    out.push(p);
-  });
-
-  return out;
-}
-
 function extractYearFromDateString(value){
   const s = String(value || "").trim();
   if(!s) return "";
@@ -463,64 +449,38 @@ function formatPrice(value){
   }).format(n);
 }
 
+function simplifyVehicleName(value){
+  let s = cleanVehicleText(value);
+  if(!s) return "";
+
+  s = s.replace(/\b[A-Z0-9]{8,}\b/g, "").replace(/\s+/g, " ").trim();
+  return s;
+}
+
 function buildVehicleDescription(d){
-  const merk = cleanVehicleText(d.merk);
-  const handelsbenaming = cleanVehicleText(d.handelsbenaming);
-  const type = cleanVehicleText(d.type);
-  const variant = cleanVehicleText(d.variant);
-  const uitvoering = cleanVehicleText(d.uitvoering || d.inrichting);
-  const commercial = cleanVehicleText(d.commerci_le_benaming || d.commerciele_benaming);
-  const voertuigsoort = cleanVehicleText(d.voertuigsoort);
+  let merk = cleanVehicleText(d.merk);
+  let model =
+    simplifyVehicleName(d.handelsbenaming) ||
+    simplifyVehicleName(d.commerci_le_benaming || d.commerciele_benaming) ||
+    simplifyVehicleName(d.type) ||
+    simplifyVehicleName(d.variant);
+
   const jaar =
     extractYearFromDateString(d.datum_eerste_toelating) ||
     extractYearFromDateString(d.datum_tenaamstelling);
 
-  let parts = [];
-
   if (merk && merk.toLowerCase() === "lr") {
-    parts.push("Land Rover");
-  } else {
-    parts.push(merk);
+    merk = "Land Rover";
   }
 
-  parts.push(handelsbenaming);
-
-  if (commercial && handelsbenaming && !handelsbenaming.toLowerCase().includes(commercial.toLowerCase())) {
-    parts.push(commercial);
-  }
-
-  if (type && handelsbenaming && !handelsbenaming.toLowerCase().includes(type.toLowerCase())) {
-    parts.push(type);
-  } else if (type && !handelsbenaming) {
-    parts.push(type);
-  }
-
-  if (variant && handelsbenaming && !handelsbenaming.toLowerCase().includes(variant.toLowerCase())) {
-    parts.push(variant);
-  } else if (variant && !handelsbenaming) {
-    parts.push(variant);
-  }
-
-  if (uitvoering) {
-    const lowerJoined = parts.join(" ").toLowerCase();
-    if (!lowerJoined.includes(uitvoering.toLowerCase())) {
-      parts.push(uitvoering);
-    }
-  }
-
-  parts = uniqueParts(parts);
-
-  let result = parts.join(" ").replace(/\s+/g, " ").trim();
-
-  if (!result && voertuigsoort) {
-    result = voertuigsoort;
-  }
+  let result = [merk, model].filter(Boolean).join(" ").trim();
+  if (!result) result = merk || model || "Voertuig niet gevonden";
 
   if (jaar) {
     result += " (" + jaar + ")";
   }
 
-  return result || "Voertuig niet gevonden";
+  return result;
 }
 
 async function fetchPlateInfo(plate){
@@ -767,7 +727,7 @@ function renderTrips(){
       <td>${escapeHtml(t.from || "")}</td>
       <td>${escapeHtml(t.to || "")}</td>
       <td>${escapeHtml(t.plate || "")}</td>
-      <td>${escapeHtml(t.vehicle || "")}</td>
+      <td>${escapeHtml(t.vehicle || "")}${t.priceText ? '<br><span class="small-muted">' + escapeHtml(t.priceText) + '</span>' : ''}</td>
       <td>${escapeHtml(t.odometer || "")}</td>
       <td>
         <button type="button" class="editbtn trip-action" data-action="edit" data-id="${escapeHtml(t.id)}">Bewerk</button>
@@ -830,7 +790,7 @@ workdayTableEl.addEventListener("click", function(e){
   if(action === "delete") deleteWorkday(d);
 });
 
-function buildTripObject(fromValue, toValue, vehicleText, existingId = null){
+function buildTripObject(fromValue, toValue, vehicleText, priceText, existingId = null){
   return {
     id: existingId || createTripId(),
     date: dateEl.value || today(),
@@ -840,6 +800,7 @@ function buildTripObject(fromValue, toValue, vehicleText, existingId = null){
     to: normalizeLocation(toValue),
     plate: normalizePlate(plateEl.value),
     vehicle: vehicleText || rdwEl.innerText || "",
+    priceText: priceText || rdwPriceEl.innerText || "",
     odometer: odometerEl.value.trim()
   };
 }
@@ -848,12 +809,6 @@ function validateTrip(trip){
   if(!trip.date || !trip.timeStart || !trip.timeEnd || !trip.from || !trip.to || !trip.plate){
     return false;
   }
-
-  if(isMandatoryOdoPlate(trip.plate) && !String(trip.odometer || "").trim()){
-    alert("Voor kenteken " + trip.plate + " moet je een km-stand invullen.");
-    return false;
-  }
-
   return true;
 }
 
@@ -876,7 +831,7 @@ async function buildCurrentDraftTripForExport(){
   if(!hasCurrentTripDraft()) return null;
 
   const info = await fetchPlateInfo(plateEl.value);
-  const trip = buildTripObject(fromEl.value, toEl.value, info.vehicleText);
+  const trip = buildTripObject(fromEl.value, toEl.value, info.vehicleText, info.priceText);
 
   if(!validateTrip(trip)) return null;
 
@@ -921,7 +876,13 @@ async function saveTrip(){
 
   const info = await lookupPlate();
   const existingTrip = editingTripId ? trips.find(t => t.id === editingTripId) : null;
-  const trip = buildTripObject(fromEl.value, toEl.value, info.vehicleText, existingTrip ? existingTrip.id : null);
+  const trip = buildTripObject(
+    fromEl.value,
+    toEl.value,
+    info.vehicleText,
+    info.priceText,
+    existingTrip ? existingTrip.id : null
+  );
 
   if(!validateTrip(trip)){
     alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
@@ -952,11 +913,6 @@ async function saveRoute(){
 
   if(!dateEl.value || !timeStartEl.value || !timeEndEl.value || !fromEl.value || !toEl.value || !p){
     alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
-    return;
-  }
-
-  if(isMandatoryOdoPlate(p) && !String(odometerEl.value || "").trim()){
-    alert("Voor kenteken " + p + " moet je een km-stand invullen.");
     return;
   }
 
@@ -999,6 +955,7 @@ async function saveRoute(){
       to: points[i + 1],
       plate: p,
       vehicle: info.vehicleText || rdwEl.innerText || "",
+      priceText: info.priceText || rdwPriceEl.innerText || "",
       odometer: odometerEl.value.trim()
     };
     if(!validateTrip(trip)) return;
@@ -1025,7 +982,7 @@ function editTripById(id){
   plateEl.value = normalizePlate(t.plate || "");
   odometerEl.value = t.odometer || "";
   rdwEl.innerText = t.vehicle || "";
-  rdwPriceEl.innerText = "";
+  rdwPriceEl.innerText = t.priceText || "";
 
   const d = dateEl.value || today();
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
@@ -1091,6 +1048,21 @@ function calcExcelColumnWidths(rows){
   return widths;
 }
 
+function tripExistsInList(list, trip){
+  return list.some(t =>
+    (t.id && trip.id && t.id === trip.id) ||
+    (
+      (t.date || "") === (trip.date || "") &&
+      (t.timeStart || "") === (trip.timeStart || "") &&
+      (t.timeEnd || "") === (trip.timeEnd || "") &&
+      (t.from || "") === (trip.from || "") &&
+      (t.to || "") === (trip.to || "") &&
+      normalizePlate(t.plate || "") === normalizePlate(trip.plate || "") &&
+      (t.odometer || "") === (trip.odometer || "")
+    )
+  );
+}
+
 async function exportExcel(){
   const draftTrip = await buildCurrentDraftTripForExport();
 
@@ -1106,7 +1078,7 @@ async function exportExcel(){
   });
 
   const tripRows = [
-    ["ID", "Datum", "Starttijd", "Eindtijd", "Van", "Naar", "Kenteken", "Auto", "Km-stand"],
+    ["ID", "Datum", "Starttijd", "Eindtijd", "Van", "Naar", "Kenteken", "Auto", "Nieuwprijs", "Km-stand"],
     ...exportTrips.map(t => [
       t.id || "",
       t.date || "",
@@ -1116,6 +1088,7 @@ async function exportExcel(){
       t.to || "",
       t.plate || "",
       t.vehicle || "",
+      t.priceText || "",
       t.odometer || ""
     ])
   ];
@@ -1162,13 +1135,7 @@ async function exportExcel(){
   XLSX.writeFile(wb, filename);
 }
 
-function importExcelReplace(){
-  const file = importFileEl.files[0];
-  if(!file){
-    alert("Kies eerst een Excel-bestand.");
-    return;
-  }
-
+function readImportedWorkbook(file, callback){
   const reader = new FileReader();
 
   reader.onload = function(e){
@@ -1196,6 +1163,7 @@ function importExcelReplace(){
           to: normalizeLocation(r["Naar"] || ""),
           plate: normalizePlate(r["Kenteken"] || ""),
           vehicle: String(r["Auto"] || "").trim(),
+          priceText: String(r["Nieuwprijs"] || "").trim(),
           odometer: String(r["Km-stand"] || "").trim()
         })).filter(t => t.date || t.timeStart || t.timeEnd || t.from || t.to || t.plate);
       }
@@ -1222,40 +1190,107 @@ function importExcelReplace(){
         });
       }
 
-      trips = importedTrips;
-      dayData = importedDayData;
-      plates = [];
-
-      trips.forEach(t => {
-        if(t.plate){
-          const p = normalizePlate(t.plate);
-          if(p && !plates.includes(p)){
-            plates.push(p);
-          }
-        }
-      });
-
-      plates = plates.slice(0, 10);
-
-      sortTrips();
-      saveAll();
-      renderTrips();
-      renderPlates();
-      renderWorkdays();
-
-      const d = dateEl.value || today();
-      workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
-      workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-
-      updateDayHoursDisplayOnly();
-
-      alert("Import gelukt. De huidige gegevens zijn vervangen.");
+      callback(null, { importedTrips, importedDayData });
     } catch(err){
-      alert("Import mislukt. Controleer of het een geldig Excel-bestand is.");
+      callback(err);
     }
   };
 
   reader.readAsArrayBuffer(file);
+}
+
+function rebuildPlateListFromTrips(){
+  plates = [];
+  trips.forEach(t => {
+    if(t.plate){
+      const p = normalizePlate(t.plate);
+      if(p && !plates.includes(p)){
+        plates.push(p);
+      }
+    }
+  });
+  plates = plates.slice(0, 10);
+}
+
+function refreshAfterImport(message){
+  sortTrips();
+  saveAll();
+  renderTrips();
+  renderPlates();
+  renderWorkdays();
+
+  const d = dateEl.value || today();
+  workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
+  workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
+  updateDayHoursDisplayOnly();
+
+  alert(message);
+}
+
+function importExcelReplace(){
+  const file = importFileEl.files[0];
+  if(!file){
+    alert("Kies eerst een Excel-bestand.");
+    return;
+  }
+
+  readImportedWorkbook(file, function(err, result){
+    if(err){
+      alert("Import mislukt. Controleer of het een geldig Excel-bestand is.");
+      return;
+    }
+
+    trips = result.importedTrips;
+    dayData = result.importedDayData;
+    rebuildPlateListFromTrips();
+    refreshAfterImport("Import gelukt. De huidige gegevens zijn vervangen.");
+  });
+}
+
+function importExcelMerge(){
+  const file = importFileEl.files[0];
+  if(!file){
+    alert("Kies eerst een Excel-bestand.");
+    return;
+  }
+
+  readImportedWorkbook(file, function(err, result){
+    if(err){
+      alert("Import mislukt. Controleer of het een geldig Excel-bestand is.");
+      return;
+    }
+
+    let addedTrips = 0;
+    result.importedTrips.forEach(trip => {
+      if(!tripExistsInList(trips, trip)){
+        trips.push(trip);
+        addedTrips++;
+      }
+    });
+
+    let addedDays = 0;
+    Object.keys(result.importedDayData).forEach(date => {
+      const incoming = result.importedDayData[date];
+      const existing = dayData[date];
+
+      if(!existing){
+        dayData[date] = incoming;
+        addedDays++;
+      } else {
+        const changed =
+          (existing.workStart || "") !== (incoming.workStart || "") ||
+          (existing.workEnd || "") !== (incoming.workEnd || "");
+
+        if(changed){
+          dayData[date] = incoming;
+          addedDays++;
+        }
+      }
+    });
+
+    rebuildPlateListFromTrips();
+    refreshAfterImport("Samenvoegen gelukt. Toegevoegd/gewijzigd: " + addedTrips + " ritten en " + addedDays + " werkdagen.");
+  });
 }
 
 function wipe(){
