@@ -39,12 +39,31 @@ input{
   font-size: 16px;
 }
 #plate{
-  background: rgb(248,171,4);
+  background: linear-gradient(
+    to right,
+    #003399 0px,
+    #003399 50px,
+    rgb(248,171,4) 50px,
+    rgb(248,171,4) 100%
+  );
+  color: black;
+  font-weight: normal;
+  height: 40px;          /* halve hoogte */
+  font-size: 20px;
+  text-align: center;
+  letter-spacing: 2px;
+  border: 2px solid #ccc;
+  border-radius: 6px;
+  padding-left: 60px;    /* ruimte voor blauwe balk */
+  box-sizing: border-box;
 }
 #plate.filled{
   font-weight: bold;
 }
-button{
+#plate{
+  box-shadow: inset 0 0 3px rgba(0,0,0,0.2);
+}
+  button{
   padding: 10px 12px;
   margin: 4px;
   border: none;
