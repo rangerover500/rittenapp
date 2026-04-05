@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Ritten Breeland</title>
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="/rittenapp/manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="/rittenapp/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="180x180" href="/rittenapp/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Ritten">
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <style>
 :root{
@@ -251,15 +258,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v20<br>
-    Werkdag begint verschijnt alleen bij de eerste rit van de dag. Rond 17:00 verschijnt een reminder en eventueel de stap voor werkdag eindigt als die nog leeg is. Eindtijd van een rit is nu optioneel en wordt automatisch gevuld met de starttijd; bij een volgende rit wordt de vorige open rit automatisch afgesloten met die nieuwe starttijd. Verder: wizard, aparte schermen voor Ritten en Export, Google Maps, RDW, bewerken/verwijderen en export/import.
+    <strong>App-versie:</strong> v21<br>
+    Werkdag begint verschijnt alleen bij de eerste rit van de dag. Rond 17:00 verschijnt een reminder en eventueel de stap voor werkdag eindigt als die nog leeg is. Eindtijd van een rit is optioneel en wordt automatisch gevuld met de starttijd; bij een volgende rit wordt de vorige open rit automatisch afgesloten met die nieuwe starttijd. Daarnaast is het iPhone-beginschermicoon nu expliciet ingesteld via apple-touch-icon.
   </div>
 </div>
 
 <script>
-const STORAGE_TRIPS = "trips_v20";
-const STORAGE_DAYDATA = "dayData_v20";
-const STORAGE_PLATES = "plates_v20";
+const STORAGE_TRIPS = "trips_v21";
+const STORAGE_DAYDATA = "dayData_v21";
+const STORAGE_PLATES = "plates_v21";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const KNOWN_ADDRESSES = {
@@ -273,9 +280,9 @@ const KNOWN_ADDRESSES = {
 const QUICK_LOCATIONS = Object.keys(KNOWN_ADDRESSES);
 const ALL_STEPS = [0,1,2,3,4,5,6,7,8,9,10];
 
-let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v19", "trips_v18", "trips_v17", "trips_v16", "trips_v15", "trips_v14", "trips_v13", "trips_v12"], []);
-let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v19", "dayData_v18", "dayData_v17", "dayData_v16", "dayData_v15", "dayData_v14", "dayData_v13", "dayData_v12"], {});
-let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v19", "plates_v18", "plates_v17", "plates_v16", "plates_v15", "plates_v14", "plates_v13", "plates_v12"], []);
+let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v20", "trips_v19", "trips_v18", "trips_v17", "trips_v16", "trips_v15", "trips_v14", "trips_v13", "trips_v12"], []);
+let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v20", "dayData_v19", "dayData_v18", "dayData_v17", "dayData_v16", "dayData_v15", "dayData_v14", "dayData_v13", "dayData_v12"], {});
+let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v20", "plates_v19", "plates_v18", "plates_v17", "plates_v16", "plates_v15", "plates_v14", "plates_v13", "plates_v12"], []);
 
 let currentStep = 0;
 let editingTripId = null;
