@@ -117,7 +117,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 
       <div class="step" data-step="4">
         <div class="step-title">Eindtijd rit</div>
-        <div class="step-sub">Hoe laat eindigt de rit?</div>
+        <div class="step-sub">Hoe laat eindigt de rit? (Optioneel – kan later aangepast worden)</div>
         <label for="timeEnd">Eindtijd rit</label>
         <input type="time" id="timeEnd">
       </div>
@@ -251,15 +251,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v19<br>
-    Werkdag begint verschijnt alleen bij de eerste rit van de dag. Rond 17:00 verschijnt een reminder en eventueel de stap voor werkdag eindigt als die nog leeg is. Verder: wizard, aparte schermen voor Ritten en Export, Google Maps, RDW, bewerken/verwijderen en export/import.
+    <strong>App-versie:</strong> v20<br>
+    Werkdag begint verschijnt alleen bij de eerste rit van de dag. Rond 17:00 verschijnt een reminder en eventueel de stap voor werkdag eindigt als die nog leeg is. Eindtijd van een rit is nu optioneel en wordt automatisch gevuld met de starttijd; bij een volgende rit wordt de vorige open rit automatisch afgesloten met die nieuwe starttijd. Verder: wizard, aparte schermen voor Ritten en Export, Google Maps, RDW, bewerken/verwijderen en export/import.
   </div>
 </div>
 
 <script>
-const STORAGE_TRIPS = "trips_v19";
-const STORAGE_DAYDATA = "dayData_v19";
-const STORAGE_PLATES = "plates_v19";
+const STORAGE_TRIPS = "trips_v20";
+const STORAGE_DAYDATA = "dayData_v20";
+const STORAGE_PLATES = "plates_v20";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const KNOWN_ADDRESSES = {
@@ -273,9 +273,9 @@ const KNOWN_ADDRESSES = {
 const QUICK_LOCATIONS = Object.keys(KNOWN_ADDRESSES);
 const ALL_STEPS = [0,1,2,3,4,5,6,7,8,9,10];
 
-let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v18", "trips_v17", "trips_v16", "trips_v15", "trips_v14", "trips_v13", "trips_v12"], []);
-let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v18", "dayData_v17", "dayData_v16", "dayData_v15", "dayData_v14", "dayData_v13", "dayData_v12"], {});
-let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v18", "plates_v17", "plates_v16", "plates_v15", "plates_v14", "plates_v13", "plates_v12"], []);
+let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v19", "trips_v18", "trips_v17", "trips_v16", "trips_v15", "trips_v14", "trips_v13", "trips_v12"], []);
+let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v19", "dayData_v18", "dayData_v17", "dayData_v16", "dayData_v15", "dayData_v14", "dayData_v13", "dayData_v12"], {});
+let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v19", "plates_v18", "plates_v17", "plates_v16", "plates_v15", "plates_v14", "plates_v13", "plates_v12"], []);
 
 let currentStep = 0;
 let editingTripId = null;
@@ -577,7 +577,7 @@ function buildTripObject(existingId, vehicleText, priceText, fromValue, toValue)
     id: existingId || createTripId(),
     date: dateEl.value || today(),
     timeStart: timeStartEl.value,
-    timeEnd: timeEndEl.value,
+    timeEnd: timeEndEl.value || timeStartEl.value,
     from: normalizeLocation(fromValue),
     to: normalizeLocation(toValue),
     plate: normalizePlate(plateEl.value),
@@ -587,7 +587,7 @@ function buildTripObject(existingId, vehicleText, priceText, fromValue, toValue)
   };
 }
 function validateTrip(trip){
-  return !!(trip.date && trip.timeStart && trip.timeEnd && trip.from && trip.to && trip.plate);
+  return !!(trip.date && trip.timeStart && trip.from && trip.to && trip.plate);
 }
 function savePlateToList(p){
   const plate = normalizePlate(p);
@@ -602,16 +602,34 @@ function removeConsecutiveDuplicates(points){
   return points.filter((p,i)=>i===0 || p!==points[i-1]);
 }
 
+function closePreviousOpenTrip(newTripStartDate, newTripStartTime, currentTripId){
+  const candidate = trips.find(t =>
+    t.id !== currentTripId &&
+    (t.date || "") === (newTripStartDate || "") &&
+    (!!t.timeStart) &&
+    (!t.timeEnd || t.timeEnd === t.timeStart)
+  );
+
+  if(!candidate) return;
+
+  const candidateKey = (candidate.date || "") + " " + (candidate.timeStart || "");
+  const newKey = (newTripStartDate || "") + " " + (newTripStartTime || "");
+  if(candidateKey >= newKey) return;
+
+  candidate.timeEnd = newTripStartTime || candidate.timeEnd || candidate.timeStart;
+}
+
 $("saveTripBtn").addEventListener("click", async ()=>{
   const info = await lookupPlate();
   const existing = editingTripId ? trips.find(t=>t.id===editingTripId) : null;
   const trip = buildTripObject(existing ? existing.id : null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
 
   if(!validateTrip(trip)){
-    alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
+    alert("Vul datum, starttijd, van, naar en kenteken in.");
     return;
   }
 
+  closePreviousOpenTrip(trip.date, trip.timeStart, editingTripId);
   savePlateToList(trip.plate);
 
   if(editingTripId){
@@ -629,11 +647,12 @@ $("saveTripBtn").addEventListener("click", async ()=>{
 
 $("saveRouteBtn").addEventListener("click", async ()=>{
   const p = normalizePlate(plateEl.value);
-  if(!dateEl.value || !timeStartEl.value || !timeEndEl.value || !fromEl.value || !toEl.value || !p){
-    alert("Vul datum, starttijd, eindtijd, van, naar en kenteken in.");
+  if(!dateEl.value || !timeStartEl.value || !fromEl.value || !toEl.value || !p){
+    alert("Vul datum, starttijd, van, naar en kenteken in.");
     return;
   }
 
+  closePreviousOpenTrip(dateEl.value || today(), timeStartEl.value, editingTripId);
   const info = await lookupPlate();
   const stopList = stopsEl.value.trim() ? stopsEl.value.split(",").map(s=>normalizeLocation(s.trim())).filter(Boolean) : [];
   let points = [normalizeLocation(fromEl.value), ...stopList, normalizeLocation(toEl.value)];
@@ -656,7 +675,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
       id: createTripId(),
       date: dateEl.value || today(),
       timeStart: timeStartEl.value,
-      timeEnd: timeEndEl.value,
+      timeEnd: timeEndEl.value || timeStartEl.value,
       from: points[i],
       to: points[i+1],
       plate: p,
