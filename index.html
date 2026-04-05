@@ -66,6 +66,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .version{margin-top:18px;font-size:13px;color:#555;background:#f7f7f7;border:1px solid #ddd;border-radius:10px;padding:12px}
 .status{font-size:13px;color:#444;margin-top:10px;min-height:18px}
 .fileblock{margin-top:16px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fafafa}
+.dayhint{margin-bottom:12px;padding:10px 12px;border-radius:10px;background:#fff6f6;border:1px solid #f0c7cf;color:#8a1327;display:none}
 </style>
 </head>
 <body>
@@ -79,20 +80,22 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div id="screen-invoer" class="screen active">
+    <div class="dayhint" id="dayReminder"></div>
+
     <div class="wizard">
       <div class="progress-text" id="progressText">Stap 1 van 11</div>
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 
       <div class="step active" data-step="0">
         <div class="step-title">Werkdag begint</div>
-        <div class="step-sub">Kies hoe laat je werkdag begint.</div>
+        <div class="step-sub">Deze vraag verschijnt alleen als voor vandaag nog geen begintijd is ingevuld.</div>
         <label for="workStart">Aanwezig vanaf</label>
         <input type="time" id="workStart">
       </div>
 
       <div class="step" data-step="1">
         <div class="step-title">Werkdag eindigt</div>
-        <div class="step-sub">Kies hoe laat je werkdag eindigt.</div>
+        <div class="step-sub">Deze stap verschijnt pas aan het einde van de middag als eindtijd nog leeg is.</div>
         <label for="workEnd">Klaar om</label>
         <input type="time" id="workEnd">
         <div class="info" id="dayHoursInfo"></div>
@@ -248,15 +251,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v18<br>
-    Wizard + aparte schermen voor Ritten en Export. Opslaan, bewerken, verwijderen, RDW, Google Maps, export/import en totaalbestand bijgewerkt.
+    <strong>App-versie:</strong> v19<br>
+    Werkdag begint verschijnt alleen bij de eerste rit van de dag. Rond 17:00 verschijnt een reminder en eventueel de stap voor werkdag eindigt als die nog leeg is. Verder: wizard, aparte schermen voor Ritten en Export, Google Maps, RDW, bewerken/verwijderen en export/import.
   </div>
 </div>
 
 <script>
-const STORAGE_TRIPS = "trips_v18";
-const STORAGE_DAYDATA = "dayData_v18";
-const STORAGE_PLATES = "plates_v18";
+const STORAGE_TRIPS = "trips_v19";
+const STORAGE_DAYDATA = "dayData_v19";
+const STORAGE_PLATES = "plates_v19";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const KNOWN_ADDRESSES = {
@@ -268,11 +271,11 @@ const KNOWN_ADDRESSES = {
   "Perfect Carwrapping": "Lübeck 8, 2993 LK Barendrecht"
 };
 const QUICK_LOCATIONS = Object.keys(KNOWN_ADDRESSES);
-const TOTAL_STEPS = 11;
+const ALL_STEPS = [0,1,2,3,4,5,6,7,8,9,10];
 
-let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v17", "trips_v16", "trips_v15", "trips_v14", "trips_v13", "trips_v12"], []);
-let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v17", "dayData_v16", "dayData_v15", "dayData_v14", "dayData_v13", "dayData_v12"], {});
-let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v17", "plates_v16", "plates_v15", "plates_v14", "plates_v13", "plates_v12"], []);
+let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v18", "trips_v17", "trips_v16", "trips_v15", "trips_v14", "trips_v13", "trips_v12"], []);
+let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v18", "dayData_v17", "dayData_v16", "dayData_v15", "dayData_v14", "dayData_v13", "dayData_v12"], {});
+let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v18", "plates_v17", "plates_v16", "plates_v15", "plates_v14", "plates_v13", "plates_v12"], []);
 
 let currentStep = 0;
 let editingTripId = null;
@@ -291,6 +294,7 @@ const prevBtnEl = document.getElementById("prevBtn");
 const nextBtnEl = document.getElementById("nextBtn");
 const reviewBoxEl = document.getElementById("reviewBox");
 const editStatusEl = document.getElementById("editStatus");
+const dayReminderEl = document.getElementById("dayReminder");
 
 const workStartEl = document.getElementById("workStart");
 const workEndEl = document.getElementById("workEnd");
@@ -334,6 +338,9 @@ function saveAll(){
 function pad(n){ return String(n).padStart(2, "0"); }
 function today(){ const d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
 function now(){ const d=new Date(); return pad(d.getHours())+":"+pad(d.getMinutes()); }
+function currentHour(){ return new Date().getHours(); }
+function isToday(dateStr){ return (dateStr || today()) === today(); }
+
 function normalizePlate(v){ return String(v||"").toUpperCase().replace(/[^A-Z0-9]/g,"").trim(); }
 function normalizeLocation(v){
   const t = String(v||"").trim().toLowerCase();
@@ -384,6 +391,33 @@ function setScreen(name){
 }
 screenButtons.forEach(btn => btn.addEventListener("click", ()=>setScreen(btn.dataset.screenBtn)));
 
+function shouldShowWorkStartStep(){
+  const d = dateEl.value || today();
+  return !(dayData[d] && dayData[d].workStart);
+}
+function shouldShowWorkEndStep(){
+  const d = dateEl.value || today();
+  if(dayData[d] && dayData[d].workEnd) return false;
+  if(!isToday(d)) return false;
+  return currentHour() >= 17;
+}
+function getVisibleSteps(){
+  return ALL_STEPS.filter(step => {
+    if(step === 0) return shouldShowWorkStartStep();
+    if(step === 1) return shouldShowWorkEndStep();
+    return true;
+  });
+}
+function getCurrentVisibleIndex(){
+  const visible = getVisibleSteps();
+  let idx = visible.indexOf(currentStep);
+  if(idx === -1){
+    currentStep = visible[0];
+    idx = 0;
+  }
+  return idx;
+}
+
 function addQuickButtons(containerId, items, callback){
   const el = $(containerId);
   el.innerHTML = "";
@@ -410,8 +444,7 @@ function extractYearFromDateString(v){
   const s = String(v||"").trim();
   const m = s.match(/^(\d{4})/);
   if(m) return m[1];
-  if(/^\d{8}$/.test(s)) return s.slice(0,4);
-  return "";
+  return /^\d{8}$/.test(s) ? s.slice(0,4) : "";
 }
 function simplifyVehicleName(v){
   let s = cleanVehicleText(v);
@@ -466,11 +499,24 @@ async function lookupPlate(){
   return info;
 }
 
+function updateDayReminder(){
+  const d = dateEl.value || today();
+  if(isToday(d) && currentHour() >= 17 && !(dayData[d] && dayData[d].workEnd)){
+    dayReminderEl.style.display = "block";
+    dayReminderEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen.";
+    editStatusEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen.";
+  } else {
+    dayReminderEl.style.display = "none";
+    if(!editingTripId) editStatusEl.textContent = "";
+  }
+}
+
 function buildReviewHtml(){
   const stops = stopsEl.value.trim() ? stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).join(", ") : "-";
+  const d = dateEl.value || today();
   return `
     <div><strong>Werkdag:</strong> ${workStartEl.value || "-"} → ${workEndEl.value || "-"} (${formatMinutesDutch(timeDiffMinutes(workStartEl.value, workEndEl.value))})</div>
-    <div><strong>Datum:</strong> ${dateEl.value || "-"}</div>
+    <div><strong>Datum:</strong> ${d || "-"}</div>
     <div><strong>Rit:</strong> ${timeStartEl.value || "-"} → ${timeEndEl.value || "-"}</div>
     <div><strong>Kenteken:</strong> ${plateEl.value || "-"}</div>
     <div><strong>Auto:</strong> ${rdwInfoEl.textContent || "-"}</div>
@@ -483,18 +529,42 @@ function buildReviewHtml(){
 function updateReview(){
   reviewBoxEl.innerHTML = buildReviewHtml();
   $("mapsBtn").style.display = (fromEl.value.trim() && toEl.value.trim()) ? "inline-block" : "none";
+  updateDayReminder();
 }
 
 function renderStep(){
-  steps.forEach((step,index)=>step.classList.toggle("active", index===currentStep));
-  progressTextEl.textContent = "Stap " + (currentStep+1) + " van " + TOTAL_STEPS;
-  progressFillEl.style.width = (((currentStep+1)/TOTAL_STEPS)*100) + "%";
-  prevBtnEl.disabled = currentStep === 0;
-  nextBtnEl.textContent = currentStep === TOTAL_STEPS-1 ? "Klaar" : "Volgende";
+  const visible = getVisibleSteps();
+  if(!visible.includes(currentStep)) currentStep = visible[0];
+  steps.forEach(step => {
+    const stepNum = Number(step.dataset.step);
+    step.classList.toggle("active", stepNum === currentStep);
+  });
+
+  const visibleIndex = getCurrentVisibleIndex();
+  progressTextEl.textContent = "Stap " + (visibleIndex + 1) + " van " + visible.length;
+  progressFillEl.style.width = (((visibleIndex + 1)/visible.length) * 100) + "%";
+
+  prevBtnEl.disabled = visibleIndex === 0;
+  nextBtnEl.textContent = visibleIndex === visible.length - 1 ? "Klaar" : "Volgende";
+
   updateReview();
 }
-function nextStep(){ if(currentStep < TOTAL_STEPS-1){ currentStep += 1; renderStep(); } }
-function prevStep(){ if(currentStep > 0){ currentStep -= 1; renderStep(); } }
+function nextStep(){
+  const visible = getVisibleSteps();
+  const idx = visible.indexOf(currentStep);
+  if(idx < visible.length - 1){
+    currentStep = visible[idx + 1];
+    renderStep();
+  }
+}
+function prevStep(){
+  const visible = getVisibleSteps();
+  const idx = visible.indexOf(currentStep);
+  if(idx > 0){
+    currentStep = visible[idx - 1];
+    renderStep();
+  }
+}
 
 prevBtnEl.addEventListener("click", prevStep);
 nextBtnEl.addEventListener("click", nextStep);
@@ -617,12 +687,12 @@ function clearForm(){
   toEl.value = "";
   stopsEl.value = "";
   rdwInfoEl.textContent = "";
-  editStatusEl.textContent = "";
   editingTripId = null;
   $("cancelEditBtn").style.display = "none";
+  if(!isToday(d) || currentHour() < 17 || (dayData[d] && dayData[d].workEnd)) editStatusEl.textContent = "";
   updateHoursInfo();
   updatePlateStyle();
-  currentStep = 0;
+  currentStep = getVisibleSteps()[0];
   renderStep();
 }
 
@@ -694,7 +764,7 @@ tripTableEl.addEventListener("click", e=>{
     editStatusEl.textContent = "Je bewerkt nu een bestaande rit.";
     updateHoursInfo();
     updatePlateStyle();
-    currentStep = 0;
+    currentStep = getVisibleSteps()[0];
     renderStep();
     setScreen("invoer");
     window.scrollTo({top:0, behavior:"smooth"});
@@ -716,7 +786,7 @@ workdayTableEl.addEventListener("click", e=>{
     workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
     updateHoursInfo();
     setScreen("invoer");
-    currentStep = 0;
+    currentStep = getVisibleSteps()[0];
     renderStep();
   }
   if(btn.dataset.workDelete){
@@ -725,6 +795,8 @@ workdayTableEl.addEventListener("click", e=>{
     delete dayData[d];
     saveAll();
     renderWorkdays();
+    updateDayReminder();
+    renderStep();
   }
 });
 
@@ -875,6 +947,7 @@ $("importReplaceBtn").addEventListener("click", ()=>{
     renderTrips();
     renderWorkdays();
     renderPlateButtons();
+    clearForm();
     alert("Import gelukt. De huidige gegevens zijn vervangen.");
   });
 });
@@ -902,6 +975,7 @@ $("importMergeBtn").addEventListener("click", ()=>{
     renderTrips();
     renderWorkdays();
     renderPlateButtons();
+    clearForm();
     alert("Samenvoegen gelukt. Toegevoegd/gewijzigd: " + addedTrips + " ritten en " + addedDays + " werkdagen.");
   });
 });
@@ -947,22 +1021,23 @@ addQuickButtons("stopsButtons", QUICK_LOCATIONS, value=>{
 });
 renderPlateButtons();
 
-workStartEl.addEventListener("input", ()=>{
+function updateDayDataForSelectedDate(){
   const d = dateEl.value || today();
   if(workStartEl.value || workEndEl.value) dayData[d] = {workStart: workStartEl.value || "", workEnd: workEndEl.value || ""};
   else delete dayData[d];
   saveAll();
-  updateHoursInfo();
   renderWorkdays();
+  updateDayReminder();
+  renderStep();
+}
+workStartEl.addEventListener("input", ()=>{
+  updateDayDataForSelectedDate();
+  updateHoursInfo();
   updateReview();
 });
 workEndEl.addEventListener("input", ()=>{
-  const d = dateEl.value || today();
-  if(workStartEl.value || workEndEl.value) dayData[d] = {workStart: workStartEl.value || "", workEnd: workEndEl.value || ""};
-  else delete dayData[d];
-  saveAll();
+  updateDayDataForSelectedDate();
   updateHoursInfo();
-  renderWorkdays();
   updateReview();
 });
 dateEl.addEventListener("input", ()=>{
@@ -970,6 +1045,8 @@ dateEl.addEventListener("input", ()=>{
   workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
   workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
   updateHoursInfo();
+  currentStep = getVisibleSteps()[0];
+  renderStep();
   updateReview();
 });
 plateEl.addEventListener("input", ()=>{ updatePlateStyle(); lookupPlate(); });
@@ -1003,6 +1080,7 @@ updateReview();
 renderTrips();
 renderWorkdays();
 renderStep();
+setInterval(updateDayReminder, 60000);
 </script>
 </body>
 </html>
