@@ -4,13 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Ritten Breeland</title>
-<meta name="theme-color" content="#ffffff">
-<link rel="manifest" href="/rittenapp/manifest.json">
-<link rel="apple-touch-icon" sizes="180x180" href="/rittenapp/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="180x180" href="/rittenapp/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Ritten">
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <style>
 :root{
@@ -258,15 +251,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v21<br>
-    Werkdag begint verschijnt alleen bij de eerste rit van de dag. Rond 17:00 verschijnt een reminder en eventueel de stap voor werkdag eindigt als die nog leeg is. Eindtijd van een rit is optioneel en wordt automatisch gevuld met de starttijd; bij een volgende rit wordt de vorige open rit automatisch afgesloten met die nieuwe starttijd. Daarnaast is het iPhone-beginschermicoon nu expliciet ingesteld via apple-touch-icon.
+    <strong>App-versie:</strong> v22<br>
+    Werkdag begint verschijnt alleen bij de eerste rit van de dag. Rond 17:00 verschijnt een reminder en eventueel de stap voor werkdag eindigt als die nog leeg is. Eindtijd van een rit is nu optioneel en wordt automatisch gevuld met de starttijd; bij een volgende rit wordt de vorige open rit automatisch afgesloten met die nieuwe starttijd. Verder: wizard, aparte schermen voor Ritten en Export, Google Maps, RDW, bewerken/verwijderen en export/import.
   </div>
 </div>
 
 <script>
-const STORAGE_TRIPS = "trips_v21";
-const STORAGE_DAYDATA = "dayData_v21";
-const STORAGE_PLATES = "plates_v21";
+const STORAGE_TRIPS = "trips_v22";
+const STORAGE_DAYDATA = "dayData_v22";
+const STORAGE_PLATES = "plates_v22";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const KNOWN_ADDRESSES = {
@@ -400,11 +393,11 @@ screenButtons.forEach(btn => btn.addEventListener("click", ()=>setScreen(btn.dat
 
 function shouldShowWorkStartStep(){
   const d = dateEl.value || today();
-  return !(dayData[d] && dayData[d].workStart);
+  return !(dayData[d] && dayData[d].workStart && String(dayData[d].workStart).trim() !== "");
 }
 function shouldShowWorkEndStep(){
   const d = dateEl.value || today();
-  if(dayData[d] && dayData[d].workEnd) return false;
+  if(dayData[d] && dayData[d].workEnd && String(dayData[d].workEnd).trim() !== "") return false;
   if(!isToday(d)) return false;
   return currentHour() >= 17;
 }
@@ -1082,13 +1075,30 @@ $("mapsBtn").addEventListener("click", ()=>{
   const from = resolveMapAddress(fromEl.value);
   const to = resolveMapAddress(toEl.value);
   if(!from || !to){ alert("Vul eerst Van en Naar in."); return; }
-  const stops = stopsEl.value.trim() ? stopsEl.value.split(",").map(s=>resolveMapAddress(s.trim())).filter(Boolean) : [];
-  let url = "https://www.google.com/maps/dir/?api=1";
-  url += "&origin=" + encodeURIComponent(from);
-  url += "&destination=" + encodeURIComponent(to);
-  url += "&travelmode=driving";
-  if(stops.length) url += "&waypoints=" + encodeURIComponent(stops.join("|"));
-  window.open(url, "_blank");
+
+  const stops = stopsEl.value.trim()
+    ? stopsEl.value.split(",").map(s=>resolveMapAddress(s.trim())).filter(Boolean)
+    : [];
+
+  const webUrl =
+    "https://www.google.com/maps/dir/?api=1" +
+    "&origin=" + encodeURIComponent(from) +
+    "&destination=" + encodeURIComponent(to) +
+    "&travelmode=driving" +
+    (stops.length ? "&waypoints=" + encodeURIComponent(stops.join("|")) : "");
+
+  const appUrl =
+    "comgooglemaps://?saddr=" + encodeURIComponent(from) +
+    "&daddr=" + encodeURIComponent(to) +
+    (stops.length ? "&waypoints=" + encodeURIComponent(stops.join("|")) : "") +
+    "&directionsmode=driving";
+
+  const fallbackTimer = setTimeout(() => {
+    window.location.href = webUrl;
+  }, 700);
+
+  window.addEventListener("pagehide", () => clearTimeout(fallbackTimer), { once: true });
+  window.location.href = appUrl;
 });
 
 dateEl.value = today();
