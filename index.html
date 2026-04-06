@@ -255,15 +255,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v29<br>
-    v29 is gebaseerd op v28 en behoudt alle bestaande functies. Nieuw in v29: veilige eindtijd-logica zodat een rit nooit vóór de starttijd eindigt, plus keuze tussen Apple Kaarten en Google Maps in het controlescherm. Km-stand blijft alleen een reminder voor geselecteerde kentekens.
+    <strong>App-versie:</strong> v30<br>
+    v30 is gebaseerd op v28 en behoudt alle bestaande functies. Nieuw: veilige eindtijd-logica zodat een rit nooit vóór de starttijd eindigt, keuze tussen Apple Kaarten en Google Maps, en Google Maps ondersteunt nu tussenstops via waypoints. Apple Kaarten blijft voor nu alleen geschikt voor routes zonder tussenstop.
   </div>
 </div>
 
 <script>
-const STORAGE_TRIPS = "trips_v29";
-const STORAGE_DAYDATA = "dayData_v29";
-const STORAGE_PLATES = "plates_v29";
+const STORAGE_TRIPS = "trips_v30";
+const STORAGE_DAYDATA = "dayData_v30";
+const STORAGE_PLATES = "plates_v30";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const KNOWN_ADDRESSES = {
@@ -277,9 +277,9 @@ const KNOWN_ADDRESSES = {
 const QUICK_LOCATIONS = Object.keys(KNOWN_ADDRESSES);
 const ALL_STEPS = [0,1,2,3,4,5,6,7,8,9,10];
 
-let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v28", "trips_v27", "trips_v20", "trips_v19", "trips_v18", "trips_v17", "trips_v16", "trips_v15", "trips_v14", "trips_v13", "trips_v12"], []);
-let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v28", "dayData_v27", "dayData_v20", "dayData_v19", "dayData_v18", "dayData_v17", "dayData_v16", "dayData_v15", "dayData_v14", "dayData_v13", "dayData_v12"], {});
-let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v28", "plates_v27", "plates_v20", "plates_v19", "plates_v18", "plates_v17", "plates_v16", "plates_v15", "plates_v14", "plates_v13", "plates_v12"], []);
+let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v29","trips_v28","trips_v27","trips_v20","trips_v19","trips_v18","trips_v17","trips_v16","trips_v15","trips_v14","trips_v13","trips_v12"], []);
+let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v29","dayData_v28","dayData_v27","dayData_v20","dayData_v19","dayData_v18","dayData_v17","dayData_v16","dayData_v15","dayData_v14","dayData_v13","dayData_v12"], {});
+let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v29","plates_v28","plates_v27","plates_v20","plates_v19","plates_v18","plates_v17","plates_v16","plates_v15","plates_v14","plates_v13","plates_v12"], []);
 
 let currentStep = 0;
 let editingTripId = null;
@@ -361,6 +361,17 @@ function normalizeLocation(v){
 function resolveMapAddress(v){
   const key = normalizeLocation(v);
   return KNOWN_ADDRESSES[key] || String(v||"").trim();
+}
+function getRoutePointsForMaps(){
+  return {
+    from: resolveMapAddress(fromEl.value),
+    to: resolveMapAddress(toEl.value),
+    stops: stopsEl.value
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(resolveMapAddress)
+  };
 }
 function timeDiffMinutes(start,end){
   if(!start || !end) return 0;
@@ -551,8 +562,8 @@ function buildReviewHtml(){
 function updateReview(){
   reviewBoxEl.innerHTML = buildReviewHtml();
   const showMaps = !!(fromEl.value.trim() && toEl.value.trim());
-  $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
-  $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "none";
+  $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "inline-block";
+  $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "inline-block";
   updateDayReminder();
 }
 
@@ -695,6 +706,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
   }
 
   savePlateToList(p);
+  const safeEndTime = getSafeTripEndTime(timeStartEl.value, timeEndEl.value);
 
   const newTrips = [];
   for(let i=0;i<points.length-1;i++){
@@ -702,7 +714,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
       id: createTripId(),
       date: dateEl.value || today(),
       timeStart: timeStartEl.value,
-      timeEnd: getSafeTripEndTime(timeStartEl.value, timeEndEl.value),
+      timeEnd: safeEndTime,
       from: points[i],
       to: points[i+1],
       plate: p,
@@ -1098,10 +1110,15 @@ plateEl.addEventListener("input", ()=>{ updatePlateStyle(); lookupPlate(); });
 [timeStartEl, timeEndEl, odometerEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("input", updateReview));
 
 $("mapsAppleBtn").addEventListener("click", ()=>{
-  const from = resolveMapAddress(fromEl.value);
-  const to = resolveMapAddress(toEl.value);
-  if(!from || !to){ alert("Vul eerst Van en Naar in."); return; }
-
+  const { from, to, stops } = getRoutePointsForMaps();
+  if(!from || !to){
+    alert("Vul eerst Van en Naar in.");
+    return;
+  }
+  if(stops.length){
+    alert("Apple Kaarten ondersteunt in deze app nu nog geen tussenstops. Gebruik voor routes met tussenstop de knop Google Maps.");
+    return;
+  }
   const appleUrl =
     "http://maps.apple.com/?" +
     "saddr=" + encodeURIComponent(from) +
@@ -1112,15 +1129,22 @@ $("mapsAppleBtn").addEventListener("click", ()=>{
 });
 
 $("mapsGoogleBtn").addEventListener("click", ()=>{
-  const from = resolveMapAddress(fromEl.value);
-  const to = resolveMapAddress(toEl.value);
-  if(!from || !to){ alert("Vul eerst Van en Naar in."); return; }
+  const { from, to, stops } = getRoutePointsForMaps();
+  if(!from || !to){
+    alert("Vul eerst Van en Naar in.");
+    return;
+  }
 
-  const googleUrl =
+  let googleUrl =
     "https://www.google.com/maps/dir/?api=1" +
     "&origin=" + encodeURIComponent(from) +
     "&destination=" + encodeURIComponent(to) +
-    "&travelmode=driving";
+    "&travelmode=driving" +
+    "&dir_action=navigate";
+
+  if(stops.length){
+    googleUrl += "&waypoints=" + encodeURIComponent(stops.join("|"));
+  }
 
   window.location.href = googleUrl;
 });
