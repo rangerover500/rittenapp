@@ -174,7 +174,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
         <div class="review" id="reviewBox"></div>
         <div class="toolbar">
-          <button type="button" class="btn-map" id="mapsBtn">Start route in Kaarten</button>
+          <button type="button" class="btn-map" id="mapsAppleBtn">Apple Kaarten</button>
+          <button type="button" class="btn-map" id="mapsGoogleBtn">Google Maps</button>
           <button type="button" class="btn-primary" id="saveTripBtn">Opslaan rit</button>
           <button type="button" class="btn-secondary" id="saveRouteBtn">Route met tussenstops opslaan</button>
           <button type="button" class="btn-secondary" id="clearBtn">Leegmaken</button>
@@ -254,15 +255,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v28<br>
-    v28 bevat dezelfde wizard/logica als v27, maar nu met expliciete apple-touch-icon tags in de head voor testen op iPhone via Zet op beginscherm. Zorg dat apple-touch-icon.png naast dit index-bestand staat in de repo.
+    <strong>App-versie:</strong> v29<br>
+    v29 is gebaseerd op v28 en behoudt alle bestaande functies. Nieuw in v29: veilige eindtijd-logica zodat een rit nooit vóór de starttijd eindigt, plus keuze tussen Apple Kaarten en Google Maps in het controlescherm. Km-stand blijft alleen een reminder voor geselecteerde kentekens.
   </div>
 </div>
 
 <script>
-const STORAGE_TRIPS = "trips_v28";
-const STORAGE_DAYDATA = "dayData_v28";
-const STORAGE_PLATES = "plates_v28";
+const STORAGE_TRIPS = "trips_v29";
+const STORAGE_DAYDATA = "dayData_v29";
+const STORAGE_PLATES = "plates_v29";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const KNOWN_ADDRESSES = {
@@ -276,9 +277,9 @@ const KNOWN_ADDRESSES = {
 const QUICK_LOCATIONS = Object.keys(KNOWN_ADDRESSES);
 const ALL_STEPS = [0,1,2,3,4,5,6,7,8,9,10];
 
-let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v27","trips_v20","trips_v19","trips_v18","trips_v17","trips_v16","trips_v15","trips_v14","trips_v13","trips_v12"], []);
-let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v27","dayData_v20","dayData_v19","dayData_v18","dayData_v17","dayData_v16","dayData_v15","dayData_v14","dayData_v13","dayData_v12"], {});
-let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v27","plates_v20","plates_v19","plates_v18","plates_v17","plates_v16","plates_v15","plates_v14","plates_v13","plates_v12"], []);
+let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v28", "trips_v27", "trips_v20", "trips_v19", "trips_v18", "trips_v17", "trips_v16", "trips_v15", "trips_v14", "trips_v13", "trips_v12"], []);
+let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v28", "dayData_v27", "dayData_v20", "dayData_v19", "dayData_v18", "dayData_v17", "dayData_v16", "dayData_v15", "dayData_v14", "dayData_v13", "dayData_v12"], {});
+let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v28", "plates_v27", "plates_v20", "plates_v19", "plates_v18", "plates_v17", "plates_v16", "plates_v15", "plates_v14", "plates_v13", "plates_v12"], []);
 
 let currentStep = 0;
 let editingTripId = null;
@@ -441,6 +442,16 @@ function addQuickButtons(containerId, items, callback){
   });
 }
 
+function getSafeTripEndTime(start, end){
+  const s = String(start || "").trim();
+  const e = String(end || "").trim();
+
+  if(!s) return e || "";
+  if(!e) return s;
+
+  return e < s ? s : e;
+}
+
 function updateHoursInfo(){
   const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
   dayHoursInfoEl.textContent = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
@@ -528,7 +539,7 @@ function buildReviewHtml(){
   return `
     <div><strong>Werkdag:</strong> ${workStartEl.value || "-"} → ${workEndEl.value || "-"} (${formatMinutesDutch(timeDiffMinutes(workStartEl.value, workEndEl.value))})</div>
     <div><strong>Datum:</strong> ${d || "-"}</div>
-    <div><strong>Rit:</strong> ${timeStartEl.value || "-"} → ${timeEndEl.value || "-"}</div>
+    <div><strong>Rit:</strong> ${timeStartEl.value || "-"} → ${getSafeTripEndTime(timeStartEl.value, timeEndEl.value) || "-"}</div>
     <div><strong>Kenteken:</strong> ${plateEl.value || "-"}</div>
     <div><strong>Auto:</strong> ${rdwInfoEl.textContent || "-"}</div>
     <div><strong>Km-stand:</strong> ${odometerEl.value || "-"}</div>
@@ -539,7 +550,9 @@ function buildReviewHtml(){
 }
 function updateReview(){
   reviewBoxEl.innerHTML = buildReviewHtml();
-  $("mapsBtn").style.display = (fromEl.value.trim() && toEl.value.trim()) ? "inline-block" : "none";
+  const showMaps = !!(fromEl.value.trim() && toEl.value.trim());
+  $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
+  $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "none";
   updateDayReminder();
 }
 
@@ -590,7 +603,7 @@ function buildTripObject(existingId, vehicleText, priceText, fromValue, toValue)
     id: existingId || createTripId(),
     date: dateEl.value || today(),
     timeStart: timeStartEl.value,
-    timeEnd: timeEndEl.value || timeStartEl.value,
+    timeEnd: getSafeTripEndTime(timeStartEl.value, timeEndEl.value),
     from: normalizeLocation(fromValue),
     to: normalizeLocation(toValue),
     plate: normalizePlate(plateEl.value),
@@ -629,7 +642,8 @@ function closePreviousOpenTrip(newTripStartDate, newTripStartTime, currentTripId
   const newKey = (newTripStartDate || "") + " " + (newTripStartTime || "");
   if(candidateKey >= newKey) return;
 
-  candidate.timeEnd = newTripStartTime || candidate.timeEnd || candidate.timeStart;
+  const safeEnd = newTripStartTime || candidate.timeEnd || candidate.timeStart;
+  candidate.timeEnd = safeEnd < candidate.timeStart ? candidate.timeStart : safeEnd;
 }
 
 $("saveTripBtn").addEventListener("click", async ()=>{
@@ -688,7 +702,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
       id: createTripId(),
       date: dateEl.value || today(),
       timeStart: timeStartEl.value,
-      timeEnd: timeEndEl.value || timeStartEl.value,
+      timeEnd: getSafeTripEndTime(timeStartEl.value, timeEndEl.value),
       from: points[i],
       to: points[i+1],
       plate: p,
@@ -891,7 +905,7 @@ function readImportedWorkbook(file, callback){
           id: String(r["ID"]||"").trim() || createTripId(),
           date: String(r["Datum"]||"").trim(),
           timeStart: String(r["Starttijd"]||"").trim(),
-          timeEnd: String(r["Eindtijd"]||"").trim(),
+          timeEnd: getSafeTripEndTime(String(r["Starttijd"]||"").trim(), String(r["Eindtijd"]||"").trim()),
           from: normalizeLocation(r["Van"]||""),
           to: normalizeLocation(r["Naar"]||""),
           plate: normalizePlate(r["Kenteken"]||""),
@@ -1083,7 +1097,7 @@ dateEl.addEventListener("input", ()=>{
 plateEl.addEventListener("input", ()=>{ updatePlateStyle(); lookupPlate(); });
 [timeStartEl, timeEndEl, odometerEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("input", updateReview));
 
-$("mapsBtn").addEventListener("click", ()=>{
+$("mapsAppleBtn").addEventListener("click", ()=>{
   const from = resolveMapAddress(fromEl.value);
   const to = resolveMapAddress(toEl.value);
   if(!from || !to){ alert("Vul eerst Van en Naar in."); return; }
@@ -1095,6 +1109,20 @@ $("mapsBtn").addEventListener("click", ()=>{
     "&dirflg=d";
 
   window.location.href = appleUrl;
+});
+
+$("mapsGoogleBtn").addEventListener("click", ()=>{
+  const from = resolveMapAddress(fromEl.value);
+  const to = resolveMapAddress(toEl.value);
+  if(!from || !to){ alert("Vul eerst Van en Naar in."); return; }
+
+  const googleUrl =
+    "https://www.google.com/maps/dir/?api=1" +
+    "&origin=" + encodeURIComponent(from) +
+    "&destination=" + encodeURIComponent(to) +
+    "&travelmode=driving";
+
+  window.location.href = googleUrl;
 });
 
 dateEl.value = today();
