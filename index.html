@@ -171,7 +171,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
         <div class="review" id="reviewBox"></div>
         <div class="toolbar">
-          <button type="button" class="btn-map" id="mapsBtn">Bekijk route in Google Maps</button>
+          <button type="button" class="btn-map" id="mapsBtn">Start route in Kaarten</button>
           <button type="button" class="btn-primary" id="saveTripBtn">Opslaan rit</button>
           <button type="button" class="btn-secondary" id="saveRouteBtn">Route met tussenstops opslaan</button>
           <button type="button" class="btn-secondary" id="clearBtn">Leegmaken</button>
@@ -251,15 +251,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v23<br>
+    <strong>App-versie:</strong> v24<br>
     Werkdag begint verschijnt alleen bij de eerste rit van de dag. Rond 17:00 verschijnt een reminder en eventueel de stap voor werkdag eindigt als die nog leeg is. Eindtijd van een rit is nu optioneel en wordt automatisch gevuld met de starttijd; bij een volgende rit wordt de vorige open rit automatisch afgesloten met die nieuwe starttijd. Verder: wizard, aparte schermen voor Ritten en Export, Google Maps, RDW, bewerken/verwijderen en export/import.
   </div>
 </div>
 
 <script>
-const STORAGE_TRIPS = "trips_v23";
-const STORAGE_DAYDATA = "dayData_v23";
-const STORAGE_PLATES = "plates_v23";
+const STORAGE_TRIPS = "trips_v24";
+const STORAGE_DAYDATA = "dayData_v24";
+const STORAGE_PLATES = "plates_v24";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const KNOWN_ADDRESSES = {
@@ -279,6 +279,8 @@ let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v20", "plates_v19"
 
 let currentStep = 0;
 let editingTripId = null;
+let forceShowWorkStart = false;
+let forceShowWorkEnd = false;
 
 const screenButtons = document.querySelectorAll("[data-screen-btn]");
 const screens = {
@@ -391,15 +393,21 @@ function setScreen(name){
 }
 screenButtons.forEach(btn => btn.addEventListener("click", ()=>setScreen(btn.dataset.screenBtn)));
 
-function shouldShowWorkStartStep(){
+function rawNeedsWorkStartStep(){
   const d = dateEl.value || today();
   return !(dayData[d] && dayData[d].workStart && String(dayData[d].workStart).trim() !== "");
 }
-function shouldShowWorkEndStep(){
+function rawNeedsWorkEndStep(){
   const d = dateEl.value || today();
   if(dayData[d] && dayData[d].workEnd && String(dayData[d].workEnd).trim() !== "") return false;
   if(!isToday(d)) return false;
   return currentHour() >= 17;
+}
+function shouldShowWorkStartStep(){
+  return forceShowWorkStart || rawNeedsWorkStartStep();
+}
+function shouldShowWorkEndStep(){
+  return forceShowWorkEnd || rawNeedsWorkEndStep();
 }
 function getVisibleSteps(){
   return ALL_STEPS.filter(step => {
@@ -533,6 +541,8 @@ function updateReview(){
 }
 
 function renderStep(){
+  if(currentStep === 0) forceShowWorkStart = true;
+  if(currentStep === 1) forceShowWorkEnd = true;
   const visible = getVisibleSteps();
   if(!visible.includes(currentStep)) currentStep = visible[0];
   steps.forEach(step => {
@@ -1075,32 +1085,13 @@ $("mapsBtn").addEventListener("click", ()=>{
   const to = resolveMapAddress(toEl.value);
   if(!from || !to){ alert("Vul eerst Van en Naar in."); return; }
 
-  const stops = stopsEl.value.trim()
-    ? stopsEl.value.split(",").map(s=>resolveMapAddress(s.trim())).filter(Boolean)
-    : [];
+  const appleUrl =
+    "http://maps.apple.com/?" +
+    "saddr=" + encodeURIComponent(from) +
+    "&daddr=" + encodeURIComponent(to) +
+    "&dirflg=d";
 
-  const webUrl =
-    "https://www.google.com/maps/dir/?api=1" +
-    "&origin=" + encodeURIComponent(from) +
-    "&destination=" + encodeURIComponent(to) +
-    "&travelmode=driving" +
-    "&dir_action=navigate" +
-    (stops.length ? "&waypoints=" + encodeURIComponent(stops.join("|")) : "");
-
-  const appUrl =
-    "comgooglemapsurl://www.google.com/maps/dir/?api=1" +
-    "&origin=" + encodeURIComponent(from) +
-    "&destination=" + encodeURIComponent(to) +
-    "&travelmode=driving" +
-    "&dir_action=navigate" +
-    (stops.length ? "&waypoints=" + encodeURIComponent(stops.join("|")) : "");
-
-  const fallbackTimer = setTimeout(() => {
-    window.location.href = webUrl;
-  }, 900);
-
-  window.addEventListener("pagehide", () => clearTimeout(fallbackTimer), { once: true });
-  window.location.href = appUrl;
+  window.location.href = appleUrl;
 });
 
 dateEl.value = today();
