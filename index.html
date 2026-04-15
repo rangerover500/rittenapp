@@ -78,6 +78,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 
   <div class="topnav">
     <button type="button" class="active" data-screen-btn="invoer">Invoeren</button>
+    <button type="button" data-screen-btn="werkdag">Werkdag</button>
     <button type="button" data-screen-btn="ritten">Ritten</button>
     <button type="button" data-screen-btn="export">Export</button>
   </div>
@@ -86,46 +87,24 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     <div class="dayhint" id="dayReminder"></div>
 
     <div class="wizard">
-      <div class="progress-text" id="progressText">Stap 1 van 11</div>
+      <div class="progress-text" id="progressText">Stap 1 van 8</div>
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 
       <div class="step active" data-step="0">
-        <div class="step-title">Werkdag begint</div>
-        <div class="step-sub">Deze vraag verschijnt alleen als voor vandaag nog geen begintijd is ingevuld.</div>
-        <label for="workStart">Aanwezig vanaf</label>
-        <input type="time" id="workStart">
-      </div>
-
-      <div class="step" data-step="1">
-        <div class="step-title">Werkdag eindigt</div>
-        <div class="step-sub">Deze stap verschijnt pas aan het einde van de middag als eindtijd nog leeg is.</div>
-        <label for="workEnd">Klaar om</label>
-        <input type="time" id="workEnd">
-        <div class="info" id="dayHoursInfo"></div>
-      </div>
-
-      <div class="step" data-step="2">
         <div class="step-title">Datum</div>
         <div class="step-sub">Kies de datum van de rit.</div>
         <label for="date">Datum</label>
         <input type="date" id="date">
       </div>
 
-      <div class="step" data-step="3">
+      <div class="step" data-step="1">
         <div class="step-title">Starttijd rit</div>
         <div class="step-sub">Hoe laat begint de rit?</div>
         <label for="timeStart">Starttijd rit</label>
         <input type="time" id="timeStart">
       </div>
 
-      <div class="step" data-step="4">
-        <div class="step-title">Eindtijd rit</div>
-        <div class="step-sub">Hoe laat eindigt de rit? (Optioneel – kan later aangepast worden)</div>
-        <label for="timeEnd">Eindtijd rit</label>
-        <input type="time" id="timeEnd">
-      </div>
-
-      <div class="step" data-step="5">
+      <div class="step" data-step="2">
         <div class="step-title">Kenteken</div>
         <div class="step-sub">Voer het kenteken in of kies een recent kenteken.</div>
         <label for="plate">Kenteken</label>
@@ -134,7 +113,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="info" id="rdwInfo"></div>
       </div>
 
-      <div class="step" data-step="6">
+      <div class="step" data-step="3">
         <div class="step-title">Km-stand</div>
         <div class="step-sub">Niet verplicht, wel reminder voor bepaalde kentekens.</div>
         <div class="warning" id="odoWarning">Let op: km-stand invullen!</div>
@@ -142,7 +121,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <input type="number" id="odometer" inputmode="numeric" placeholder="Bijv. 123456">
       </div>
 
-      <div class="step" data-step="7">
+      <div class="step" data-step="4">
         <div class="step-title">Van</div>
         <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
         <label for="from">Van</label>
@@ -150,7 +129,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="quick" id="fromButtons"></div>
       </div>
 
-      <div class="step" data-step="8">
+      <div class="step" data-step="5">
         <div class="step-title">Naar</div>
         <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
         <label for="to">Naar</label>
@@ -161,15 +140,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         </div>
       </div>
 
-      <div class="step" data-step="9">
+      <div class="step" data-step="6">
         <div class="step-title">Tussenstops</div>
         <div class="step-sub">Optioneel. Meerdere tussenstops scheid je met komma's.</div>
         <label for="stops">Tussenstop(s)</label>
-        <input id="stops" placeholder="Bijv. Carwash Capelle, Perfect Carwrapping">
+        <input id="stops" placeholder="Bijv. ABS den Elzen, Perfect Carwrapping">
         <div class="quick" id="stopsButtons"></div>
       </div>
 
-      <div class="step" data-step="10">
+      <div class="step" data-step="7">
         <div class="step-title">Controle</div>
         <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
         <div class="review" id="reviewBox"></div>
@@ -192,6 +171,27 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     </div>
   </div>
 
+  <div id="screen-werkdag" class="screen">
+    <h2>Werkdag begin en einde</h2>
+    <div class="wizard">
+      <label for="workdayDate">Datum</label>
+      <input type="date" id="workdayDate">
+
+      <label for="workStart">Aanwezig vanaf</label>
+      <input type="time" id="workStart">
+
+      <label for="workEnd">Klaar om</label>
+      <input type="time" id="workEnd">
+
+      <div class="info" id="dayHoursInfo"></div>
+
+      <div class="toolbar">
+        <button type="button" class="btn-primary" id="saveWorkdayBtn">Werkdag opslaan</button>
+        <button type="button" class="btn-secondary" id="clearWorkdayBtn">Leegmaken</button>
+      </div>
+    </div>
+  </div>
+
   <div id="screen-ritten" class="screen">
     <h2>Ritten</h2>
     <div class="table-wrap">
@@ -200,7 +200,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <tr>
             <th>Datum</th>
             <th>Start</th>
-            <th>Eind</th>
             <th>Van</th>
             <th>Naar</th>
             <th>Kenteken</th>
@@ -255,15 +254,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v30<br>
-    v30 is gebaseerd op v28 en behoudt alle bestaande functies. Nieuw: veilige eindtijd-logica zodat een rit nooit vóór de starttijd eindigt, keuze tussen Apple Kaarten en Google Maps, en Google Maps ondersteunt nu tussenstops via waypoints. Apple Kaarten blijft voor nu alleen geschikt voor routes zonder tussenstop.
+    <strong>App-versie:</strong> v31<br>
+    v31 toont nu bovenaan Invoeren, Werkdag, Ritten en Export. Werkdag begin en einde beheer je apart en blijft gewoon mee-exporteren naar een tweede Excel-tabblad. Eindtijd van een rit is verwijderd. Als je tussenstops invult, zie je in het controlescherm alleen nog de knop om een route met tussenstops op te slaan. ABS den Elzen is toegevoegd als vaste locatie.
   </div>
 </div>
 
 <script>
-const STORAGE_TRIPS = "trips_v30";
-const STORAGE_DAYDATA = "dayData_v30";
-const STORAGE_PLATES = "plates_v30";
+const STORAGE_TRIPS = "trips_v31";
+const STORAGE_DAYDATA = "dayData_v31";
+const STORAGE_PLATES = "plates_v31";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const KNOWN_ADDRESSES = {
@@ -272,23 +271,23 @@ const KNOWN_ADDRESSES = {
   "Breeland Den Haag": "Neckar 7, 2491 BB Den Haag",
   "Breeland Brielle": "Seggelant-Oost 9, 3237 MH Brielle",
   "Carwash Capelle": "Kompasstraat 9-11, 2901 AM Capelle aan den IJssel",
-  "Perfect Carwrapping": "Lübeck 8, 2993 LK Barendrecht"
+  "Perfect Carwrapping": "Lübeck 8, 2993 LK Barendrecht",
+  "ABS den Elzen": "Aploniastraat 1, 3084 CC Rotterdam"
 };
 const QUICK_LOCATIONS = Object.keys(KNOWN_ADDRESSES);
-const ALL_STEPS = [0,1,2,3,4,5,6,7,8,9,10];
+const ALL_STEPS = [0,1,2,3,4,5,6,7];
 
-let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v29","trips_v28","trips_v27","trips_v20","trips_v19","trips_v18","trips_v17","trips_v16","trips_v15","trips_v14","trips_v13","trips_v12"], []);
-let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v29","dayData_v28","dayData_v27","dayData_v20","dayData_v19","dayData_v18","dayData_v17","dayData_v16","dayData_v15","dayData_v14","dayData_v13","dayData_v12"], {});
-let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v29","plates_v28","plates_v27","plates_v20","plates_v19","plates_v18","plates_v17","plates_v16","plates_v15","plates_v14","plates_v13","plates_v12"], []);
+let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v30","trips_v29","trips_v28","trips_v27","trips_v20","trips_v19","trips_v18","trips_v17","trips_v16","trips_v15","trips_v14","trips_v13","trips_v12"], []);
+let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v30","dayData_v29","dayData_v28","dayData_v27","dayData_v20","dayData_v19","dayData_v18","dayData_v17","dayData_v16","dayData_v15","dayData_v14","dayData_v13","dayData_v12"], {});
+let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v30","plates_v29","plates_v28","plates_v27","plates_v20","plates_v19","plates_v18","plates_v17","plates_v16","plates_v15","plates_v14","plates_v13","plates_v12"], []);
 
 let currentStep = 0;
 let editingTripId = null;
-let forceShowWorkStart = false;
-let forceShowWorkEnd = false;
 
 const screenButtons = document.querySelectorAll("[data-screen-btn]");
 const screens = {
   invoer: document.getElementById("screen-invoer"),
+  werkdag: document.getElementById("screen-werkdag"),
   ritten: document.getElementById("screen-ritten"),
   export: document.getElementById("screen-export")
 };
@@ -302,12 +301,12 @@ const reviewBoxEl = document.getElementById("reviewBox");
 const editStatusEl = document.getElementById("editStatus");
 const dayReminderEl = document.getElementById("dayReminder");
 
+const workdayDateEl = document.getElementById("workdayDate");
 const workStartEl = document.getElementById("workStart");
 const workEndEl = document.getElementById("workEnd");
 const dayHoursInfoEl = document.getElementById("dayHoursInfo");
 const dateEl = document.getElementById("date");
 const timeStartEl = document.getElementById("timeStart");
-const timeEndEl = document.getElementById("timeEnd");
 const plateEl = document.getElementById("plate");
 const rdwInfoEl = document.getElementById("rdwInfo");
 const odoWarningEl = document.getElementById("odoWarning");
@@ -334,19 +333,16 @@ function loadStorageWithFallback(primaryKey, fallbackKeys, defaultValue){
   }catch(e){}
   return defaultValue;
 }
-
 function saveAll(){
   localStorage.setItem(STORAGE_TRIPS, JSON.stringify(trips));
   localStorage.setItem(STORAGE_DAYDATA, JSON.stringify(dayData));
   localStorage.setItem(STORAGE_PLATES, JSON.stringify(plates));
 }
-
 function pad(n){ return String(n).padStart(2, "0"); }
 function today(){ const d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
 function now(){ const d=new Date(); return pad(d.getHours())+":"+pad(d.getMinutes()); }
 function currentHour(){ return new Date().getHours(); }
 function isToday(dateStr){ return (dateStr || today()) === today(); }
-
 function normalizePlate(v){ return String(v||"").toUpperCase().replace(/[^A-Z0-9]/g,"").trim(); }
 function normalizeLocation(v){
   const t = String(v||"").trim().toLowerCase();
@@ -356,6 +352,7 @@ function normalizeLocation(v){
   if(t.includes("breeland") && t.includes("brielle")) return "Breeland Brielle";
   if(t.includes("carwash") || t.includes("capelle") || t.includes("wasstraat")) return "Carwash Capelle";
   if(t.includes("perfect") || t.includes("carwrapping")) return "Perfect Carwrapping";
+  if(t.includes("abs") || t.includes("elzen")) return "ABS den Elzen";
   return String(v||"").trim();
 }
 function resolveMapAddress(v){
@@ -408,39 +405,6 @@ function setScreen(name){
 }
 screenButtons.forEach(btn => btn.addEventListener("click", ()=>setScreen(btn.dataset.screenBtn)));
 
-function rawNeedsWorkStartStep(){
-  const d = dateEl.value || today();
-  return !(dayData[d] && dayData[d].workStart && String(dayData[d].workStart).trim() !== "");
-}
-function rawNeedsWorkEndStep(){
-  const d = dateEl.value || today();
-  if(dayData[d] && dayData[d].workEnd && String(dayData[d].workEnd).trim() !== "") return false;
-  if(!isToday(d)) return false;
-  return currentHour() >= 17;
-}
-function shouldShowWorkStartStep(){
-  return forceShowWorkStart || rawNeedsWorkStartStep();
-}
-function shouldShowWorkEndStep(){
-  return forceShowWorkEnd || rawNeedsWorkEndStep();
-}
-function getVisibleSteps(){
-  return ALL_STEPS.filter(step => {
-    if(step === 0) return shouldShowWorkStartStep();
-    if(step === 1) return shouldShowWorkEndStep();
-    return true;
-  });
-}
-function getCurrentVisibleIndex(){
-  const visible = getVisibleSteps();
-  let idx = visible.indexOf(currentStep);
-  if(idx === -1){
-    currentStep = visible[0];
-    idx = 0;
-  }
-  return idx;
-}
-
 function addQuickButtons(containerId, items, callback){
   const el = $(containerId);
   el.innerHTML = "";
@@ -452,20 +416,9 @@ function addQuickButtons(containerId, items, callback){
     el.appendChild(btn);
   });
 }
-
-function getSafeTripEndTime(start, end){
-  const s = String(start || "").trim();
-  const e = String(end || "").trim();
-
-  if(!s) return e || "";
-  if(!e) return s;
-
-  return e < s ? s : e;
-}
-
 function updateHoursInfo(){
   const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
-  dayHoursInfoEl.textContent = "Totaal gewerkte uren vandaag: " + formatMinutesDutch(minutes);
+  dayHoursInfoEl.textContent = "Totaal gewerkte uren: " + formatMinutesDutch(minutes);
 }
 function updatePlateStyle(){
   plateEl.value = normalizePlate(plateEl.value);
@@ -531,78 +484,66 @@ async function lookupPlate(){
   updateReview();
   return info;
 }
-
 function updateDayReminder(){
   const d = dateEl.value || today();
   if(isToday(d) && currentHour() >= 17 && !(dayData[d] && dayData[d].workEnd)){
     dayReminderEl.style.display = "block";
-    dayReminderEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen.";
-    editStatusEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen.";
+    dayReminderEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
+    editStatusEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
   } else {
     dayReminderEl.style.display = "none";
     if(!editingTripId) editStatusEl.textContent = "";
   }
 }
-
 function buildReviewHtml(){
-  const stops = stopsEl.value.trim() ? stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).join(", ") : "-";
   const d = dateEl.value || today();
+  const wd = dayData[d] || {};
+  const stopsList = stopsEl.value.trim() ? stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).join(", ") : "-";
   return `
-    <div><strong>Werkdag:</strong> ${workStartEl.value || "-"} → ${workEndEl.value || "-"} (${formatMinutesDutch(timeDiffMinutes(workStartEl.value, workEndEl.value))})</div>
+    <div><strong>Werkdag:</strong> ${wd.workStart || "-"} → ${wd.workEnd || "-"}</div>
     <div><strong>Datum:</strong> ${d || "-"}</div>
-    <div><strong>Rit:</strong> ${timeStartEl.value || "-"} → ${getSafeTripEndTime(timeStartEl.value, timeEndEl.value) || "-"}</div>
+    <div><strong>Starttijd rit:</strong> ${timeStartEl.value || "-"}</div>
     <div><strong>Kenteken:</strong> ${plateEl.value || "-"}</div>
     <div><strong>Auto:</strong> ${rdwInfoEl.textContent || "-"}</div>
     <div><strong>Km-stand:</strong> ${odometerEl.value || "-"}</div>
     <div><strong>Van:</strong> ${fromEl.value || "-"}</div>
     <div><strong>Naar:</strong> ${toEl.value || "-"}</div>
-    <div><strong>Tussenstops:</strong> ${stops}</div>
+    <div><strong>Tussenstops:</strong> ${stopsList}</div>
   `;
 }
 function updateReview(){
   reviewBoxEl.innerHTML = buildReviewHtml();
   const showMaps = !!(fromEl.value.trim() && toEl.value.trim());
-  $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "inline-block";
-  $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "inline-block";
+  const hasStops = !!stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).length;
+  $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
+  $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "none";
+  $("saveTripBtn").style.display = hasStops ? "none" : "inline-block";
+  $("saveRouteBtn").style.display = hasStops ? "inline-block" : "none";
   updateDayReminder();
 }
-
 function renderStep(){
-  if(currentStep === 0) forceShowWorkStart = true;
-  if(currentStep === 1) forceShowWorkEnd = true;
-  const visible = getVisibleSteps();
-  if(!visible.includes(currentStep)) currentStep = visible[0];
   steps.forEach(step => {
     const stepNum = Number(step.dataset.step);
     step.classList.toggle("active", stepNum === currentStep);
   });
-
-  const visibleIndex = getCurrentVisibleIndex();
-  progressTextEl.textContent = "Stap " + (visibleIndex + 1) + " van " + visible.length;
-  progressFillEl.style.width = (((visibleIndex + 1)/visible.length) * 100) + "%";
-
-  prevBtnEl.disabled = visibleIndex === 0;
-  nextBtnEl.textContent = visibleIndex === visible.length - 1 ? "Klaar" : "Volgende";
-
+  progressTextEl.textContent = "Stap " + (currentStep + 1) + " van " + ALL_STEPS.length;
+  progressFillEl.style.width = (((currentStep + 1)/ALL_STEPS.length) * 100) + "%";
+  prevBtnEl.disabled = currentStep === 0;
+  nextBtnEl.textContent = currentStep === ALL_STEPS.length - 1 ? "Klaar" : "Volgende";
   updateReview();
 }
 function nextStep(){
-  const visible = getVisibleSteps();
-  const idx = visible.indexOf(currentStep);
-  if(idx < visible.length - 1){
-    currentStep = visible[idx + 1];
+  if(currentStep < ALL_STEPS.length - 1){
+    currentStep += 1;
     renderStep();
   }
 }
 function prevStep(){
-  const visible = getVisibleSteps();
-  const idx = visible.indexOf(currentStep);
-  if(idx > 0){
-    currentStep = visible[idx - 1];
+  if(currentStep > 0){
+    currentStep -= 1;
     renderStep();
   }
 }
-
 prevBtnEl.addEventListener("click", prevStep);
 nextBtnEl.addEventListener("click", nextStep);
 $("swapBtn").addEventListener("click", ()=>{
@@ -614,7 +555,6 @@ function buildTripObject(existingId, vehicleText, priceText, fromValue, toValue)
     id: existingId || createTripId(),
     date: dateEl.value || today(),
     timeStart: timeStartEl.value,
-    timeEnd: getSafeTripEndTime(timeStartEl.value, timeEndEl.value),
     from: normalizeLocation(fromValue),
     to: normalizeLocation(toValue),
     plate: normalizePlate(plateEl.value),
@@ -635,86 +575,50 @@ function savePlateToList(p){
   saveAll();
   renderPlateButtons();
 }
-function removeConsecutiveDuplicates(points){
-  return points.filter((p,i)=>i===0 || p!==points[i-1]);
-}
-
-function closePreviousOpenTrip(newTripStartDate, newTripStartTime, currentTripId){
-  const candidate = trips.find(t =>
-    t.id !== currentTripId &&
-    (t.date || "") === (newTripStartDate || "") &&
-    (!!t.timeStart) &&
-    (!t.timeEnd || t.timeEnd === t.timeStart)
-  );
-
-  if(!candidate) return;
-
-  const candidateKey = (candidate.date || "") + " " + (candidate.timeStart || "");
-  const newKey = (newTripStartDate || "") + " " + (newTripStartTime || "");
-  if(candidateKey >= newKey) return;
-
-  const safeEnd = newTripStartTime || candidate.timeEnd || candidate.timeStart;
-  candidate.timeEnd = safeEnd < candidate.timeStart ? candidate.timeStart : safeEnd;
-}
-
 $("saveTripBtn").addEventListener("click", async ()=>{
   const info = await lookupPlate();
   const existing = editingTripId ? trips.find(t=>t.id===editingTripId) : null;
   const trip = buildTripObject(existing ? existing.id : null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
-
   if(!validateTrip(trip)){
     alert("Vul datum, starttijd, van, naar en kenteken in.");
     return;
   }
-
-  closePreviousOpenTrip(trip.date, trip.timeStart, editingTripId);
   savePlateToList(trip.plate);
-
   if(editingTripId){
     trips = trips.map(t => t.id === editingTripId ? trip : t);
   } else {
     trips.push(trip);
   }
-
   sortTrips();
   saveAll();
   renderTrips();
   clearForm();
   setScreen("ritten");
 });
-
 $("saveRouteBtn").addEventListener("click", async ()=>{
   const p = normalizePlate(plateEl.value);
   if(!dateEl.value || !timeStartEl.value || !fromEl.value || !toEl.value || !p){
     alert("Vul datum, starttijd, van, naar en kenteken in.");
     return;
   }
-
-  closePreviousOpenTrip(dateEl.value || today(), timeStartEl.value, editingTripId);
   const info = await lookupPlate();
-  const stopList = stopsEl.value.trim() ? stopsEl.value.split(",").map(s=>normalizeLocation(s.trim())).filter(Boolean) : [];
-  let points = [normalizeLocation(fromEl.value), ...stopList, normalizeLocation(toEl.value)];
-  points = removeConsecutiveDuplicates(points);
+  let points = [normalizeLocation(fromEl.value), ...stopsEl.value.split(",").map(s=>normalizeLocation(s.trim())).filter(Boolean), normalizeLocation(toEl.value)];
+  points = points.filter((p,i)=>i===0 || p!==points[i-1]);
   if(points.length < 2){
     alert("Te weinig routepunten.");
     return;
   }
-
   if(editingTripId){
     if(!confirm("Je staat in bewerkmodus. Route met tussenstops opslaan maakt meerdere nieuwe ritten. Doorgaan?")) return;
     editingTripId = null;
   }
-
   savePlateToList(p);
-  const safeEndTime = getSafeTripEndTime(timeStartEl.value, timeEndEl.value);
-
   const newTrips = [];
   for(let i=0;i<points.length-1;i++){
     newTrips.push({
       id: createTripId(),
       date: dateEl.value || today(),
       timeStart: timeStartEl.value,
-      timeEnd: safeEndTime,
       from: points[i],
       to: points[i+1],
       plate: p,
@@ -723,7 +627,6 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
       odometer: String(odometerEl.value || "").trim()
     });
   }
-
   trips = [...newTrips, ...trips];
   sortTrips();
   saveAll();
@@ -733,12 +636,8 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
 });
 
 function clearForm(){
-  const d = dateEl.value || today();
-  workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
-  workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-  dateEl.value = d;
+  dateEl.value = dateEl.value || today();
   timeStartEl.value = now();
-  timeEndEl.value = now();
   plateEl.value = "";
   odometerEl.value = "";
   fromEl.value = "";
@@ -747,15 +646,42 @@ function clearForm(){
   rdwInfoEl.textContent = "";
   editingTripId = null;
   $("cancelEditBtn").style.display = "none";
-  if(!isToday(d) || currentHour() < 17 || (dayData[d] && dayData[d].workEnd)) editStatusEl.textContent = "";
-  updateHoursInfo();
   updatePlateStyle();
-  currentStep = getVisibleSteps()[0];
+  currentStep = 0;
   renderStep();
 }
-
 $("cancelEditBtn").addEventListener("click", clearForm);
 $("clearBtn").addEventListener("click", clearForm);
+
+function loadWorkdayForm(dateStr){
+  const d = dateStr || today();
+  const item = dayData[d] || {};
+  workdayDateEl.value = d;
+  workStartEl.value = item.workStart || "";
+  workEndEl.value = item.workEnd || "";
+  updateHoursInfo();
+}
+function saveWorkdayFromForm(){
+  const d = workdayDateEl.value || today();
+  if(workStartEl.value || workEndEl.value) dayData[d] = {workStart: workStartEl.value || "", workEnd: workEndEl.value || ""};
+  else delete dayData[d];
+  saveAll();
+  renderWorkdays();
+  updateDayReminder();
+  updateReview();
+}
+$("saveWorkdayBtn").addEventListener("click", ()=>{
+  saveWorkdayFromForm();
+  alert("Werkdag opgeslagen.");
+});
+$("clearWorkdayBtn").addEventListener("click", ()=>{
+  workStartEl.value = "";
+  workEndEl.value = "";
+  updateHoursInfo();
+});
+workdayDateEl.addEventListener("input", ()=>loadWorkdayForm(workdayDateEl.value));
+workStartEl.addEventListener("input", updateHoursInfo);
+workEndEl.addEventListener("input", updateHoursInfo);
 
 function renderTrips(){
   tripTableEl.innerHTML = "";
@@ -764,7 +690,6 @@ function renderTrips(){
     row.innerHTML = `
       <td>${escapeHtml(t.date||"")}</td>
       <td>${escapeHtml(t.timeStart||"")}</td>
-      <td>${escapeHtml(t.timeEnd||"")}</td>
       <td>${escapeHtml(t.from||"")}</td>
       <td>${escapeHtml(t.to||"")}</td>
       <td>${escapeHtml(t.plate||"")}</td>
@@ -807,10 +732,7 @@ tripTableEl.addEventListener("click", e=>{
     const t = trips.find(x=>x.id===id);
     if(!t) return;
     dateEl.value = t.date || today();
-    workStartEl.value = (dayData[dateEl.value] && dayData[dateEl.value].workStart) || "";
-    workEndEl.value = (dayData[dateEl.value] && dayData[dateEl.value].workEnd) || "";
-    timeStartEl.value = t.timeStart || "";
-    timeEndEl.value = t.timeEnd || "";
+    timeStartEl.value = t.timeStart || now();
     plateEl.value = t.plate || "";
     odometerEl.value = t.odometer || "";
     fromEl.value = t.from || "";
@@ -820,9 +742,8 @@ tripTableEl.addEventListener("click", e=>{
     editingTripId = t.id;
     $("cancelEditBtn").style.display = "inline-block";
     editStatusEl.textContent = "Je bewerkt nu een bestaande rit.";
-    updateHoursInfo();
     updatePlateStyle();
-    currentStep = getVisibleSteps()[0];
+    currentStep = 0;
     renderStep();
     setScreen("invoer");
     window.scrollTo({top:0, behavior:"smooth"});
@@ -838,14 +759,8 @@ workdayTableEl.addEventListener("click", e=>{
   const btn = e.target.closest("button");
   if(!btn) return;
   if(btn.dataset.workOpen){
-    const d = btn.dataset.workOpen;
-    dateEl.value = d;
-    workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
-    workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-    updateHoursInfo();
-    setScreen("invoer");
-    currentStep = getVisibleSteps()[0];
-    renderStep();
+    loadWorkdayForm(btn.dataset.workOpen);
+    setScreen("werkdag");
   }
   if(btn.dataset.workDelete){
     const d = btn.dataset.workDelete;
@@ -854,14 +769,12 @@ workdayTableEl.addEventListener("click", e=>{
     saveAll();
     renderWorkdays();
     updateDayReminder();
-    renderStep();
+    updateReview();
   }
 });
-
 function escapeHtml(v){
   return String(v||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
-
 function calcExcelColumnWidths(rows){
   if(!rows.length) return [];
   const colCount = Math.max(...rows.map(r => r.length));
@@ -878,8 +791,8 @@ function calcExcelColumnWidths(rows){
 }
 function buildWorkbookFromData(exportTrips, exportDayData){
   const tripRows = [
-    ["ID","Datum","Starttijd","Eindtijd","Van","Naar","Kenteken","Auto","Nieuwprijs","Km-stand"],
-    ...exportTrips.map(t=>[t.id||"", t.date||"", t.timeStart||"", t.timeEnd||"", t.from||"", t.to||"", t.plate||"", t.vehicle||"", t.priceText||"", t.odometer||""])
+    ["ID","Datum","Starttijd","Van","Naar","Kenteken","Auto","Nieuwprijs","Km-stand"],
+    ...exportTrips.map(t=>[t.id||"", t.date||"", t.timeStart||"", t.from||"", t.to||"", t.plate||"", t.vehicle||"", t.priceText||"", t.odometer||""])
   ];
   const workdayRows = [
     ["Datum","Aanwezig vanaf","Klaar om","Gewerkte tijd"],
@@ -891,12 +804,10 @@ function buildWorkbookFromData(exportTrips, exportDayData){
       return [d, item.workStart||"", item.workEnd||"", formatMinutesDutch(timeDiffMinutes(item.workStart||"", item.workEnd||""))];
     })
   ];
-
   const wb = XLSX.utils.book_new();
   const wsTrips = XLSX.utils.aoa_to_sheet(tripRows);
   wsTrips["!cols"] = calcExcelColumnWidths(tripRows);
   XLSX.utils.book_append_sheet(wb, wsTrips, "Ritten");
-
   const wsWork = XLSX.utils.aoa_to_sheet(workdayRows);
   wsWork["!cols"] = calcExcelColumnWidths(workdayRows);
   XLSX.utils.book_append_sheet(wb, wsWork, "Werkdagen");
@@ -917,14 +828,13 @@ function readImportedWorkbook(file, callback){
           id: String(r["ID"]||"").trim() || createTripId(),
           date: String(r["Datum"]||"").trim(),
           timeStart: String(r["Starttijd"]||"").trim(),
-          timeEnd: getSafeTripEndTime(String(r["Starttijd"]||"").trim(), String(r["Eindtijd"]||"").trim()),
           from: normalizeLocation(r["Van"]||""),
           to: normalizeLocation(r["Naar"]||""),
           plate: normalizePlate(r["Kenteken"]||""),
           vehicle: String(r["Auto"]||"").trim(),
           priceText: String(r["Nieuwprijs"]||"").trim(),
           odometer: String(r["Km-stand"]||"").trim()
-        })).filter(t=>t.date || t.timeStart || t.timeEnd || t.from || t.to || t.plate);
+        })).filter(t=>t.date || t.timeStart || t.from || t.to || t.plate);
       }
       const workSheetName = wb.SheetNames.find(n=>n.toLowerCase()==="werkdagen");
       if(workSheetName){
@@ -944,7 +854,7 @@ function readImportedWorkbook(file, callback){
 function tripExistsInList(list, trip){
   return list.some(t =>
     (t.id && trip.id && t.id === trip.id) ||
-    ((t.date||"")===(trip.date||"") && (t.timeStart||"")===(trip.timeStart||"") && (t.timeEnd||"")===(trip.timeEnd||"") &&
+    ((t.date||"")===(trip.date||"") && (t.timeStart||"")===(trip.timeStart||"") &&
      (t.from||"")===(trip.from||"") && (t.to||"")===(trip.to||"") &&
      normalizePlate(t.plate||"")===normalizePlate(trip.plate||"") && (t.odometer||"")===(trip.odometer||""))
   );
@@ -953,7 +863,6 @@ function getTimestampedFilename(){
   const d = new Date();
   return "ritten_werkdagen_" + d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+"_"+pad(d.getHours())+"-"+pad(d.getMinutes())+".xlsx";
 }
-
 $("exportBtn").addEventListener("click", async ()=>{
   const draft = await buildCurrentDraftTripForExport();
   let exportTrips = [...trips];
@@ -976,22 +885,23 @@ $("exportBtn").addEventListener("click", async ()=>{
   const wb = buildWorkbookFromData(exportTrips, dayData);
   XLSX.writeFile(wb, getTimestampedFilename());
 });
-
 async function buildCurrentDraftTripForExport(){
   if(editingTripId) return null;
-  const hasDraft = [dateEl.value, timeStartEl.value, timeEndEl.value, fromEl.value, toEl.value, plateEl.value, odometerEl.value].some(v=>String(v||"").trim() !== "");
+  const hasDraft = [dateEl.value, timeStartEl.value, fromEl.value, toEl.value, plateEl.value, odometerEl.value].some(v=>String(v||"").trim() !== "");
   if(!hasDraft) return null;
+  const hasStops = stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).length > 0;
+  if(hasStops) return null;
   const info = await fetchPlateInfo(plateEl.value);
   const trip = buildTripObject(null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
   if(!validateTrip(trip)) return null;
   if(trips.some(t =>
-      (t.date||"")===(trip.date||"") && (t.timeStart||"")===(trip.timeStart||"") && (t.timeEnd||"")===(trip.timeEnd||"") &&
-      (t.from||"")===(trip.from||"") && (t.to||"")===(trip.to||"") && normalizePlate(t.plate||"")===normalizePlate(trip.plate||"") &&
+      (t.date||"")===(trip.date||"") && (t.timeStart||"")===(trip.timeStart||"") &&
+      (t.from||"")===(trip.from||"") && (t.to||"")===(trip.to||"") &&
+      normalizePlate(t.plate||"")===normalizePlate(trip.plate||"") &&
       (t.odometer||"")===(trip.odometer||"")
   )) return null;
   return trip;
 }
-
 $("importReplaceBtn").addEventListener("click", ()=>{
   const file = importFileEl.files[0];
   if(!file){ alert("Kies eerst een Excel-bestand."); return; }
@@ -1006,6 +916,7 @@ $("importReplaceBtn").addEventListener("click", ()=>{
     renderWorkdays();
     renderPlateButtons();
     clearForm();
+    loadWorkdayForm(today());
     alert("Import gelukt. De huidige gegevens zijn vervangen.");
   });
 });
@@ -1034,10 +945,10 @@ $("importMergeBtn").addEventListener("click", ()=>{
     renderWorkdays();
     renderPlateButtons();
     clearForm();
+    loadWorkdayForm(today());
     alert("Samenvoegen gelukt. Toegevoegd/gewijzigd: " + addedTrips + " ritten en " + addedDays + " werkdagen.");
   });
 });
-
 $("wipeBtn").addEventListener("click", ()=>{
   if(!confirm("Alles wissen? Dit verwijdert ritten, kentekens en werkdaggegevens.")) return;
   trips = [];
@@ -1048,8 +959,8 @@ $("wipeBtn").addEventListener("click", ()=>{
   renderWorkdays();
   renderPlateButtons();
   clearForm();
+  loadWorkdayForm(today());
 });
-
 function rebuildPlateListFromTrips(){
   plates = [];
   trips.forEach(t=>{
@@ -1079,35 +990,9 @@ addQuickButtons("stopsButtons", QUICK_LOCATIONS, value=>{
 });
 renderPlateButtons();
 
-function updateDayDataForSelectedDate(){
-  const d = dateEl.value || today();
-  if(workStartEl.value || workEndEl.value) dayData[d] = {workStart: workStartEl.value || "", workEnd: workEndEl.value || ""};
-  else delete dayData[d];
-  saveAll();
-  renderWorkdays();
-  updateDayReminder();
-}
-workStartEl.addEventListener("input", ()=>{
-  updateDayDataForSelectedDate();
-  updateHoursInfo();
-  updateReview();
-});
-workEndEl.addEventListener("input", ()=>{
-  updateDayDataForSelectedDate();
-  updateHoursInfo();
-  updateReview();
-});
-dateEl.addEventListener("input", ()=>{
-  const d = dateEl.value || today();
-  workStartEl.value = (dayData[d] && dayData[d].workStart) || "";
-  workEndEl.value = (dayData[d] && dayData[d].workEnd) || "";
-  updateHoursInfo();
-  currentStep = getVisibleSteps()[0];
-  renderStep();
-  updateReview();
-});
+dateEl.addEventListener("input", updateReview);
 plateEl.addEventListener("input", ()=>{ updatePlateStyle(); lookupPlate(); });
-[timeStartEl, timeEndEl, odometerEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("input", updateReview));
+[timeStartEl, odometerEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("input", updateReview));
 
 $("mapsAppleBtn").addEventListener("click", ()=>{
   const { from, to, stops } = getRoutePointsForMaps();
@@ -1127,38 +1012,32 @@ $("mapsAppleBtn").addEventListener("click", ()=>{
 
   window.location.href = appleUrl;
 });
-
 $("mapsGoogleBtn").addEventListener("click", ()=>{
   const { from, to, stops } = getRoutePointsForMaps();
   if(!from || !to){
     alert("Vul eerst Van en Naar in.");
     return;
   }
-
   let googleUrl =
     "https://www.google.com/maps/dir/?api=1" +
     "&origin=" + encodeURIComponent(from) +
     "&destination=" + encodeURIComponent(to) +
     "&travelmode=driving" +
     "&dir_action=navigate";
-
   if(stops.length){
     googleUrl += "&waypoints=" + encodeURIComponent(stops.join("|"));
   }
-
   window.location.href = googleUrl;
 });
 
 dateEl.value = today();
-workStartEl.value = (dayData[dateEl.value] && dayData[dateEl.value].workStart) || "";
-workEndEl.value = (dayData[dateEl.value] && dayData[dateEl.value].workEnd) || "";
 timeStartEl.value = now();
-timeEndEl.value = now();
+workdayDateEl.value = today();
 
 ensureTripIds();
 sortTrips();
 saveAll();
-updateHoursInfo();
+loadWorkdayForm(today());
 updatePlateStyle();
 updateReview();
 renderTrips();
