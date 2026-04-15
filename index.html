@@ -70,6 +70,12 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .status{font-size:13px;color:#444;margin-top:10px;min-height:18px}
 .fileblock{margin-top:16px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fafafa}
 .dayhint{margin-bottom:12px;padding:10px 12px;border-radius:10px;background:#fff6f6;border:1px solid #f0c7cf;color:#8a1327;display:none}
+
+.input-row{display:flex;gap:8px;align-items:stretch}
+.input-row input{flex:1;margin:0}
+.btn-voice{min-width:54px;min-height:56px;border:1px solid #d7dce8;border-radius:10px;background:#eef1f7;font-size:22px;line-height:1}
+.voice-note{margin-top:8px;font-size:13px;color:var(--muted)}
+
 </style>
 </head>
 <body>
@@ -125,7 +131,10 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="step-title">Van</div>
         <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
         <label for="from">Van</label>
-        <input id="from">
+        <div class="input-row">
+          <input id="from">
+          <button type="button" class="btn-voice" id="voiceFromBtn" title="Spreek van-locatie in">🎤</button>
+        </div>
         <div class="quick" id="fromButtons"></div>
       </div>
 
@@ -133,7 +142,10 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="step-title">Naar</div>
         <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
         <label for="to">Naar</label>
-        <input id="to">
+        <div class="input-row">
+          <input id="to">
+          <button type="button" class="btn-voice" id="voiceToBtn" title="Spreek naar-locatie in">🎤</button>
+        </div>
         <div class="quick" id="toButtons"></div>
         <div class="toolbar">
           <button type="button" class="btn-secondary" id="swapBtn">Retour</button>
@@ -144,8 +156,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="step-title">Tussenstops</div>
         <div class="step-sub">Optioneel. Meerdere tussenstops scheid je met komma's.</div>
         <label for="stops">Tussenstop(s)</label>
-        <input id="stops" placeholder="Bijv. ABS den Elzen, Perfect Carwrapping">
+        <div class="input-row">
+          <input id="stops" placeholder="Bijv. ABS den Elzen, Perfect Carwrapping">
+          <button type="button" class="btn-voice" id="voiceStopsBtn" title="Spreek tussenstops in">🎤</button>
+        </div>
         <div class="quick" id="stopsButtons"></div>
+        <div class="toolbar">
+          <button type="button" class="btn-secondary" id="voiceRouteBtn">🎤 Slimme routezin</button>
+        </div>
+        <div class="voice-note" id="voiceStatus">Je kunt bijvoorbeeld zeggen: van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen en Perfect Carwrapping.</div>
       </div>
 
       <div class="step" data-step="7">
@@ -254,8 +273,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v31<br>
-    v31 toont nu bovenaan Invoeren, Werkdag, Ritten en Export. Werkdag begin en einde beheer je apart en blijft gewoon mee-exporteren naar een tweede Excel-tabblad. Eindtijd van een rit is verwijderd. Als je tussenstops invult, zie je in het controlescherm alleen nog de knop om een route met tussenstops op te slaan. ABS den Elzen is toegevoegd als vaste locatie.
+    <strong>App-versie:</strong> v32<br>
+    v32 bouwt verder op v31 en voegt spraakinvoer toe. Je hebt nu microfoonknoppen bij Van, Naar en Tussenstops én een slimme routeknop die zinnen als ‘van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen’ probeert te verdelen over Van, Naar en Tussenstops. Werkdag beheer, export met twee tabbladen, slimme tussenstop-opslag en ABS den Elzen blijven behouden.
   </div>
 </div>
 
@@ -314,6 +333,7 @@ const odometerEl = document.getElementById("odometer");
 const fromEl = document.getElementById("from");
 const toEl = document.getElementById("to");
 const stopsEl = document.getElementById("stops");
+const voiceStatusEl = document.getElementById("voiceStatus");
 
 const tripTableEl = document.getElementById("tripTable");
 const workdayTableEl = document.getElementById("workdayTable");
@@ -484,6 +504,123 @@ async function lookupPlate(){
   updateReview();
   return info;
 }
+
+function getSpeechRecognitionCtor(){
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+function setVoiceStatus(msg){
+  if(voiceStatusEl) voiceStatusEl.textContent = msg;
+}
+function startRecognition(onResult){
+  const Ctor = getSpeechRecognitionCtor();
+  if(!Ctor){
+    alert("Spraakinvoer wordt in deze browser niet ondersteund.");
+    setVoiceStatus("Spraakinvoer wordt in deze browser niet ondersteund. Typen werkt natuurlijk wel gewoon.");
+    return;
+  }
+  const recognition = new Ctor();
+  recognition.lang = "nl-NL";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  setVoiceStatus("Luisteren… spreek nu in.");
+  recognition.onresult = (event) => {
+    const transcript = String(event.results[0][0].transcript || "").trim();
+    if(!transcript){
+      setVoiceStatus("Geen spraak herkend. Probeer het nog eens.");
+      return;
+    }
+    onResult(transcript);
+  };
+  recognition.onerror = (event) => {
+    const err = event.error || "onbekende fout";
+    setVoiceStatus("Spraakinvoer mislukt: " + err + ".");
+  };
+  recognition.onend = () => {
+    if(voiceStatusEl && voiceStatusEl.textContent === "Luisteren… spreek nu in."){
+      setVoiceStatus("Klaar met luisteren.");
+    }
+  };
+  recognition.start();
+}
+function applySpeechToField(el, transcript, append=false){
+  const spoken = normalizeLocation(transcript);
+  if(append && el.value.trim()){
+    const parts = el.value.split(",").map(s=>s.trim()).filter(Boolean);
+    if(!parts.includes(spoken)){
+      el.value = el.value.trim() + ", " + spoken;
+    }
+  }else{
+    el.value = spoken;
+  }
+  updateReview();
+  setVoiceStatus("Ingevuld: " + spoken);
+}
+function cleanSpokenText(text){
+  return String(text || "")
+    .replace(/[.!?;:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function splitStopPhrase(text){
+  return cleanSpokenText(text)
+    .split(/\s*(?:,| en | vervolgens | daarna | daarna via | dan via )\s*/i)
+    .map(s => normalizeLocation(s.trim()))
+    .filter(Boolean);
+}
+function parseSmartRouteTranscript(transcript){
+  const raw = cleanSpokenText(transcript);
+  const lower = raw.toLowerCase();
+
+  let work = lower;
+  if(work.startsWith("van ")){
+    work = work.slice(4);
+  }
+
+  const naarIdx = work.indexOf(" naar ");
+  if(naarIdx === -1){
+    return null;
+  }
+
+  let fromPart = raw.slice(lower.startsWith("van ") ? 4 : 0, (lower.startsWith("van ") ? 4 : 0) + naarIdx).trim();
+  let restOriginal = raw.slice((lower.startsWith("van ") ? 4 : 0) + naarIdx + 6).trim();
+  let restLower = work.slice(naarIdx + 6).trim();
+
+  let toPart = restOriginal;
+  let viaPart = "";
+
+  const viaIdx = restLower.indexOf(" via ");
+  if(viaIdx !== -1){
+    toPart = restOriginal.slice(0, viaIdx).trim();
+    viaPart = restOriginal.slice(viaIdx + 5).trim();
+  }
+
+  const result = {
+    from: normalizeLocation(fromPart),
+    to: normalizeLocation(toPart),
+    stops: viaPart ? splitStopPhrase(viaPart) : []
+  };
+
+  if(!result.from || !result.to){
+    return null;
+  }
+  return result;
+}
+function fillSmartRouteFromTranscript(transcript){
+  const parsed = parseSmartRouteTranscript(transcript);
+  if(!parsed){
+    setVoiceStatus('Kon de routezin niet goed lezen. Zeg bijvoorbeeld: van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen.');
+    alert('Ik kon de routezin niet goed herkennen. Probeer bijvoorbeeld: van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen.');
+    return;
+  }
+  fromEl.value = parsed.from;
+  toEl.value = parsed.to;
+  stopsEl.value = parsed.stops.join(", ");
+  updateReview();
+  const stopText = parsed.stops.length ? " via " + parsed.stops.join(", ") : "";
+  setVoiceStatus("Route ingevuld: " + parsed.from + " naar " + parsed.to + stopText + ".");
+}
+
 function updateDayReminder(){
   const d = dateEl.value || today();
   if(isToday(d) && currentHour() >= 17 && !(dayData[d] && dayData[d].workEnd)){
@@ -1029,6 +1166,12 @@ $("mapsGoogleBtn").addEventListener("click", ()=>{
   }
   window.location.href = googleUrl;
 });
+
+
+$("voiceFromBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(fromEl, t)));
+$("voiceToBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(toEl, t)));
+$("voiceStopsBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(stopsEl, t, true)));
+$("voiceRouteBtn").addEventListener("click", ()=>startRecognition(fillSmartRouteFromTranscript));
 
 dateEl.value = today();
 timeStartEl.value = now();
