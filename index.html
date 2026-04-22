@@ -75,7 +75,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .input-row input{flex:1;margin:0}
 .btn-voice{min-width:54px;min-height:56px;border:1px solid #d7dce8;border-radius:10px;background:#eef1f7;font-size:22px;line-height:1}
 .voice-note{margin-top:8px;font-size:13px;color:var(--muted)}
-
 </style>
 </head>
 <body>
@@ -174,6 +173,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="toolbar">
           <button type="button" class="btn-map" id="mapsAppleBtn">Apple Kaarten</button>
           <button type="button" class="btn-map" id="mapsGoogleBtn">Google Maps</button>
+          <button type="button" class="btn-secondary" id="copyFlitsBtn">Kopieer voor Flitsmeister</button>
           <button type="button" class="btn-primary" id="saveTripBtn">Opslaan rit</button>
           <button type="button" class="btn-secondary" id="saveRouteBtn">Route met tussenstops opslaan</button>
           <button type="button" class="btn-secondary" id="clearBtn">Leegmaken</button>
@@ -273,8 +273,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v32<br>
-    v32 bouwt verder op v31 en voegt spraakinvoer toe. Je hebt nu microfoonknoppen bij Van, Naar en Tussenstops én een slimme routeknop die zinnen als ‘van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen’ probeert te verdelen over Van, Naar en Tussenstops. Werkdag beheer, export met twee tabbladen, slimme tussenstop-opslag en ABS den Elzen blijven behouden.
+    <strong>App-versie:</strong> v33<br>
+    v33 bouwt verder op v32 en voegt een knop toe om de route of bestemming te kopiëren voor Flitsmeister. Spraakinvoer, werkdagbeheer, export met twee tabbladen, slimme tussenstop-opslag en ABS den Elzen blijven behouden.
   </div>
 </div>
 
@@ -654,6 +654,7 @@ function updateReview(){
   const hasStops = !!stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).length;
   $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
   $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "none";
+  $("copyFlitsBtn").style.display = showMaps ? "inline-block" : "none";
   $("saveTripBtn").style.display = hasStops ? "none" : "inline-block";
   $("saveRouteBtn").style.display = hasStops ? "inline-block" : "none";
   updateDayReminder();
@@ -1166,7 +1167,28 @@ $("mapsGoogleBtn").addEventListener("click", ()=>{
   }
   window.location.href = googleUrl;
 });
+$("copyFlitsBtn").addEventListener("click", async ()=>{
+  const { from, to, stops } = getRoutePointsForMaps();
+  if(!to){
+    alert("Geen bestemming gevonden.");
+    return;
+  }
 
+  let text = "Bestemming:\n" + to;
+  if(stops.length){
+    text += "\n\nVia:\n" + stops.join("\n");
+  }
+  if(from){
+    text += "\n\nVan:\n" + from;
+  }
+
+  try{
+    await navigator.clipboard.writeText(text);
+    alert("Route gekopieerd. Open Flitsmeister en plak de bestemming of route.");
+  }catch(e){
+    alert("Kopiëren mislukt. Probeer het opnieuw.");
+  }
+});
 
 $("voiceFromBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(fromEl, t)));
 $("voiceToBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(toEl, t)));
