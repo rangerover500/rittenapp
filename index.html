@@ -70,7 +70,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .status{font-size:13px;color:#444;margin-top:10px;min-height:18px}
 .fileblock{margin-top:16px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fafafa}
 .dayhint{margin-bottom:12px;padding:10px 12px;border-radius:10px;background:#fff6f6;border:1px solid #f0c7cf;color:#8a1327;display:none}
-
 .input-row{display:flex;gap:8px;align-items:stretch}
 .input-row input{flex:1;margin:0}
 .btn-voice{min-width:54px;min-height:56px;border:1px solid #d7dce8;border-radius:10px;background:#eef1f7;font-size:22px;line-height:1}
@@ -273,8 +272,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v33<br>
-    v33 bouwt verder op v32 en voegt een knop toe om de route of bestemming te kopiëren voor Flitsmeister. Spraakinvoer, werkdagbeheer, export met twee tabbladen, slimme tussenstop-opslag en ABS den Elzen blijven behouden.
+    <strong>App-versie:</strong> v34<br>
+    v34 bouwt verder op v33 en past de Flitsmeister-knop aan: er wordt nu alleen nog de eindbestemming gekopieerd, zodat Flitsmeister niet per ongeluk het vertrekadres pakt. Alle overige functies uit v33 blijven behouden.
   </div>
 </div>
 
@@ -1168,23 +1167,14 @@ $("mapsGoogleBtn").addEventListener("click", ()=>{
   window.location.href = googleUrl;
 });
 $("copyFlitsBtn").addEventListener("click", async ()=>{
-  const { from, to, stops } = getRoutePointsForMaps();
+  const { to } = getRoutePointsForMaps();
   if(!to){
     alert("Geen bestemming gevonden.");
     return;
   }
-
-  let text = "Bestemming:\n" + to;
-  if(stops.length){
-    text += "\n\nVia:\n" + stops.join("\n");
-  }
-  if(from){
-    text += "\n\nVan:\n" + from;
-  }
-
   try{
-    await navigator.clipboard.writeText(text);
-    alert("Route gekopieerd. Open Flitsmeister en plak de bestemming of route.");
+    await navigator.clipboard.writeText(to);
+    alert("Bestemming gekopieerd. Open Flitsmeister en plak het adres.");
   }catch(e){
     alert("Kopiëren mislukt. Probeer het opnieuw.");
   }
