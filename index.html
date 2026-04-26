@@ -57,7 +57,7 @@ button{cursor:pointer}
 .step.active{display:block}
 .step-title{font-size:24px;font-weight:bold;margin:0 0 8px 0}
 .step-sub{font-size:14px;color:var(--muted);margin:0 0 14px 0}
-.nav{display:flex;justify-content:space-between;gap:10px;margin-top:18px}
+.nav{display:flex;justify-content:space-between;gap:10px;margin-top:18px;position:sticky;bottom:0;background:#fafbff;padding-top:10px;z-index:5}
 .warning{color:var(--danger);font-weight:bold;margin:0 0 10px 0;display:none}
 .info{margin-top:10px;color:#333;min-height:20px}
 .review{background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px;line-height:1.7}
@@ -74,6 +74,10 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .input-row input{flex:1;margin:0}
 .btn-voice{min-width:54px;min-height:56px;border:1px solid #d7dce8;border-radius:10px;background:#eef1f7;font-size:22px;line-height:1}
 .voice-note{margin-top:8px;font-size:13px;color:var(--muted)}
+#screen-invoer .step[data-step="6"] .quick{max-height:82px;overflow-y:auto}
+#screen-invoer .step[data-step="6"] .voice-note{font-size:12px;line-height:1.35}
+.conditional-block{margin-top:12px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fff}
+.history-title{margin-top:10px;font-size:13px;color:var(--muted);font-weight:bold}
 </style>
 </head>
 <body>
@@ -134,6 +138,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <button type="button" class="btn-voice" id="voiceFromBtn" title="Spreek van-locatie in">🎤</button>
         </div>
         <div class="quick" id="fromButtons"></div>
+        <div class="history-title">Eerder gebruikt</div>
+        <div class="quick" id="fromHistoryButtons"></div>
       </div>
 
       <div class="step" data-step="5">
@@ -145,6 +151,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <button type="button" class="btn-voice" id="voiceToBtn" title="Spreek naar-locatie in">🎤</button>
         </div>
         <div class="quick" id="toButtons"></div>
+        <div class="history-title">Eerder gebruikt</div>
+        <div class="quick" id="toHistoryButtons"></div>
         <div class="toolbar">
           <button type="button" class="btn-secondary" id="swapBtn">Retour</button>
         </div>
@@ -159,6 +167,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <button type="button" class="btn-voice" id="voiceStopsBtn" title="Spreek tussenstops in">🎤</button>
         </div>
         <div class="quick" id="stopsButtons"></div>
+        <div class="history-title">Eerder gebruikt</div>
+        <div class="quick" id="stopsHistoryButtons"></div>
         <div class="toolbar">
           <button type="button" class="btn-secondary" id="voiceRouteBtn">🎤 Slimme routezin</button>
         </div>
@@ -169,6 +179,11 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="step-title">Controle</div>
         <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
         <div class="review" id="reviewBox"></div>
+        <div class="conditional-block" id="rotterdamEndBlock" style="display:none;">
+          <label for="timeEndRotterdam">Eindtijd rit naar Breeland Rotterdam</label>
+          <input type="time" id="timeEndRotterdam">
+          <div class="small">Alleen zichtbaar bij ritten die eindigen op Breeland Rotterdam.</div>
+        </div>
         <div class="toolbar">
           <button type="button" class="btn-map" id="mapsAppleBtn">Apple Kaarten</button>
           <button type="button" class="btn-map" id="mapsGoogleBtn">Google Maps</button>
@@ -218,6 +233,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <tr>
             <th>Datum</th>
             <th>Start</th>
+            <th>Eind</th>
             <th>Van</th>
             <th>Naar</th>
             <th>Kenteken</th>
@@ -272,8 +288,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v34<br>
-    v34 bouwt verder op v33 en past de Flitsmeister-knop aan: er wordt nu alleen nog de eindbestemming gekopieerd, zodat Flitsmeister niet per ongeluk het vertrekadres pakt. Alle overige functies uit v33 blijven behouden.
+    <strong>App-versie:</strong> v35<br>
+    v35 bouwt verder op v34. Nieuw: de Volgende-knop blijft op iPhone beter zichtbaar, bij ritten die eindigen op Breeland Rotterdam kun je optioneel een eindtijd invullen, en er is een lijst met eerder gebruikte adressen.
   </div>
 </div>
 
@@ -281,6 +297,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 const STORAGE_TRIPS = "trips_v31";
 const STORAGE_DAYDATA = "dayData_v31";
 const STORAGE_PLATES = "plates_v31";
+const STORAGE_ADDRESSES = "addresses_v35";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const KNOWN_ADDRESSES = {
@@ -298,6 +315,7 @@ const ALL_STEPS = [0,1,2,3,4,5,6,7];
 let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v30","trips_v29","trips_v28","trips_v27","trips_v20","trips_v19","trips_v18","trips_v17","trips_v16","trips_v15","trips_v14","trips_v13","trips_v12"], []);
 let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v30","dayData_v29","dayData_v28","dayData_v27","dayData_v20","dayData_v19","dayData_v18","dayData_v17","dayData_v16","dayData_v15","dayData_v14","dayData_v13","dayData_v12"], {});
 let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v30","plates_v29","plates_v28","plates_v27","plates_v20","plates_v19","plates_v18","plates_v17","plates_v16","plates_v15","plates_v14","plates_v13","plates_v12"], []);
+let addressHistory = loadStorageWithFallback(STORAGE_ADDRESSES, [], []);
 
 let currentStep = 0;
 let editingTripId = null;
@@ -325,6 +343,7 @@ const workEndEl = document.getElementById("workEnd");
 const dayHoursInfoEl = document.getElementById("dayHoursInfo");
 const dateEl = document.getElementById("date");
 const timeStartEl = document.getElementById("timeStart");
+const timeEndRotterdamEl = document.getElementById("timeEndRotterdam");
 const plateEl = document.getElementById("plate");
 const rdwInfoEl = document.getElementById("rdwInfo");
 const odoWarningEl = document.getElementById("odoWarning");
@@ -356,6 +375,7 @@ function saveAll(){
   localStorage.setItem(STORAGE_TRIPS, JSON.stringify(trips));
   localStorage.setItem(STORAGE_DAYDATA, JSON.stringify(dayData));
   localStorage.setItem(STORAGE_PLATES, JSON.stringify(plates));
+  localStorage.setItem(STORAGE_ADDRESSES, JSON.stringify(addressHistory));
 }
 function pad(n){ return String(n).padStart(2, "0"); }
 function today(){ const d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
@@ -388,6 +408,43 @@ function getRoutePointsForMaps(){
       .filter(Boolean)
       .map(resolveMapAddress)
   };
+}
+function isBreelandRotterdamValue(v){
+  return normalizeLocation(v) === "Breeland Rotterdam";
+}
+function routeEndsAtBreelandRotterdam(){
+  return isBreelandRotterdamValue(toEl.value);
+}
+function getStopsList(){
+  return stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).map(normalizeLocation);
+}
+function saveAddressToHistory(value){
+  const label = normalizeLocation(value);
+  if(!label || QUICK_LOCATIONS.includes(label)) return;
+  addressHistory = addressHistory.filter(x => x !== label);
+  addressHistory.unshift(label);
+  addressHistory = addressHistory.slice(0, 20);
+}
+function saveCurrentAddressesToHistory(){
+  saveAddressToHistory(fromEl.value);
+  saveAddressToHistory(toEl.value);
+  getStopsList().forEach(saveAddressToHistory);
+  saveAll();
+  renderAddressHistoryButtons();
+}
+function renderAddressHistoryButtons(){
+  const items = addressHistory.slice(0, 12);
+  addQuickButtons("fromHistoryButtons", items, value=>{ fromEl.value = value; updateReview(); });
+  addQuickButtons("toHistoryButtons", items, value=>{ toEl.value = value; updateReview(); });
+  addQuickButtons("stopsHistoryButtons", items, value=>{
+    const current = stopsEl.value.trim();
+    if(!current){ stopsEl.value = value; }
+    else{
+      const parts = current.split(",").map(x=>x.trim()).filter(Boolean);
+      if(!parts.includes(value)) stopsEl.value = current + ", " + value;
+    }
+    updateReview();
+  });
 }
 function timeDiffMinutes(start,end){
   if(!start || !end) return 0;
@@ -639,6 +696,7 @@ function buildReviewHtml(){
     <div><strong>Werkdag:</strong> ${wd.workStart || "-"} → ${wd.workEnd || "-"}</div>
     <div><strong>Datum:</strong> ${d || "-"}</div>
     <div><strong>Starttijd rit:</strong> ${timeStartEl.value || "-"}</div>
+    ${routeEndsAtBreelandRotterdam() ? `<div><strong>Eindtijd rit:</strong> ${timeEndRotterdamEl.value || "-"}</div>` : ""}
     <div><strong>Kenteken:</strong> ${plateEl.value || "-"}</div>
     <div><strong>Auto:</strong> ${rdwInfoEl.textContent || "-"}</div>
     <div><strong>Km-stand:</strong> ${odometerEl.value || "-"}</div>
@@ -654,6 +712,8 @@ function updateReview(){
   $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
   $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "none";
   $("copyFlitsBtn").style.display = showMaps ? "inline-block" : "none";
+  $("rotterdamEndBlock").style.display = routeEndsAtBreelandRotterdam() ? "block" : "none";
+  if(!routeEndsAtBreelandRotterdam()) timeEndRotterdamEl.value = "";
   $("saveTripBtn").style.display = hasStops ? "none" : "inline-block";
   $("saveRouteBtn").style.display = hasStops ? "inline-block" : "none";
   updateDayReminder();
@@ -692,6 +752,7 @@ function buildTripObject(existingId, vehicleText, priceText, fromValue, toValue)
     id: existingId || createTripId(),
     date: dateEl.value || today(),
     timeStart: timeStartEl.value,
+    timeEnd: routeEndsAtBreelandRotterdam() ? String(timeEndRotterdamEl.value || "").trim() : "",
     from: normalizeLocation(fromValue),
     to: normalizeLocation(toValue),
     plate: normalizePlate(plateEl.value),
@@ -721,6 +782,7 @@ $("saveTripBtn").addEventListener("click", async ()=>{
     return;
   }
   savePlateToList(trip.plate);
+  saveCurrentAddressesToHistory();
   if(editingTripId){
     trips = trips.map(t => t.id === editingTripId ? trip : t);
   } else {
@@ -750,12 +812,15 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
     editingTripId = null;
   }
   savePlateToList(p);
+  saveCurrentAddressesToHistory();
+  const finalIsRotterdam = routeEndsAtBreelandRotterdam();
   const newTrips = [];
   for(let i=0;i<points.length-1;i++){
     newTrips.push({
       id: createTripId(),
       date: dateEl.value || today(),
       timeStart: timeStartEl.value,
+      timeEnd: (finalIsRotterdam && i === points.length - 2) ? String(timeEndRotterdamEl.value || "").trim() : "",
       from: points[i],
       to: points[i+1],
       plate: p,
@@ -775,6 +840,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
 function clearForm(){
   dateEl.value = dateEl.value || today();
   timeStartEl.value = now();
+  timeEndRotterdamEl.value = "";
   plateEl.value = "";
   odometerEl.value = "";
   fromEl.value = "";
@@ -827,6 +893,7 @@ function renderTrips(){
     row.innerHTML = `
       <td>${escapeHtml(t.date||"")}</td>
       <td>${escapeHtml(t.timeStart||"")}</td>
+      <td>${escapeHtml(t.timeEnd||"")}</td>
       <td>${escapeHtml(t.from||"")}</td>
       <td>${escapeHtml(t.to||"")}</td>
       <td>${escapeHtml(t.plate||"")}</td>
@@ -870,6 +937,7 @@ tripTableEl.addEventListener("click", e=>{
     if(!t) return;
     dateEl.value = t.date || today();
     timeStartEl.value = t.timeStart || now();
+    timeEndRotterdamEl.value = t.timeEnd || "";
     plateEl.value = t.plate || "";
     odometerEl.value = t.odometer || "";
     fromEl.value = t.from || "";
@@ -928,8 +996,8 @@ function calcExcelColumnWidths(rows){
 }
 function buildWorkbookFromData(exportTrips, exportDayData){
   const tripRows = [
-    ["ID","Datum","Starttijd","Van","Naar","Kenteken","Auto","Nieuwprijs","Km-stand"],
-    ...exportTrips.map(t=>[t.id||"", t.date||"", t.timeStart||"", t.from||"", t.to||"", t.plate||"", t.vehicle||"", t.priceText||"", t.odometer||""])
+    ["ID","Datum","Starttijd","Eindtijd","Van","Naar","Kenteken","Auto","Nieuwprijs","Km-stand"],
+    ...exportTrips.map(t=>[t.id||"", t.date||"", t.timeStart||"", t.timeEnd||"", t.from||"", t.to||"", t.plate||"", t.vehicle||"", t.priceText||"", t.odometer||""])
   ];
   const workdayRows = [
     ["Datum","Aanwezig vanaf","Klaar om","Gewerkte tijd"],
@@ -965,6 +1033,7 @@ function readImportedWorkbook(file, callback){
           id: String(r["ID"]||"").trim() || createTripId(),
           date: String(r["Datum"]||"").trim(),
           timeStart: String(r["Starttijd"]||"").trim(),
+          timeEnd: String(r["Eindtijd"]||"").trim(),
           from: normalizeLocation(r["Van"]||""),
           to: normalizeLocation(r["Naar"]||""),
           plate: normalizePlate(r["Kenteken"]||""),
@@ -1024,7 +1093,7 @@ $("exportBtn").addEventListener("click", async ()=>{
 });
 async function buildCurrentDraftTripForExport(){
   if(editingTripId) return null;
-  const hasDraft = [dateEl.value, timeStartEl.value, fromEl.value, toEl.value, plateEl.value, odometerEl.value].some(v=>String(v||"").trim() !== "");
+  const hasDraft = [dateEl.value, timeStartEl.value, timeEndRotterdamEl.value, fromEl.value, toEl.value, plateEl.value, odometerEl.value].some(v=>String(v||"").trim() !== "");
   if(!hasDraft) return null;
   const hasStops = stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).length > 0;
   if(hasStops) return null;
@@ -1126,10 +1195,11 @@ addQuickButtons("stopsButtons", QUICK_LOCATIONS, value=>{
   updateReview();
 });
 renderPlateButtons();
+renderAddressHistoryButtons();
 
 dateEl.addEventListener("input", updateReview);
 plateEl.addEventListener("input", ()=>{ updatePlateStyle(); lookupPlate(); });
-[timeStartEl, odometerEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("input", updateReview));
+[timeStartEl, timeEndRotterdamEl, odometerEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("input", updateReview));
 
 $("mapsAppleBtn").addEventListener("click", ()=>{
   const { from, to, stops } = getRoutePointsForMaps();
@@ -1187,6 +1257,7 @@ $("voiceRouteBtn").addEventListener("click", ()=>startRecognition(fillSmartRoute
 
 dateEl.value = today();
 timeStartEl.value = now();
+timeEndRotterdamEl.value = "";
 workdayDateEl.value = today();
 
 ensureTripIds();
