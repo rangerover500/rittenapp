@@ -49,7 +49,7 @@ button{cursor:pointer}
 #plate.filled{font-weight:bold}
 .quick{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
 .quick button{border:1px solid var(--line);background:#f1f3f8;border-radius:8px;padding:10px 12px;font-size:14px}
-.wizard{border:1px solid #e6ebf7;border-radius:14px;background:#fafbff;padding:16px}
+.wizard{border:1px solid #e6ebf7;border-radius:14px;background:#fafbff;padding:16px;padding-bottom:10px}
 .progress-text{font-size:13px;color:var(--muted);margin-bottom:6px}
 .progress-bar{width:100%;height:10px;background:#e7ecf8;border-radius:999px;overflow:hidden;margin-bottom:16px}
 .progress-fill{height:100%;width:0%;background:#000;transition:width .2s ease}
@@ -74,7 +74,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .input-row input{flex:1;margin:0}
 .btn-voice{min-width:54px;min-height:56px;border:1px solid #d7dce8;border-radius:10px;background:#eef1f7;font-size:22px;line-height:1}
 .voice-note{margin-top:8px;font-size:13px;color:var(--muted)}
-#screen-invoer .step[data-step="6"] .quick{max-height:82px;overflow-y:auto}
 #screen-invoer .step[data-step="6"] .voice-note{font-size:12px;line-height:1.35}
 .conditional-block{margin-top:12px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fff}
 .history-title{margin-top:10px;font-size:13px;color:var(--muted);font-weight:bold}
@@ -288,8 +287,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   </div>
 
   <div class="version">
-    <strong>App-versie:</strong> v35<br>
-    v35 bouwt verder op v34. Nieuw: de Volgende-knop blijft op iPhone beter zichtbaar, bij ritten die eindigen op Breeland Rotterdam kun je optioneel een eindtijd invullen, en er is een lijst met eerder gebruikte adressen.
+    <strong>App-versie:</strong> v36<br>
+    v36 bouwt verder op v35. Nieuw: de tussenstop-keuzes scrollen niet meer apart, eindtijd voor ritten naar Breeland Rotterdam kan ook later via bewerken worden ingevuld, en in de rittenlijst staat een snelle knop ‘Zet eindtijd’ bij Rotterdam-ritten.
   </div>
 </div>
 
@@ -414,6 +413,9 @@ function isBreelandRotterdamValue(v){
 }
 function routeEndsAtBreelandRotterdam(){
   return isBreelandRotterdamValue(toEl.value);
+}
+function shouldShowRotterdamEndBlock(){
+  return routeEndsAtBreelandRotterdam();
 }
 function getStopsList(){
   return stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).map(normalizeLocation);
@@ -712,8 +714,8 @@ function updateReview(){
   $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
   $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "none";
   $("copyFlitsBtn").style.display = showMaps ? "inline-block" : "none";
-  $("rotterdamEndBlock").style.display = routeEndsAtBreelandRotterdam() ? "block" : "none";
-  if(!routeEndsAtBreelandRotterdam()) timeEndRotterdamEl.value = "";
+  $("rotterdamEndBlock").style.display = shouldShowRotterdamEndBlock() ? "block" : "none";
+  if(!shouldShowRotterdamEndBlock()) timeEndRotterdamEl.value = "";
   $("saveTripBtn").style.display = hasStops ? "none" : "inline-block";
   $("saveRouteBtn").style.display = hasStops ? "inline-block" : "none";
   updateDayReminder();
@@ -900,6 +902,7 @@ function renderTrips(){
       <td>${escapeHtml(t.vehicle||"")}${t.priceText ? '<br><span class="small">Nieuwprijs: ' + escapeHtml(t.priceText) + '</span>' : ''}</td>
       <td>${escapeHtml(t.odometer||"")}</td>
       <td>
+        ${normalizeLocation(t.to || "") === "Breeland Rotterdam" ? '<button type="button" class="btn-edit" data-action="setEnd" data-id="' + escapeHtml(t.id) + '">Zet eindtijd</button> ' : ''}
         <button type="button" class="btn-edit" data-action="edit" data-id="${escapeHtml(t.id)}">Bewerk</button>
         <button type="button" class="btn-delete" data-action="delete" data-id="${escapeHtml(t.id)}">Verwijder</button>
       </td>
@@ -932,6 +935,21 @@ tripTableEl.addEventListener("click", e=>{
   const btn = e.target.closest("button");
   if(!btn) return;
   const id = btn.dataset.id;
+  if(btn.dataset.action === "setEnd"){
+    const t = trips.find(x=>x.id===id);
+    if(!t) return;
+    const value = prompt("Eindtijd invullen voor deze rit naar Breeland Rotterdam:", t.timeEnd || now());
+    if(value === null) return;
+    const clean = String(value || "").trim();
+    if(clean && !/^\d{1,2}:\d{2}$/.test(clean)){
+      alert("Gebruik tijdnotatie zoals 17:30.");
+      return;
+    }
+    t.timeEnd = clean;
+    saveAll();
+    renderTrips();
+    return;
+  }
   if(btn.dataset.action === "edit"){
     const t = trips.find(x=>x.id===id);
     if(!t) return;
