@@ -101,8 +101,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <div class="step active" data-step="0">
         <div class="step-title">Datum</div>
 <div class="version">
-    <strong>App-versie:</strong> v39 herstelversie<br>
-    v39 leest en combineert alle eerder opgeslagen ritten en werkdagen uit oude app-versies op deze iPhone. Daarna slaat hij alles opnieuw op onder v39.
+    <strong>App-versie:</strong> v40 herstelversie<br>
+    v40 opent weer normaal en probeert alle ritten en werkdagen uit eerdere versies op deze iPhone samen te voegen. Daarna slaat hij alles opnieuw veilig op onder v40.
     </div>
   </div>
 
@@ -193,9 +193,9 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 </div>
 
 <script>
-const STORAGE_TRIPS = "trips_v39";
-const STORAGE_DAYDATA = "dayData_v39";
-const STORAGE_PLATES = "plates_v39";
+const STORAGE_TRIPS = "trips_v40";
+const STORAGE_DAYDATA = "dayData_v40";
+const STORAGE_PLATES = "plates_v40";
 const STORAGE_ADDRESSES = "addresses_v35";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
@@ -477,6 +477,7 @@ screenButtons.forEach(btn => btn.addEventListener("click", ()=>setScreen(btn.dat
 
 function addQuickButtons(containerId, items, callback){
   const el = $(containerId);
+  if(!el) return;
   el.innerHTML = "";
   items.forEach(item=>{
     const btn = document.createElement("button");
