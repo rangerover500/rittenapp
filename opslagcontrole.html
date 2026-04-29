@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rittenapp opslagcontrole</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f4f6fb;margin:0;padding:16px;color:#111}
+.container{max-width:1000px;margin:0 auto;background:#fff;border-radius:14px;padding:18px}
+button{border:1px solid #d7dce8;background:#eef1f7;border-radius:10px;padding:10px 12px;margin:4px;font-size:14px}
+.btn-primary{background:#000;color:#fff}
+.btn-danger{background:#f8d7da}
+.card{border:1px solid #ddd;border-radius:10px;padding:12px;margin:12px 0;background:#fafafa}
+pre{white-space:pre-wrap;background:#111;color:#0f0;padding:12px;border-radius:10px;overflow:auto}
+table{width:100%;border-collapse:collapse;margin-top:10px}
+th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;font-size:13px;vertical-align:top}
+.small{font-size:13px;color:#666}
+.ok{background:#e6f7e6;border:1px solid #88c888;color:#176b17;border-radius:10px;padding:10px;margin-top:10px;display:none}
+.warn{background:#fff3cd;border:1px solid #e0c36c;border-radius:10px;padding:10px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Rittenapp opslagcontrole</h1>
+<p>Deze pagina wijzigt niets automatisch. Hij laat alleen zien welke ritten-opslag nog op deze iPhone/Safari aanwezig is.</p>
+
+<div class="warn">
+<strong>Belangrijk:</strong> gebruik deze pagina via dezelfde GitHub Pages URL als de rittenapp, bijvoorbeeld:<br>
+<code>https://rangerover500.github.io/rittenapp/opslagcontrole.html</code>
+</div>
+
+<div class="card">
+<button class="btn-primary" onclick="scan()">Scan opslag</button>
+<button onclick="exportAll()">Download volledige back-up JSON</button>
+<button onclick="copyReport()">Kopieer rapport</button>
+<div id="msg" class="ok"></div>
+</div>
+
+<h2>Gevonden opslag</h2>
+<div id="output"></div>
+
+<h2>Herstel naar huidige app-opslag</h2>
+<p class="small">
+Kies hieronder één ritten-set en één werkdag-set waarvan de aantallen/datumrange kloppen. Daarna kun je die naar <code>trips_v31</code> en <code>dayData_v31</code> kopiëren, zodat je werkende app ze weer ziet.
+</p>
+<div id="restore"></div>
+
+<h2>Rapport</h2>
+<pre id="report"></pre>
+</div>
+
+<script>
+let lastReport = "";
+let scanData = {tripSets:[], daySets:[], plateSets:[]};
+
+function safeParse(key, fallback){
+  try{
+    const value = localStorage.getItem(key);
+    if(value === null) return fallback;
+    return JSON.parse(value);
+  }catch(e){ return fallback; }
+}
+function keysStarting(prefix){
+  const keys=[];
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(k && k.indexOf(prefix)===0) keys.push(k);
+  }
+  return keys.sort();
+}
+function dateRangeFromTrips(arr){
+  const dates = arr.map(t=>String(t.date||"").trim()).filter(Boolean).sort();
+  return dates.length ? dates[0] + " t/m " + dates[dates.length-1] : "-";
+}
+function countToday(arr){
+  const d = new Date();
+  const today = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  return arr.filter(t=>String(t.date||"")===today).length;
+}
+function scan(){
+  const tripKeys = keysStarting("trips_v");
+  const dayKeys = keysStarting("dayData_v");
+  const plateKeys = keysStarting("plates_v");
+
+  scanData.tripSets = tripKeys.map(k=>{
+    const arr = safeParse(k, []);
+    return {key:k, type:Array.isArray(arr)?"array":typeof arr, count:Array.isArray(arr)?arr.length:0, today:Array.isArray(arr)?countToday(arr):0, range:Array.isArray(arr)?dateRangeFromTrips(arr):"-", raw:arr};
+  });
+  scanData.daySets = dayKeys.map(k=>{
+    const obj = safeParse(k, {});
+    const count = obj && typeof obj==="object" && !Array.isArray(obj) ? Object.keys(obj).length : 0;
+    const dates = obj && typeof obj==="object" && !Array.isArray(obj) ? Object.keys(obj).sort() : [];
+    return {key:k, type:Array.isArray(obj)?"array":typeof obj, count, range:dates.length?dates[0]+" t/m "+dates[dates.length-1]:"-", raw:obj};
+  });
+  scanData.plateSets = plateKeys.map(k=>{
+    const arr = safeParse(k, []);
+    return {key:k, type:Array.isArray(arr)?"array":typeof arr, count:Array.isArray(arr)?arr.length:0, raw:arr};
+  });
+
+  render();
+}
+function render(){
+  let html = "";
+  html += "<h3>Ritten</h3><table><tr><th>Kies</th><th>Key</th><th>Aantal</th><th>Vandaag</th><th>Datumrange</th></tr>";
+  scanData.tripSets.forEach((s,i)=>{
+    html += `<tr><td><input type="radio" name="tripKey" value="${s.key}"></td><td>${s.key}</td><td>${s.count}</td><td>${s.today}</td><td>${s.range}</td></tr>`;
+  });
+  html += "</table>";
+
+  html += "<h3>Werkdagen</h3><table><tr><th>Kies</th><th>Key</th><th>Aantal dagen</th><th>Datumrange</th></tr>";
+  scanData.daySets.forEach((s,i)=>{
+    html += `<tr><td><input type="radio" name="dayKey" value="${s.key}"></td><td>${s.key}</td><td>${s.count}</td><td>${s.range}</td></tr>`;
+  });
+  html += "</table>";
+
+  document.getElementById("output").innerHTML = html;
+
+  document.getElementById("restore").innerHTML = `
+    <button class="btn-primary" onclick="restoreSelected()">Kopieer gekozen sets naar werkende app-opslag</button>
+    <button class="btn-danger" onclick="clearMessage()">Melding wissen</button>
+    <div class="small">Doel: <code>trips_v31</code> en <code>dayData_v31</code>. Daarna open je weer je normale app.</div>
+  `;
+
+  lastReport = buildReport();
+  document.getElementById("report").textContent = lastReport;
+}
+function buildReport(){
+  let lines=[];
+  lines.push("RITTENAPP OPSLAGCONTROLE");
+  lines.push("Datum scan: " + new Date().toISOString());
+  lines.push("");
+  lines.push("Ritten:");
+  scanData.tripSets.forEach(s=>lines.push(`${s.key}: ${s.count} ritten, vandaag ${s.today}, range ${s.range}`));
+  lines.push("");
+  lines.push("Werkdagen:");
+  scanData.daySets.forEach(s=>lines.push(`${s.key}: ${s.count} dagen, range ${s.range}`));
+  lines.push("");
+  lines.push("Plates:");
+  scanData.plateSets.forEach(s=>lines.push(`${s.key}: ${s.count}`));
+  return lines.join("\\n");
+}
+function getSelected(name){
+  const el = document.querySelector(`input[name="${name}"]:checked`);
+  return el ? el.value : "";
+}
+function restoreSelected(){
+  const tripKey = getSelected("tripKey");
+  const dayKey = getSelected("dayKey");
+  if(!tripKey && !dayKey){
+    alert("Kies minimaal een ritten-set of werkdag-set.");
+    return;
+  }
+  if(!confirm("Weet je zeker dat je de gekozen set(s) naar de werkende app-opslag wilt kopiëren?")){
+    return;
+  }
+  if(tripKey){
+    localStorage.setItem("trips_v31", localStorage.getItem(tripKey) || "[]");
+  }
+  if(dayKey){
+    localStorage.setItem("dayData_v31", localStorage.getItem(dayKey) || "{}");
+  }
+  showMsg("Gekozen data gekopieerd. Open nu weer je normale rittenapp.");
+}
+function exportAll(){
+  const backup = {};
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    backup[k]=localStorage.getItem(k);
+  }
+  const blob = new Blob([JSON.stringify(backup,null,2)], {type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="rittenapp-localstorage-backup.json";
+  a.click();
+}
+async function copyReport(){
+  if(!lastReport) scan();
+  try{
+    await navigator.clipboard.writeText(lastReport);
+    showMsg("Rapport gekopieerd.");
+  }catch(e){
+    alert("Kopiëren lukt niet. Maak eventueel een screenshot van het rapport.");
+  }
+}
+function showMsg(t){
+  const el=document.getElementById("msg");
+  el.textContent=t;
+  el.style.display="block";
+}
+function clearMessage(){
+  document.getElementById("msg").style.display="none";
+}
+scan();
+</script>
+</body>
+</html>
