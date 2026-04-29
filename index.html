@@ -68,6 +68,7 @@ table{width:100%;border-collapse:collapse;margin-top:10px}
 th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:top;font-size:14px}
 .version{margin-top:18px;font-size:13px;color:#555;background:#f7f7f7;border:1px solid #ddd;border-radius:10px;padding:12px}
 .status{font-size:13px;color:#444;margin-top:10px;min-height:18px}
+.status.saved-ok{background:#e6f7e6;border:1px solid #88c888;color:#176b17;border-radius:10px;padding:10px;font-weight:bold}
 .fileblock{margin-top:16px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fafafa}
 .dayhint{margin-bottom:12px;padding:10px 12px;border-radius:10px;background:#fff6f6;border:1px solid #f0c7cf;color:#8a1327;display:none}
 .input-row{display:flex;gap:8px;align-items:stretch}
@@ -100,8 +101,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <div class="step active" data-step="0">
         <div class="step-title">Datum</div>
 <div class="version">
-    <strong>App-versie:</strong> v37<br>
-    v37 bouwt verder op v35. Nieuw: de tussenstop-keuzes scrollen niet meer apart, eindtijd voor ritten naar Breeland Rotterdam kan ook later via bewerken worden ingevuld, en in de rittenlijst staat een snelle knop ‘Zet eindtijd’ bij Rotterdam-ritten.
+    <strong>App-versie:</strong> v38<br>
+    v38: eindtijd is nu optioneel beschikbaar voor iedere rit. Na opslaan blijf je op stap 8 staan met een groene opgeslagen-melding, zodat je direct Apple Kaarten, Google Maps of Flitsmeister kunt gebruiken.
   </div>
 
         <div class="step-sub">Kies de datum van de rit.</div>
@@ -183,10 +184,10 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="step-title">Controle</div>
         <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
         <div class="review" id="reviewBox"></div>
-        <div class="conditional-block" id="rotterdamEndBlock" style="display:none;">
-          <label for="timeEndRotterdam">Eindtijd rit naar Breeland Rotterdam</label>
+        <div class="conditional-block" id="rotterdamEndBlock">
+          <label for="timeEndRotterdam">Eindtijd rit (optioneel)</label>
           <input type="time" id="timeEndRotterdam">
-          <div class="small">Alleen zichtbaar bij ritten die eindigen op Breeland Rotterdam.</div>
+          <div class="small">Niet verplicht. Vul deze alleen in als je de eindtijd al weet of later wilt aanvullen.</div>
         </div>
         <div class="toolbar">
           <button type="button" class="btn-map" id="mapsAppleBtn">Apple Kaarten</button>
@@ -320,6 +321,7 @@ let addressHistory = loadStorageWithFallback(STORAGE_ADDRESSES, [], []);
 
 let currentStep = 0;
 let editingTripId = null;
+let currentDraftSaved = false;
 
 const screenButtons = document.querySelectorAll("[data-screen-btn]");
 const screens = {
@@ -604,6 +606,7 @@ function startRecognition(onResult){
   recognition.start();
 }
 function applySpeechToField(el, transcript, append=false){
+  clearDraftSavedStatus();
   const spoken = normalizeLocation(transcript);
   if(append && el.value.trim()){
     const parts = el.value.split(",").map(s=>s.trim()).filter(Boolean);
@@ -673,6 +676,7 @@ function fillSmartRouteFromTranscript(transcript){
     alert('Ik kon de routezin niet goed herkennen. Probeer bijvoorbeeld: van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen.');
     return;
   }
+  clearDraftSavedStatus();
   fromEl.value = parsed.from;
   toEl.value = parsed.to;
   stopsEl.value = parsed.stops.join(", ");
@@ -700,7 +704,7 @@ function buildReviewHtml(){
     <div><strong>Werkdag:</strong> ${wd.workStart || "-"} → ${wd.workEnd || "-"}</div>
     <div><strong>Datum:</strong> ${d || "-"}</div>
     <div><strong>Starttijd rit:</strong> ${timeStartEl.value || "-"}</div>
-    ${routeEndsAtBreelandRotterdam() ? `<div><strong>Eindtijd rit:</strong> ${timeEndRotterdamEl.value || "-"}</div>` : ""}
+    <div><strong>Eindtijd rit:</strong> ${timeEndRotterdamEl.value || "-"}</div>
     <div><strong>Kenteken:</strong> ${plateEl.value || "-"}</div>
     <div><strong>Auto:</strong> ${rdwInfoEl.textContent || "-"}</div>
     <div><strong>Km-stand:</strong> ${odometerEl.value || "-"}</div>
@@ -716,8 +720,7 @@ function updateReview(){
   $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
   $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "none";
   $("copyFlitsBtn").style.display = showMaps ? "inline-block" : "none";
-  $("rotterdamEndBlock").style.display = shouldShowRotterdamEndBlock() ? "block" : "none";
-  if(!shouldShowRotterdamEndBlock()) timeEndRotterdamEl.value = "";
+  $("rotterdamEndBlock").style.display = "block";
   $("saveTripBtn").style.display = hasStops ? "none" : "inline-block";
   $("saveRouteBtn").style.display = hasStops ? "inline-block" : "none";
   updateDayReminder();
@@ -756,7 +759,7 @@ function buildTripObject(existingId, vehicleText, priceText, fromValue, toValue)
     id: existingId || createTripId(),
     date: dateEl.value || today(),
     timeStart: timeStartEl.value,
-    timeEnd: routeEndsAtBreelandRotterdam() ? String(timeEndRotterdamEl.value || "").trim() : "",
+    timeEnd: String(timeEndRotterdamEl.value || "").trim(),
     from: normalizeLocation(fromValue),
     to: normalizeLocation(toValue),
     plate: normalizePlate(plateEl.value),
@@ -777,6 +780,21 @@ function savePlateToList(p){
   saveAll();
   renderPlateButtons();
 }
+function markDraftSaved(message){
+  currentDraftSaved = true;
+  editStatusEl.classList.add("saved-ok");
+  editStatusEl.textContent = message || "Rit opgeslagen. Je kunt nu de route openen.";
+  $("saveTripBtn").disabled = true;
+  $("saveRouteBtn").disabled = true;
+}
+function clearDraftSavedStatus(){
+  if(!currentDraftSaved) return;
+  currentDraftSaved = false;
+  $("saveTripBtn").disabled = false;
+  $("saveRouteBtn").disabled = false;
+  editStatusEl.classList.remove("saved-ok");
+  if(!editingTripId) editStatusEl.textContent = "";
+}
 $("saveTripBtn").addEventListener("click", async ()=>{
   const info = await lookupPlate();
   const existing = editingTripId ? trips.find(t=>t.id===editingTripId) : null;
@@ -795,8 +813,7 @@ $("saveTripBtn").addEventListener("click", async ()=>{
   sortTrips();
   saveAll();
   renderTrips();
-  clearForm();
-  setScreen("ritten");
+  markDraftSaved("Rit opgeslagen. Je kunt nu Apple Kaarten, Google Maps of Flitsmeister gebruiken.");
 });
 $("saveRouteBtn").addEventListener("click", async ()=>{
   const p = normalizePlate(plateEl.value);
@@ -817,14 +834,14 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
   }
   savePlateToList(p);
   saveCurrentAddressesToHistory();
-  const finalIsRotterdam = routeEndsAtBreelandRotterdam();
+  const optionalEndTime = String(timeEndRotterdamEl.value || "").trim();
   const newTrips = [];
   for(let i=0;i<points.length-1;i++){
     newTrips.push({
       id: createTripId(),
       date: dateEl.value || today(),
       timeStart: timeStartEl.value,
-      timeEnd: (finalIsRotterdam && i === points.length - 2) ? String(timeEndRotterdamEl.value || "").trim() : "",
+      timeEnd: (optionalEndTime && i === points.length - 2) ? optionalEndTime : "",
       from: points[i],
       to: points[i+1],
       plate: p,
@@ -837,11 +854,11 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
   sortTrips();
   saveAll();
   renderTrips();
-  clearForm();
-  setScreen("ritten");
+  markDraftSaved("Route met tussenstops opgeslagen. Je kunt nu Apple Kaarten, Google Maps of Flitsmeister gebruiken.");
 });
 
 function clearForm(){
+  clearDraftSavedStatus();
   dateEl.value = dateEl.value || today();
   timeStartEl.value = now();
   timeEndRotterdamEl.value = "";
@@ -904,7 +921,7 @@ function renderTrips(){
       <td>${escapeHtml(t.vehicle||"")}${t.priceText ? '<br><span class="small">Nieuwprijs: ' + escapeHtml(t.priceText) + '</span>' : ''}</td>
       <td>${escapeHtml(t.odometer||"")}</td>
       <td>
-        ${normalizeLocation(t.to || "") === "Breeland Rotterdam" ? '<button type="button" class="btn-edit" data-action="setEnd" data-id="' + escapeHtml(t.id) + '">Zet eindtijd</button> ' : ''}
+        <button type="button" class="btn-edit" data-action="setEnd" data-id="${escapeHtml(t.id)}">Zet eindtijd</button> 
         <button type="button" class="btn-edit" data-action="edit" data-id="${escapeHtml(t.id)}">Bewerk</button>
         <button type="button" class="btn-delete" data-action="delete" data-id="${escapeHtml(t.id)}">Verwijder</button>
       </td>
@@ -940,7 +957,7 @@ tripTableEl.addEventListener("click", e=>{
   if(btn.dataset.action === "setEnd"){
     const t = trips.find(x=>x.id===id);
     if(!t) return;
-    const value = prompt("Eindtijd invullen voor deze rit naar Breeland Rotterdam:", t.timeEnd || now());
+    const value = prompt("Eindtijd invullen voor deze rit:", t.timeEnd || now());
     if(value === null) return;
     const clean = String(value || "").trim();
     if(clean && !/^\d{1,2}:\d{2}$/.test(clean)){
@@ -1217,9 +1234,9 @@ addQuickButtons("stopsButtons", QUICK_LOCATIONS, value=>{
 renderPlateButtons();
 renderAddressHistoryButtons();
 
-dateEl.addEventListener("input", updateReview);
-plateEl.addEventListener("input", ()=>{ updatePlateStyle(); lookupPlate(); });
-[timeStartEl, timeEndRotterdamEl, odometerEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("input", updateReview));
+dateEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateReview(); });
+plateEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updatePlateStyle(); lookupPlate(); });
+[timeStartEl, timeEndRotterdamEl, odometerEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateReview(); }));
 
 $("mapsAppleBtn").addEventListener("click", ()=>{
   const { from, to, stops } = getRoutePointsForMaps();
