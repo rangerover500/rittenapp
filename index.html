@@ -101,111 +101,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <div class="step active" data-step="0">
         <div class="step-title">Datum</div>
 <div class="version">
-    <strong>App-versie:</strong> v38<br>
-    v38: eindtijd is nu optioneel beschikbaar voor iedere rit. Na opslaan blijf je op stap 8 staan met een groene opgeslagen-melding, zodat je direct Apple Kaarten, Google Maps of Flitsmeister kunt gebruiken.
-  </div>
-
-        <div class="step-sub">Kies de datum van de rit.</div>
-        <label for="date">Datum</label>
-        <input type="date" id="date">
-      </div>
-
-      <div class="step" data-step="1">
-        <div class="step-title">Starttijd rit</div>
-        <div class="step-sub">Hoe laat begint de rit?</div>
-        <label for="timeStart">Starttijd rit</label>
-        <input type="time" id="timeStart">
-      </div>
-
-      <div class="step" data-step="2">
-        <div class="step-title">Kenteken</div>
-        <div class="step-sub">Voer het kenteken in of kies een recent kenteken.</div>
-        <label for="plate">Kenteken</label>
-        <input id="plate" placeholder="Bijv. X-605-VJ">
-        <div class="quick" id="plateButtons"></div>
-        <div class="info" id="rdwInfo"></div>
-      </div>
-
-      <div class="step" data-step="3">
-        <div class="step-title">Km-stand</div>
-        <div class="step-sub">Niet verplicht, wel reminder voor bepaalde kentekens.</div>
-        <div class="warning" id="odoWarning">Let op: km-stand invullen!</div>
-        <label for="odometer">Km-stand na rit</label>
-        <input type="number" id="odometer" inputmode="numeric" placeholder="Bijv. 123456">
-      </div>
-
-      <div class="step" data-step="4">
-        <div class="step-title">Van</div>
-        <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
-        <label for="from">Van</label>
-        <div class="input-row">
-          <input id="from">
-          <button type="button" class="btn-voice" id="voiceFromBtn" title="Spreek van-locatie in">🎤</button>
-        </div>
-        <div class="quick" id="fromButtons"></div>
-        <div class="history-title">Eerder gebruikt</div>
-        <div class="quick" id="fromHistoryButtons"></div>
-      </div>
-
-      <div class="step" data-step="5">
-        <div class="step-title">Naar</div>
-        <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
-        <label for="to">Naar</label>
-        <div class="input-row">
-          <input id="to">
-          <button type="button" class="btn-voice" id="voiceToBtn" title="Spreek naar-locatie in">🎤</button>
-        </div>
-        <div class="quick" id="toButtons"></div>
-        <div class="history-title">Eerder gebruikt</div>
-        <div class="quick" id="toHistoryButtons"></div>
-        <div class="toolbar">
-          <button type="button" class="btn-secondary" id="swapBtn">Retour</button>
-        </div>
-      </div>
-
-      <div class="step" data-step="6">
-        <div class="step-title">Tussenstops</div>
-        <div class="step-sub">Optioneel. Meerdere tussenstops scheid je met komma's.</div>
-        <label for="stops">Tussenstop(s)</label>
-        <div class="input-row">
-          <input id="stops" placeholder="Bijv. ABS den Elzen, Perfect Carwrapping">
-          <button type="button" class="btn-voice" id="voiceStopsBtn" title="Spreek tussenstops in">🎤</button>
-        </div>
-        <div class="quick" id="stopsButtons"></div>
-        <div class="history-title">Eerder gebruikt</div>
-        <div class="quick" id="stopsHistoryButtons"></div>
-        <div class="toolbar">
-          <button type="button" class="btn-secondary" id="voiceRouteBtn">🎤 Slimme routezin</button>
-        </div>
-        <div class="voice-note" id="voiceStatus">Je kunt bijvoorbeeld zeggen: van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen en Perfect Carwrapping.</div>
-      </div>
-
-      <div class="step" data-step="7">
-        <div class="step-title">Controle</div>
-        <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
-        <div class="review" id="reviewBox"></div>
-        <div class="conditional-block" id="rotterdamEndBlock">
-          <label for="timeEndRotterdam">Eindtijd rit (optioneel)</label>
-          <input type="time" id="timeEndRotterdam">
-          <div class="small">Niet verplicht. Vul deze alleen in als je de eindtijd al weet of later wilt aanvullen.</div>
-        </div>
-        <div class="toolbar">
-          <button type="button" class="btn-map" id="mapsAppleBtn">Apple Kaarten</button>
-          <button type="button" class="btn-map" id="mapsGoogleBtn">Google Maps</button>
-          <button type="button" class="btn-secondary" id="copyFlitsBtn">Kopieer voor Flitsmeister</button>
-          <button type="button" class="btn-primary" id="saveTripBtn">Opslaan rit</button>
-          <button type="button" class="btn-secondary" id="saveRouteBtn">Route met tussenstops opslaan</button>
-          <button type="button" class="btn-secondary" id="clearBtn">Leegmaken</button>
-          <button type="button" class="btn-secondary" id="cancelEditBtn" style="display:none;">Bewerken annuleren</button>
-        </div>
-      </div>
-
-      <div class="nav">
-        <button type="button" class="btn-secondary" id="prevBtn">Terug</button>
-        <button type="button" class="btn-primary" id="nextBtn">Volgende</button>
-      </div>
-
-      <div class="status" id="editStatus"></div>
+    <strong>App-versie:</strong> v39 herstelversie<br>
+    v39 leest en combineert alle eerder opgeslagen ritten en werkdagen uit oude app-versies op deze iPhone. Daarna slaat hij alles opnieuw op onder v39.
     </div>
   </div>
 
@@ -296,9 +193,9 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 </div>
 
 <script>
-const STORAGE_TRIPS = "trips_v31";
-const STORAGE_DAYDATA = "dayData_v31";
-const STORAGE_PLATES = "plates_v31";
+const STORAGE_TRIPS = "trips_v39";
+const STORAGE_DAYDATA = "dayData_v39";
+const STORAGE_PLATES = "plates_v39";
 const STORAGE_ADDRESSES = "addresses_v35";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
@@ -314,10 +211,10 @@ const KNOWN_ADDRESSES = {
 const QUICK_LOCATIONS = Object.keys(KNOWN_ADDRESSES);
 const ALL_STEPS = [0,1,2,3,4,5,6,7];
 
-let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v30","trips_v29","trips_v28","trips_v27","trips_v20","trips_v19","trips_v18","trips_v17","trips_v16","trips_v15","trips_v14","trips_v13","trips_v12"], []);
-let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v30","dayData_v29","dayData_v28","dayData_v27","dayData_v20","dayData_v19","dayData_v18","dayData_v17","dayData_v16","dayData_v15","dayData_v14","dayData_v13","dayData_v12"], {});
-let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v30","plates_v29","plates_v28","plates_v27","plates_v20","plates_v19","plates_v18","plates_v17","plates_v16","plates_v15","plates_v14","plates_v13","plates_v12"], []);
-let addressHistory = loadStorageWithFallback(STORAGE_ADDRESSES, [], []);
+let trips = rescueAllTrips();
+let dayData = rescueAllDayData();
+let plates = rescueAllPlates();
+let addressHistory = loadStorageWithFallback(STORAGE_ADDRESSES, ["addresses_v35"], []);
 
 let currentStep = 0;
 let editingTripId = null;
@@ -373,6 +270,97 @@ function loadStorageWithFallback(primaryKey, fallbackKeys, defaultValue){
     }
   }catch(e){}
   return defaultValue;
+}
+function getLocalStorageKeysStartingWith(prefix){
+  const keys = [];
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const key = localStorage.key(i);
+      if(key && key.indexOf(prefix) === 0) keys.push(key);
+    }
+  }catch(e){}
+  return keys.sort().reverse();
+}
+function safeParseStorageKey(key, fallback){
+  try{
+    const value = localStorage.getItem(key);
+    if(value === null) return fallback;
+    return JSON.parse(value);
+  }catch(e){
+    return fallback;
+  }
+}
+function tripMergeKey(t){
+  return [
+    t.id || "",
+    t.date || "",
+    t.timeStart || "",
+    t.timeEnd || "",
+    t.from || "",
+    t.to || "",
+    normalizePlate(t.plate || ""),
+    t.odometer || ""
+  ].join("|");
+}
+function rescueAllTrips(){
+  const keys = getLocalStorageKeysStartingWith("trips_v");
+  const found = [];
+  const seen = new Set();
+  keys.forEach(key=>{
+    const arr = safeParseStorageKey(key, []);
+    if(!Array.isArray(arr)) return;
+    arr.forEach(t=>{
+      if(!t || typeof t !== "object") return;
+      const normalized = {
+        id: t.id || createTripId(),
+        date: String(t.date || "").trim(),
+        timeStart: String(t.timeStart || "").trim(),
+        timeEnd: String(t.timeEnd || "").trim(),
+        from: normalizeLocation(t.from || ""),
+        to: normalizeLocation(t.to || ""),
+        plate: normalizePlate(t.plate || ""),
+        vehicle: String(t.vehicle || "").trim(),
+        priceText: String(t.priceText || "").trim(),
+        odometer: String(t.odometer || "").trim()
+      };
+      if(!(normalized.date || normalized.timeStart || normalized.from || normalized.to || normalized.plate)) return;
+      const k = tripMergeKey(normalized);
+      if(seen.has(k)) return;
+      seen.add(k);
+      found.push(normalized);
+    });
+  });
+  return found;
+}
+function rescueAllDayData(){
+  const keys = getLocalStorageKeysStartingWith("dayData_v");
+  const result = {};
+  keys.reverse().forEach(key=>{
+    const obj = safeParseStorageKey(key, {});
+    if(!obj || typeof obj !== "object" || Array.isArray(obj)) return;
+    Object.keys(obj).forEach(d=>{
+      const item = obj[d] || {};
+      const workStart = String(item.workStart || "").trim();
+      const workEnd = String(item.workEnd || "").trim();
+      if(d && (workStart || workEnd)){
+        result[d] = {workStart, workEnd};
+      }
+    });
+  });
+  return result;
+}
+function rescueAllPlates(){
+  const keys = getLocalStorageKeysStartingWith("plates_v");
+  const result = [];
+  keys.forEach(key=>{
+    const arr = safeParseStorageKey(key, []);
+    if(!Array.isArray(arr)) return;
+    arr.forEach(p=>{
+      const plate = normalizePlate(p);
+      if(plate && !result.includes(plate)) result.push(plate);
+    });
+  });
+  return result.slice(0, 20);
 }
 function saveAll(){
   localStorage.setItem(STORAGE_TRIPS, JSON.stringify(trips));
