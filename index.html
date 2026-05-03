@@ -87,6 +87,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   <div class="topnav">
     <button type="button" class="active" data-screen-btn="invoer">Invoeren</button>
     <button type="button" data-screen-btn="werkdag">Werkdag</button>
+    <button type="button" data-screen-btn="beheer">Beheer</button>
     <button type="button" data-screen-btn="ritten">Ritten</button>
     <button type="button" data-screen-btn="export">Export</button>
   </div>
@@ -101,8 +102,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <div class="step active" data-step="0">
         <div class="step-title">Datum</div>
 <div class="version">
-    <strong>App-versie:</strong> v38-safe<br>
-    v38-safe bouwt direct verder op jouw werkende v37 en behoudt dezelfde opslagset. Nieuw: eindtijd is optioneel voor iedere rit, na opslaan blijf je op stap 8 met een groene opgeslagen-melding, en de knop ‘Zet eindtijd’ staat bij elke rit.
+    <strong>App-versie:</strong> v101 DATABASE<br>
+    v101 is een schone databaseversie met beheer van standaardadressen en kentekens. Ritten, werkdagen, eerder gebruikte adressen, standaardadressen en kentekens worden opgeslagen in IndexedDB.
   </div>
 
         <div class="step-sub">Kies de datum van de rit.</div>
@@ -230,6 +231,63 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     </div>
   </div>
 
+
+  <div id="screen-beheer" class="screen">
+    <h2>Beheer</h2>
+
+    <div class="fileblock">
+      <h3>Standaardadressen</h3>
+      <div class="small">Deze adressen verschijnen als vaste knoppen bij Van, Naar en Tussenstops.</div>
+
+      <label style="margin-top:12px;" for="stdAddressName">Naam</label>
+      <input id="stdAddressName" placeholder="Bijv. BSA Pieterse">
+
+      <label style="margin-top:12px;" for="stdAddressValue">Adres</label>
+      <input id="stdAddressValue" placeholder="Straat, postcode, plaats">
+
+      <div class="toolbar">
+        <button type="button" class="btn-primary" id="addStdAddressBtn">Adres toevoegen / bijwerken</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Naam</th>
+              <th>Adres</th>
+              <th>Actie</th>
+            </tr>
+          </thead>
+          <tbody id="stdAddressTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="fileblock">
+      <h3>Standaardkentekens</h3>
+      <div class="small">Ook handelaarsplaten kun je hier toevoegen. Deze verschijnen als knoppen bij Kenteken.</div>
+
+      <label style="margin-top:12px;" for="stdPlateInput">Kenteken / handelaarsplaat</label>
+      <input id="stdPlateInput" placeholder="Bijv. X-605-VJ of groene plaat">
+
+      <div class="toolbar">
+        <button type="button" class="btn-primary" id="addStdPlateBtn">Kenteken toevoegen</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Kenteken</th>
+              <th>Actie</th>
+            </tr>
+          </thead>
+          <tbody id="stdPlateTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div id="screen-ritten" class="screen">
     <h2>Ritten</h2>
     <div class="table-wrap">
@@ -296,13 +354,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 </div>
 
 <script>
+const DB_NAME = "rittenapp_v101_db";
+const DB_VERSION = 2;
 const STORAGE_TRIPS = "trips_v31";
 const STORAGE_DAYDATA = "dayData_v31";
 const STORAGE_PLATES = "plates_v31";
 const STORAGE_ADDRESSES = "addresses_v35";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
-const KNOWN_ADDRESSES = {
+const DEFAULT_ADDRESSES = {
   "Breeland Rotterdam": "Autolettestraat 16, 3063 NP Rotterdam",
   "Breeland Dordrecht": "Mijlweg 25, 3316 BE Dordrecht",
   "Breeland Den Haag": "Neckar 7, 2491 BB Den Haag",
@@ -311,22 +371,24 @@ const KNOWN_ADDRESSES = {
   "Perfect Carwrapping": "Lübeck 8, 2993 LK Barendrecht",
   "ABS den Elzen": "Aploniastraat 1, 3084 CC Rotterdam"
 };
-const QUICK_LOCATIONS = Object.keys(KNOWN_ADDRESSES);
+let standardAddresses = {...DEFAULT_ADDRESSES};
+let QUICK_LOCATIONS = Object.keys(standardAddresses);
 const ALL_STEPS = [0,1,2,3,4,5,6,7];
 
-let trips = loadStorageWithFallback(STORAGE_TRIPS, ["trips_v30","trips_v29","trips_v28","trips_v27","trips_v20","trips_v19","trips_v18","trips_v17","trips_v16","trips_v15","trips_v14","trips_v13","trips_v12"], []);
-let dayData = loadStorageWithFallback(STORAGE_DAYDATA, ["dayData_v30","dayData_v29","dayData_v28","dayData_v27","dayData_v20","dayData_v19","dayData_v18","dayData_v17","dayData_v16","dayData_v15","dayData_v14","dayData_v13","dayData_v12"], {});
-let plates = loadStorageWithFallback(STORAGE_PLATES, ["plates_v30","plates_v29","plates_v28","plates_v27","plates_v20","plates_v19","plates_v18","plates_v17","plates_v16","plates_v15","plates_v14","plates_v13","plates_v12"], []);
-let addressHistory = loadStorageWithFallback(STORAGE_ADDRESSES, [], []);
+let trips = [];
+let dayData = {};
+let plates = [];
+let addressHistory = [];
+let currentDraftSaved = false;
 
 let currentStep = 0;
 let editingTripId = null;
-let currentDraftSaved = false;
 
 const screenButtons = document.querySelectorAll("[data-screen-btn]");
 const screens = {
   invoer: document.getElementById("screen-invoer"),
   werkdag: document.getElementById("screen-werkdag"),
+  beheer: document.getElementById("screen-beheer"),
   ritten: document.getElementById("screen-ritten"),
   export: document.getElementById("screen-export")
 };
@@ -360,6 +422,11 @@ const tripTableEl = document.getElementById("tripTable");
 const workdayTableEl = document.getElementById("workdayTable");
 const masterFileEl = document.getElementById("masterFile");
 const importFileEl = document.getElementById("importFile");
+const stdAddressNameEl = document.getElementById("stdAddressName");
+const stdAddressValueEl = document.getElementById("stdAddressValue");
+const stdAddressTableEl = document.getElementById("stdAddressTable");
+const stdPlateInputEl = document.getElementById("stdPlateInput");
+const stdPlateTableEl = document.getElementById("stdPlateTable");
 
 function $(id){ return document.getElementById(id); }
 
@@ -374,11 +441,201 @@ function loadStorageWithFallback(primaryKey, fallbackKeys, defaultValue){
   }catch(e){}
   return defaultValue;
 }
+function openRittenDB(){
+  return new Promise((resolve, reject)=>{
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = event => {
+      const db = event.target.result;
+      if(!db.objectStoreNames.contains("ritten")){
+        const store = db.createObjectStore("ritten", {keyPath:"id"});
+        store.createIndex("date", "date", {unique:false});
+        store.createIndex("plate", "plate", {unique:false});
+      }
+      if(!db.objectStoreNames.contains("werkdagen")){
+        db.createObjectStore("werkdagen", {keyPath:"date"});
+      }
+      if(!db.objectStoreNames.contains("kentekens")){
+        db.createObjectStore("kentekens", {keyPath:"plate"});
+      }
+      if(!db.objectStoreNames.contains("adressen")){
+        db.createObjectStore("adressen", {keyPath:"label"});
+      }
+      if(!db.objectStoreNames.contains("standaardAdressen")){
+        db.createObjectStore("standaardAdressen", {keyPath:"label"});
+      }
+      if(!db.objectStoreNames.contains("meta")){
+        db.createObjectStore("meta", {keyPath:"key"});
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+function dbGetAll(storeName){
+  return openRittenDB().then(db => new Promise((resolve, reject)=>{
+    const tx = db.transaction(storeName, "readonly");
+    const req = tx.objectStore(storeName).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  }));
+}
+function dbReplaceAll(storeName, items){
+  return openRittenDB().then(db => new Promise((resolve, reject)=>{
+    const tx = db.transaction(storeName, "readwrite");
+    const store = tx.objectStore(storeName);
+    store.clear();
+    items.forEach(item => store.put(item));
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+function normalizeTripFromAny(t, sourceKey){
+  return {
+    id: String(t.id || "").trim() || createTripId(),
+    date: String(t.date || "").trim(),
+    timeStart: String(t.timeStart || "").trim(),
+    timeEnd: String(t.timeEnd || "").trim(),
+    from: normalizeLocation(t.from || ""),
+    to: normalizeLocation(t.to || ""),
+    plate: normalizePlate(t.plate || ""),
+    vehicle: String(t.vehicle || "").trim(),
+    priceText: String(t.priceText || "").trim(),
+    odometer: String(t.odometer || "").trim(),
+    sourceKey: sourceKey || ""
+  };
+}
+function getLocalStorageKeysStartingWith(prefix){
+  const keys = [];
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const key = localStorage.key(i);
+      if(key && key.indexOf(prefix) === 0) keys.push(key);
+    }
+  }catch(e){}
+  return keys.sort();
+}
+function tripMergeKey(t){
+  return [
+    t.id || "", t.date || "", t.timeStart || "", t.timeEnd || "",
+    t.from || "", t.to || "", normalizePlate(t.plate || ""), t.odometer || ""
+  ].join("|");
+}
+function scanLocalStorageForMigration(){
+  const foundTrips = [];
+  const seen = new Set();
+  getLocalStorageKeysStartingWith("trips_v").forEach(key=>{
+    const arr = loadStorageWithFallback(key, [], []);
+    if(!Array.isArray(arr)) return;
+    arr.forEach(t=>{
+      if(!t || typeof t !== "object") return;
+      const nt = normalizeTripFromAny(t, key);
+      if(!(nt.date || nt.timeStart || nt.from || nt.to || nt.plate)) return;
+      const mk = tripMergeKey(nt);
+      if(seen.has(mk)) return;
+      seen.add(mk);
+      foundTrips.push(nt);
+    });
+  });
+
+  const foundDayData = {};
+  getLocalStorageKeysStartingWith("dayData_v").forEach(key=>{
+    const obj = loadStorageWithFallback(key, [], {});
+    if(!obj || typeof obj !== "object" || Array.isArray(obj)) return;
+    Object.keys(obj).forEach(d=>{
+      const item = obj[d] || {};
+      const workStart = String(item.workStart || "").trim();
+      const workEnd = String(item.workEnd || "").trim();
+      if(d && (workStart || workEnd)) foundDayData[d] = {workStart, workEnd};
+    });
+  });
+
+  const foundPlates = [];
+  getLocalStorageKeysStartingWith("plates_v").forEach(key=>{
+    const arr = loadStorageWithFallback(key, [], []);
+    if(!Array.isArray(arr)) return;
+    arr.forEach(p=>{
+      const plate = normalizePlate(p);
+      if(plate && !foundPlates.includes(plate)) foundPlates.push(plate);
+    });
+  });
+  foundTrips.forEach(t=>{
+    if(t.plate && !foundPlates.includes(t.plate)) foundPlates.push(t.plate);
+  });
+
+  const fixed = Object.keys(standardAddresses || DEFAULT_ADDRESSES);
+  const foundAddresses = [];
+  const addAddress = value => {
+    const label = normalizeLocation(value);
+    if(!label || fixed.includes(label) || foundAddresses.includes(label)) return;
+    foundAddresses.push(label);
+  };
+  getLocalStorageKeysStartingWith("addresses_v").forEach(key=>{
+    const arr = loadStorageWithFallback(key, [], []);
+    if(Array.isArray(arr)) arr.forEach(addAddress);
+  });
+  foundTrips.forEach(t=>{ addAddress(t.from); addAddress(t.to); });
+
+  return {foundTrips, foundDayData, foundPlates, foundAddresses};
+}
+async function loadAllFromDB(){
+  try{
+    const dbTrips = await dbGetAll("ritten");
+    const dbWorkdays = await dbGetAll("werkdagen");
+    const dbPlates = await dbGetAll("kentekens");
+    const dbAddresses = await dbGetAll("adressen");
+    const dbStandardAddresses = await dbGetAll("standaardAdressen");
+
+    standardAddresses = {...DEFAULT_ADDRESSES};
+    dbStandardAddresses.forEach(a=>{
+      if(a && a.label){
+        standardAddresses[a.label] = a.address || a.label;
+      }
+    });
+    QUICK_LOCATIONS = Object.keys(standardAddresses);
+
+    trips = dbTrips.map(t=>normalizeTripFromAny(t, t.sourceKey || "indexedDB"));
+    dayData = {};
+    dbWorkdays.forEach(w=>{
+      if(w && w.date && (w.workStart || w.workEnd)) dayData[w.date] = {workStart:w.workStart || "", workEnd:w.workEnd || ""};
+    });
+    plates = dbPlates.map(p=>normalizePlate(p.plate || p)).filter(Boolean);
+    addressHistory = dbAddresses.map(a=>normalizeLocation(a.label || a)).filter(Boolean);
+  }catch(e){
+    alert("Database laden mislukt: " + e.message);
+    trips = [];
+    dayData = {};
+    plates = [];
+    addressHistory = [];
+  }
+}
+async function saveAllToDB(){
+  const workdayRows = Object.keys(dayData).map(d=>({date:d, workStart:(dayData[d]||{}).workStart || "", workEnd:(dayData[d]||{}).workEnd || ""}));
+  const plateRows = plates.map(plate=>({plate}));
+  const addressRows = addressHistory.map(label=>({label}));
+  const standardAddressRows = Object.keys(standardAddresses).map(label=>({label, address:standardAddresses[label]}));
+  await dbReplaceAll("ritten", trips);
+  await dbReplaceAll("werkdagen", workdayRows);
+  await dbReplaceAll("kentekens", plateRows);
+  await dbReplaceAll("adressen", addressRows);
+  await dbReplaceAll("standaardAdressen", standardAddressRows);
+  await dbReplaceAll("meta", [{key:"lastSave", value:new Date().toISOString(), trips:trips.length, workdays:workdayRows.length}]);
+}
+async function migrateLocalStorageIfDatabaseEmpty(){
+  if(trips.length || Object.keys(dayData).length) return;
+  const mig = scanLocalStorageForMigration();
+  if(!mig.foundTrips.length && !Object.keys(mig.foundDayData).length) return;
+
+  trips = mig.foundTrips;
+  dayData = mig.foundDayData;
+  plates = mig.foundPlates;
+  addressHistory = mig.foundAddresses.slice(0, 50);
+  sortTrips();
+  await saveAllToDB();
+  editStatusEl.classList.add("saved-ok");
+  editStatusEl.textContent = "Oude gegevens eenmalig overgenomen naar IndexedDB: " + trips.length + " ritten.";
+}
 function saveAll(){
-  localStorage.setItem(STORAGE_TRIPS, JSON.stringify(trips));
-  localStorage.setItem(STORAGE_DAYDATA, JSON.stringify(dayData));
-  localStorage.setItem(STORAGE_PLATES, JSON.stringify(plates));
-  localStorage.setItem(STORAGE_ADDRESSES, JSON.stringify(addressHistory));
+  saveAllToDB().catch(e=>console.error("Opslaan in IndexedDB mislukt", e));
 }
 function pad(n){ return String(n).padStart(2, "0"); }
 function today(){ const d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
@@ -399,7 +656,7 @@ function normalizeLocation(v){
 }
 function resolveMapAddress(v){
   const key = normalizeLocation(v);
-  return KNOWN_ADDRESSES[key] || String(v||"").trim();
+  return standardAddresses[key] || String(v||"").trim();
 }
 function getRoutePointsForMaps(){
   return {
@@ -429,7 +686,7 @@ function saveAddressToHistory(value){
   if(!label || QUICK_LOCATIONS.includes(label)) return;
   addressHistory = addressHistory.filter(x => x !== label);
   addressHistory.unshift(label);
-  addressHistory = addressHistory.slice(0, 20);
+  addressHistory = addressHistory.slice(0, 50);
 }
 function saveCurrentAddressesToHistory(){
   saveAddressToHistory(fromEl.value);
@@ -439,9 +696,9 @@ function saveCurrentAddressesToHistory(){
   renderAddressHistoryButtons();
 }
 function renderAddressHistoryButtons(){
-  const items = addressHistory.slice(0, 12);
-  addQuickButtons("fromHistoryButtons", items, value=>{ clearDraftSavedStatus(); fromEl.value = value; updateReview(); });
-  addQuickButtons("toHistoryButtons", items, value=>{ clearDraftSavedStatus(); toEl.value = value; updateReview(); });
+  const items = addressHistory.slice(0, 20);
+  addQuickButtons("fromHistoryButtons", items, value=>{ fromEl.value = value; updateReview(); });
+  addQuickButtons("toHistoryButtons", items, value=>{ toEl.value = value; updateReview(); });
   addQuickButtons("stopsHistoryButtons", items, value=>{
     const current = stopsEl.value.trim();
     if(!current){ stopsEl.value = value; }
@@ -497,6 +754,85 @@ function addQuickButtons(containerId, items, callback){
     btn.addEventListener("click", ()=>callback(item));
     el.appendChild(btn);
   });
+}
+function renderStandardLocationButtons(){
+  QUICK_LOCATIONS = Object.keys(standardAddresses);
+  addQuickButtons("fromButtons", QUICK_LOCATIONS, value=>{ clearDraftSavedStatus(); fromEl.value = value; updateReview(); });
+  addQuickButtons("toButtons", QUICK_LOCATIONS, value=>{ clearDraftSavedStatus(); toEl.value = value; updateReview(); });
+  addQuickButtons("stopsButtons", QUICK_LOCATIONS, value=>{
+    clearDraftSavedStatus();
+    const current = stopsEl.value.trim();
+    if(!current){ stopsEl.value = value; }
+    else{
+      const parts = current.split(",").map(x=>x.trim()).filter(Boolean);
+      if(!parts.includes(value)) stopsEl.value = current + ", " + value;
+    }
+    updateReview();
+  });
+}
+function renderManagementTables(){
+  stdAddressTableEl.innerHTML = "";
+  Object.keys(standardAddresses).sort().forEach(label=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(label)}</td>
+      <td>${escapeHtml(standardAddresses[label] || "")}</td>
+      <td><button type="button" class="btn-delete" data-address-delete="${escapeHtml(label)}">Verwijder</button></td>
+    `;
+    stdAddressTableEl.appendChild(tr);
+  });
+
+  stdPlateTableEl.innerHTML = "";
+  plates.forEach(plate=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(plate)}</td>
+      <td><button type="button" class="btn-delete" data-plate-delete="${escapeHtml(plate)}">Verwijder</button></td>
+    `;
+    stdPlateTableEl.appendChild(tr);
+  });
+}
+async function addOrUpdateStandardAddress(){
+  const name = String(stdAddressNameEl.value || "").trim();
+  const address = String(stdAddressValueEl.value || "").trim();
+  if(!name || !address){
+    alert("Vul naam én adres in.");
+    return;
+  }
+  standardAddresses[name] = address;
+  stdAddressNameEl.value = "";
+  stdAddressValueEl.value = "";
+  renderStandardLocationButtons();
+  renderManagementTables();
+  await saveAllToDB();
+}
+async function deleteStandardAddress(label){
+  if(!confirm("Standaardadres verwijderen: " + label + "?")) return;
+  delete standardAddresses[label];
+  renderStandardLocationButtons();
+  renderManagementTables();
+  await saveAllToDB();
+}
+async function addStandardPlate(){
+  const plate = normalizePlate(stdPlateInputEl.value);
+  if(!plate){
+    alert("Vul een kenteken of handelaarsplaat in.");
+    return;
+  }
+  plates = plates.filter(p=>normalizePlate(p)!==plate);
+  plates.unshift(plate);
+  plates = plates.slice(0, 50);
+  stdPlateInputEl.value = "";
+  renderPlateButtons();
+  renderManagementTables();
+  await saveAllToDB();
+}
+async function deleteStandardPlate(plate){
+  if(!confirm("Kenteken verwijderen: " + plate + "?")) return;
+  plates = plates.filter(p=>normalizePlate(p)!==normalizePlate(plate));
+  renderPlateButtons();
+  renderManagementTables();
+  await saveAllToDB();
 }
 function updateHoursInfo(){
   const minutes = timeDiffMinutes(workStartEl.value, workEndEl.value);
@@ -606,7 +942,6 @@ function startRecognition(onResult){
   recognition.start();
 }
 function applySpeechToField(el, transcript, append=false){
-  clearDraftSavedStatus();
   const spoken = normalizeLocation(transcript);
   if(append && el.value.trim()){
     const parts = el.value.split(",").map(s=>s.trim()).filter(Boolean);
@@ -676,7 +1011,6 @@ function fillSmartRouteFromTranscript(transcript){
     alert('Ik kon de routezin niet goed herkennen. Probeer bijvoorbeeld: van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen.');
     return;
   }
-  clearDraftSavedStatus();
   fromEl.value = parsed.from;
   toEl.value = parsed.to;
   stopsEl.value = parsed.stops.join(", ");
@@ -779,6 +1113,7 @@ function savePlateToList(p){
   plates = plates.slice(0, 10);
   saveAll();
   renderPlateButtons();
+  renderManagementTables();
 }
 function markDraftSaved(message){
   currentDraftSaved = true;
@@ -1220,23 +1555,25 @@ function renderPlateButtons(){
     lookupPlate();
   });
 }
-addQuickButtons("fromButtons", QUICK_LOCATIONS, value=>{ clearDraftSavedStatus(); fromEl.value = value; updateReview(); });
-addQuickButtons("toButtons", QUICK_LOCATIONS, value=>{ clearDraftSavedStatus(); toEl.value = value; updateReview(); });
-addQuickButtons("stopsButtons", QUICK_LOCATIONS, value=>{
-  const current = stopsEl.value.trim();
-  if(!current){ stopsEl.value = value; }
-  else{
-    const parts = current.split(",").map(x=>x.trim()).filter(Boolean);
-    if(!parts.includes(value)) stopsEl.value = current + ", " + value;
-  }
-  updateReview();
-});
+renderStandardLocationButtons();
 renderPlateButtons();
 renderAddressHistoryButtons();
 
 dateEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateReview(); });
 plateEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updatePlateStyle(); lookupPlate(); });
 [timeStartEl, timeEndRotterdamEl, odometerEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateReview(); }));
+
+
+$("addStdAddressBtn").addEventListener("click", addOrUpdateStandardAddress);
+$("addStdPlateBtn").addEventListener("click", addStandardPlate);
+stdAddressTableEl.addEventListener("click", e=>{
+  const btn = e.target.closest("button");
+  if(btn && btn.dataset.addressDelete) deleteStandardAddress(btn.dataset.addressDelete);
+});
+stdPlateTableEl.addEventListener("click", e=>{
+  const btn = e.target.closest("button");
+  if(btn && btn.dataset.plateDelete) deleteStandardPlate(btn.dataset.plateDelete);
+});
 
 $("mapsAppleBtn").addEventListener("click", ()=>{
   const { from, to, stops } = getRoutePointsForMaps();
@@ -1292,21 +1629,35 @@ $("voiceToBtn").addEventListener("click", ()=>startRecognition(t => applySpeechT
 $("voiceStopsBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(stopsEl, t, true)));
 $("voiceRouteBtn").addEventListener("click", ()=>startRecognition(fillSmartRouteFromTranscript));
 
-dateEl.value = today();
-timeStartEl.value = now();
-timeEndRotterdamEl.value = "";
-workdayDateEl.value = today();
+async function bootApp(){
+  dateEl.value = today();
+  timeStartEl.value = now();
+  timeEndRotterdamEl.value = "";
+  workdayDateEl.value = today();
 
-ensureTripIds();
-sortTrips();
-saveAll();
-loadWorkdayForm(today());
-updatePlateStyle();
-updateReview();
-renderTrips();
-renderWorkdays();
-renderStep();
-setInterval(updateDayReminder, 60000);
+  await loadAllFromDB();
+  await migrateLocalStorageIfDatabaseEmpty();
+
+  ensureTripIds();
+  sortTrips();
+  await saveAllToDB();
+
+  loadWorkdayForm(today());
+  updatePlateStyle();
+  updateReview();
+  renderStandardLocationButtons();
+  renderPlateButtons();
+  renderAddressHistoryButtons();
+  renderManagementTables();
+  renderTrips();
+  renderWorkdays();
+  renderStep();
+  setInterval(updateDayReminder, 60000);
+}
+bootApp().catch(err=>{
+  alert("Database-app kon niet starten: " + err.message);
+  console.error(err);
+});
 </script>
 </body>
 </html>
