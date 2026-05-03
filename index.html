@@ -102,8 +102,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <div class="step active" data-step="0">
         <div class="step-title">Datum</div>
 <div class="version">
-    <strong>App-versie:</strong> v101 DATABASE<br>
-    v101 is een schone databaseversie met beheer van standaardadressen en kentekens. Ritten, werkdagen, eerder gebruikte adressen, standaardadressen en kentekens worden opgeslagen in IndexedDB.
+    <strong>App-versie:</strong> v40 DATABASE<br>
+    v40 DATABASE gebruikt IndexedDB als vaste database. Excel-export vult een gekozen totaalbestand chronologisch aan: nieuwe ritten komen onderaan, dubbele ritten worden overgeslagen en kolombreedtes worden automatisch ruimer gezet.
   </div>
 
         <div class="step-sub">Kies de datum van de rit.</div>
@@ -1354,6 +1354,7 @@ function escapeHtml(v){
 }
 function calcExcelColumnWidths(rows){
   if(!rows.length) return [];
+  const headers = rows[0] || [];
   const colCount = Math.max(...rows.map(r => r.length));
   const widths = [];
   for(let c=0;c<colCount;c++){
@@ -1362,7 +1363,15 @@ function calcExcelColumnWidths(rows){
       const cell = rows[r][c] == null ? "" : String(rows[r][c]);
       maxLen = Math.max(maxLen, cell.length);
     }
-    widths.push({wch: Math.min(maxLen + 2, 60)});
+
+    let width = Math.min(maxLen + 3, 90);
+
+    if(headers[c] === "Auto") width = Math.min(Math.max(width, 42), 90);
+    if(headers[c] === "Van" || headers[c] === "Naar") width = Math.min(Math.max(width, 24), 70);
+    if(headers[c] === "Datum") width = Math.max(width, 14);
+    if(headers[c] === "Starttijd" || headers[c] === "Eindtijd") width = Math.max(width, 12);
+
+    widths.push({wch: width});
   }
   return widths;
 }
@@ -1376,7 +1385,7 @@ function buildWorkbookFromData(exportTrips, exportDayData){
     ...Object.keys(exportDayData).filter(d=>{
       const item = exportDayData[d] || {};
       return (item.workStart||"").trim() || (item.workEnd||"").trim();
-    }).sort((a,b)=>b.localeCompare(a)).map(d=>{
+    }).sort((a,b)=>a.localeCompare(b)).map(d=>{
       const item = exportDayData[d] || {};
       return [d, item.workStart||"", item.workEnd||"", formatMinutesDutch(timeDiffMinutes(item.workStart||"", item.workEnd||""))];
     })
@@ -1430,12 +1439,22 @@ function readImportedWorkbook(file, callback){
   reader.readAsArrayBuffer(file);
 }
 function tripExistsInList(list, trip){
-  return list.some(t =>
-    (t.id && trip.id && t.id === trip.id) ||
-    ((t.date||"")===(trip.date||"") && (t.timeStart||"")===(trip.timeStart||"") &&
-     (t.from||"")===(trip.from||"") && (t.to||"")===(trip.to||"") &&
-     normalizePlate(t.plate||"")===normalizePlate(trip.plate||"") && (t.odometer||"")===(trip.odometer||""))
-  );
+  return list.some(t => {
+    if(t.id && trip.id && t.id === trip.id) return true;
+
+    const sameCore =
+      (t.date||"") === (trip.date||"") &&
+      (t.timeStart||"") === (trip.timeStart||"") &&
+      (t.from||"") === (trip.from||"") &&
+      (t.to||"") === (trip.to||"") &&
+      normalizePlate(t.plate||"") === normalizePlate(trip.plate||"") &&
+      (t.odometer||"") === (trip.odometer||"");
+
+    if(!sameCore) return false;
+
+    // Als een eindtijd later is ingevuld, beschouwen we het nog steeds als dezelfde rit.
+    return true;
+  });
 }
 function getTimestampedFilename(){
   const d = new Date();
@@ -1445,24 +1464,40 @@ $("exportBtn").addEventListener("click", async ()=>{
   const draft = await buildCurrentDraftTripForExport();
   let exportTrips = [...trips];
   if(draft) exportTrips.push(draft);
-  exportTrips.sort((a,b)=>((b.date||"")+" "+(b.timeStart||"")).localeCompare((a.date||"")+" "+(a.timeStart||"")));
+
+  // Chronologisch: oudste bovenaan, nieuwste onderaan.
+  exportTrips.sort((a,b)=>((a.date||"")+" "+(a.timeStart||"")).localeCompare((b.date||"")+" "+(b.timeStart||"")));
 
   const masterFile = masterFileEl.files[0];
   if(masterFile){
     readImportedWorkbook(masterFile, function(err, result){
       if(err){ alert("Het gekozen totaalbestand kon niet worden gelezen."); return; }
+
       let mergedTrips = [...result.importedTrips];
-      exportTrips.forEach(trip=>{ if(!tripExistsInList(mergedTrips, trip)) mergedTrips.push(trip); });
-      mergedTrips.sort((a,b)=>((b.date||"")+" "+(b.timeStart||"")).localeCompare((a.date||"")+" "+(a.timeStart||"")));
+
+      exportTrips.forEach(trip=>{
+        if(!tripExistsInList(mergedTrips, trip)){
+          mergedTrips.push(trip);
+        }
+      });
+
+      // Chronologisch bewaren: dinsdag, woensdag, donderdag, enz. onder elkaar.
+      mergedTrips.sort((a,b)=>((a.date||"")+" "+(a.timeStart||"")).localeCompare((b.date||"")+" "+(b.timeStart||"")));
+
       let mergedDayData = {...result.importedDayData, ...dayData};
       const wb = buildWorkbookFromData(mergedTrips, mergedDayData);
-      XLSX.writeFile(wb, "rittenoverzicht totaal.xlsx");
+
+      // Download met dezelfde bestandsnaam als het gekozen totaalbestand.
+      // Op iPhone/Safari maak je technisch een nieuwe download; kies daarna vervangen/bewaren zoals iOS aanbiedt.
+      XLSX.writeFile(wb, masterFile.name || "rittenoverzicht totaal.xlsx");
     });
     return;
   }
+
   const wb = buildWorkbookFromData(exportTrips, dayData);
   XLSX.writeFile(wb, getTimestampedFilename());
 });
+
 async function buildCurrentDraftTripForExport(){
   if(editingTripId) return null;
   const hasDraft = [dateEl.value, timeStartEl.value, timeEndRotterdamEl.value, fromEl.value, toEl.value, plateEl.value, odometerEl.value].some(v=>String(v||"").trim() !== "");
