@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Rittenapp v100 database-test</title>
+<style>
+body{margin:0;padding:16px;font-family:Arial,sans-serif;background:#f4f6fb;color:#111}
+.container{max-width:1000px;margin:0 auto;background:#fff;border-radius:14px;padding:18px}
+.badge{display:inline-block;background:#000;color:#fff;border-radius:999px;padding:6px 10px;font-size:13px;margin-bottom:12px}
+.card{border:1px solid #d9deea;border-radius:12px;background:#fafbff;padding:14px;margin:14px 0}
+.warning{background:#fff3cd;border-color:#e0c36c}
+.good{background:#e6f7e6;border-color:#88c888}
+button{border:1px solid #d7dce8;background:#eef1f7;border-radius:10px;padding:11px 13px;margin:4px;font-size:15px;cursor:pointer}
+.btn-primary{background:#000;color:#fff}.btn-green{background:#dff5df;border-color:#88c888}.btn-danger{background:#f8d7da}
+.small{font-size:13px;color:#666}pre{white-space:pre-wrap;background:#111;color:#00ff6a;padding:12px;border-radius:10px;overflow:auto;max-height:420px}
+table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;font-size:13px;vertical-align:top}
+.kpi{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.kpi div{background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px}.kpi strong{font-size:24px;display:block}
+</style>
+</head>
+<body>
+<div class="container">
+<span class="badge">v100 database-test</span>
+<h1>Rittenapp IndexedDB test</h1>
+<div class="card warning"><strong>Veilig:</strong> deze pagina wist niets uit je oude app. Hij leest oude localStorage en kopieert optioneel naar IndexedDB.</div>
+<div class="card"><h2>Stap 1 — Oude opslag scannen</h2><button class="btn-primary" onclick="scanOldStorage()">Scan oude opslag</button><button onclick="copyReport()">Kopieer rapport</button><button onclick="downloadBackup()">Download back-up JSON</button><div id="oldSummary"></div></div>
+<div class="card"><h2>Stap 2 — Migreren naar IndexedDB</h2><button class="btn-green" onclick="migrateToIndexedDB()">Migreer naar IndexedDB</button><button onclick="readIndexedDB()">Lees IndexedDB</button><button class="btn-danger" onclick="clearIndexedDB()">Wis alleen v100 testdatabase</button><div id="dbSummary"></div></div>
+<div class="card"><h2>Gevonden oude opslagsets</h2><div id="sets"></div></div>
+<div class="card"><h2>Nieuwe database-inhoud</h2><div id="dbTables"></div></div>
+<div class="card"><h2>Rapport</h2><pre id="report">Nog geen scan uitgevoerd.</pre></div>
+</div>
+<script>
+const DB_NAME="rittenapp_v100_db",DB_VERSION=1;
+let lastScan={tripSets:[],daySets:[],plateSets:[],addressSets:[],merged:{trips:[],dayData:{},plates:[],addresses:[]}},lastReport="";
+function $(id){return document.getElementById(id)}
+function pad(n){return String(n).padStart(2,"0")}
+function today(){const d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())}
+function normalizePlate(v){return String(v||"").toUpperCase().replace(/[^A-Z0-9]/g,"").trim()}
+function normalizeLocation(v){const t=String(v||"").trim().toLowerCase();if(t.includes("breeland")&&t.includes("rotterdam"))return"Breeland Rotterdam";if(t.includes("breeland")&&t.includes("dordrecht"))return"Breeland Dordrecht";if(t.includes("breeland")&&t.includes("den haag"))return"Breeland Den Haag";if(t.includes("breeland")&&t.includes("brielle"))return"Breeland Brielle";if(t.includes("carwash")||t.includes("capelle")||t.includes("wasstraat"))return"Carwash Capelle";if(t.includes("perfect")||t.includes("carwrapping"))return"Perfect Carwrapping";if(t.includes("abs")||t.includes("elzen"))return"ABS den Elzen";return String(v||"").trim()}
+function safeParseKey(key,fallback){try{const v=localStorage.getItem(key);return v===null?fallback:JSON.parse(v)}catch(e){return fallback}}
+function keysStarting(prefix){const keys=[];try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.indexOf(prefix)===0)keys.push(k)}}catch(e){}return keys.sort()}
+function rangeTrips(arr){const d=arr.map(t=>String(t.date||"").trim()).filter(Boolean).sort();return d.length?d[0]+" t/m "+d[d.length-1]:"-"}
+function countToday(arr){const d=today();return arr.filter(t=>String(t.date||"").trim()===d).length}
+function makeTripId(){return"trip_"+Date.now()+"_"+Math.random().toString(36).slice(2,10)}
+function tripKey(t){return[t.id||"",t.date||"",t.timeStart||"",t.timeEnd||"",t.from||"",t.to||"",normalizePlate(t.plate||""),t.odometer||""].join("|")}
+function normTrip(t,src){return{id:String(t.id||"").trim()||makeTripId(),date:String(t.date||"").trim(),timeStart:String(t.timeStart||"").trim(),timeEnd:String(t.timeEnd||"").trim(),from:normalizeLocation(t.from||""),to:normalizeLocation(t.to||""),plate:normalizePlate(t.plate||""),vehicle:String(t.vehicle||"").trim(),priceText:String(t.priceText||"").trim(),odometer:String(t.odometer||"").trim(),sourceKey:src||""}}
+function scanOldStorage(){const tripKeys=keysStarting("trips_v"),dayKeys=keysStarting("dayData_v"),plateKeys=keysStarting("plates_v"),addressKeys=keysStarting("addresses_v").concat(keysStarting("locations_v"));
+lastScan.tripSets=tripKeys.map(key=>{const raw=safeParseKey(key,[]),arr=Array.isArray(raw)?raw:[];return{key,count:arr.length,today:countToday(arr),range:rangeTrips(arr),raw:arr}});
+lastScan.daySets=dayKeys.map(key=>{const raw=safeParseKey(key,{}),obj=raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{},dates=Object.keys(obj).sort();return{key,count:dates.length,range:dates.length?dates[0]+" t/m "+dates[dates.length-1]:"-",raw:obj}});
+lastScan.plateSets=plateKeys.map(key=>{const raw=safeParseKey(key,[]),arr=Array.isArray(raw)?raw:[];return{key,count:arr.length,raw:arr}});
+lastScan.addressSets=addressKeys.map(key=>{const raw=safeParseKey(key,[]),arr=Array.isArray(raw)?raw:[];return{key,count:arr.length,raw:arr}});
+mergeOldStorage();renderOldScan();buildReport()}
+function mergeOldStorage(){const trips=[],seen=new Set();lastScan.tripSets.forEach(set=>set.raw.forEach(t=>{const nt=normTrip(t,set.key);if(!(nt.date||nt.timeStart||nt.from||nt.to||nt.plate))return;const k=tripKey(nt);if(seen.has(k))return;seen.add(k);trips.push(nt)}));
+const dayData={};lastScan.daySets.forEach(set=>Object.keys(set.raw).forEach(d=>{const it=set.raw[d]||{},workStart=String(it.workStart||"").trim(),workEnd=String(it.workEnd||"").trim();if(d&&(workStart||workEnd))dayData[d]={date:d,workStart,workEnd,sourceKey:set.key}}));
+const plates=[];lastScan.plateSets.forEach(set=>set.raw.forEach(p=>{const plate=normalizePlate(p);if(plate&&!plates.includes(plate))plates.push(plate)}));trips.forEach(t=>{if(t.plate&&!plates.includes(t.plate))plates.push(t.plate)});
+const fixed=["Breeland Rotterdam","Breeland Dordrecht","Breeland Den Haag","Breeland Brielle","Carwash Capelle","Perfect Carwrapping","ABS den Elzen"],addr=new Set();lastScan.addressSets.forEach(set=>set.raw.forEach(a=>{const label=normalizeLocation(a);if(label&&!fixed.includes(label))addr.add(label)}));trips.forEach(t=>[t.from,t.to].forEach(a=>{const label=normalizeLocation(a);if(label&&!fixed.includes(label))addr.add(label)}));
+lastScan.merged={trips:trips.sort((a,b)=>((b.date||"")+" "+(b.timeStart||"")).localeCompare((a.date||"")+" "+(a.timeStart||""))),dayData,plates,addresses:Array.from(addr).sort()}}
+function renderOldScan(){const m=lastScan.merged;$("oldSummary").innerHTML=`<div class="kpi"><div><strong>${m.trips.length}</strong><span>ritten</span></div><div><strong>${Object.keys(m.dayData).length}</strong><span>werkdagen</span></div><div><strong>${m.plates.length}</strong><span>kentekens</span></div><div><strong>${m.addresses.length}</strong><span>adressen</span></div></div>`;
+let h="<h3>Ritten-opslagsets</h3><table><tr><th>Key</th><th>Aantal</th><th>Vandaag</th><th>Datumrange</th></tr>";lastScan.tripSets.forEach(s=>h+=`<tr><td>${s.key}</td><td>${s.count}</td><td>${s.today}</td><td>${s.range}</td></tr>`);h+="</table><h3>Werkdagen-opslagsets</h3><table><tr><th>Key</th><th>Aantal</th><th>Datumrange</th></tr>";lastScan.daySets.forEach(s=>h+=`<tr><td>${s.key}</td><td>${s.count}</td><td>${s.range}</td></tr>`);h+="</table>";$("sets").innerHTML=h}
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains("ritten")){const s=db.createObjectStore("ritten",{keyPath:"id"});s.createIndex("date","date",{unique:false});s.createIndex("plate","plate",{unique:false})}if(!db.objectStoreNames.contains("werkdagen"))db.createObjectStore("werkdagen",{keyPath:"date"});if(!db.objectStoreNames.contains("adressen"))db.createObjectStore("adressen",{keyPath:"label"});if(!db.objectStoreNames.contains("kentekens"))db.createObjectStore("kentekens",{keyPath:"plate"});if(!db.objectStoreNames.contains("meta"))db.createObjectStore("meta",{keyPath:"key"})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+function putAll(db,storeName,items){return new Promise((res,rej)=>{const tx=db.transaction(storeName,"readwrite"),s=tx.objectStore(storeName);items.forEach(i=>s.put(i));tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
+function getAll(db,storeName){return new Promise((res,rej)=>{const tx=db.transaction(storeName,"readonly"),r=tx.objectStore(storeName).getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error)})}
+async function migrateToIndexedDB(){if(!lastScan.tripSets.length&&!lastScan.daySets.length)scanOldStorage();const db=await openDB(),trips=lastScan.merged.trips,workdays=Object.values(lastScan.merged.dayData),addresses=lastScan.merged.addresses.map(label=>({label,updatedAt:new Date().toISOString()})),plates=lastScan.merged.plates.map(plate=>({plate,updatedAt:new Date().toISOString()}));await putAll(db,"ritten",trips);await putAll(db,"werkdagen",workdays);await putAll(db,"adressen",addresses);await putAll(db,"kentekens",plates);await putAll(db,"meta",[{key:"lastMigration",value:new Date().toISOString(),trips:trips.length,workdays:workdays.length}]);$("dbSummary").innerHTML=`<div class="card good"><strong>Migratie klaar.</strong><br>${trips.length} ritten, ${workdays.length} werkdagen, ${addresses.length} adressen en ${plates.length} kentekens opgeslagen.</div>`;await readIndexedDB()}
+async function readIndexedDB(){const db=await openDB(),trips=await getAll(db,"ritten"),workdays=await getAll(db,"werkdagen"),addresses=await getAll(db,"adressen"),plates=await getAll(db,"kentekens");$("dbSummary").innerHTML=`<div class="kpi"><div><strong>${trips.length}</strong><span>ritten in IndexedDB</span></div><div><strong>${workdays.length}</strong><span>werkdagen</span></div><div><strong>${addresses.length}</strong><span>adressen</span></div><div><strong>${plates.length}</strong><span>kentekens</span></div></div>`;
+let h="<h3>Laatste 25 ritten</h3><table><tr><th>Datum</th><th>Start</th><th>Eind</th><th>Van</th><th>Naar</th><th>Kenteken</th></tr>";trips.sort((a,b)=>((b.date||"")+" "+(b.timeStart||"")).localeCompare((a.date||"")+" "+(a.timeStart||""))).slice(0,25).forEach(t=>h+=`<tr><td>${t.date||""}</td><td>${t.timeStart||""}</td><td>${t.timeEnd||""}</td><td>${t.from||""}</td><td>${t.to||""}</td><td>${t.plate||""}</td></tr>`);h+="</table><h3>Adressen</h3><table><tr><th>Adres / naam</th></tr>";addresses.sort((a,b)=>(a.label||"").localeCompare(b.label||"")).slice(0,100).forEach(a=>h+=`<tr><td>${a.label||""}</td></tr>`);h+="</table>";$("dbTables").innerHTML=h}
+function clearIndexedDB(){if(!confirm("Alleen de v100 IndexedDB-testdatabase wissen? Je oude app-data blijft staan."))return;const r=indexedDB.deleteDatabase(DB_NAME);r.onsuccess=()=>{$("dbSummary").innerHTML='<div class="card good">v100 testdatabase gewist.</div>';$("dbTables").innerHTML=""};r.onerror=()=>alert("Wissen mislukt.")}
+function buildReport(){const lines=[];lines.push("RITTENAPP V100 DATABASE-TEST");lines.push("Scan: "+new Date().toISOString());lines.push("");lines.push("Oude ritten-opslagsets:");lastScan.tripSets.forEach(s=>lines.push(`${s.key}: ${s.count} ritten, vandaag ${s.today}, range ${s.range}`));lines.push("");lines.push("Oude werkdagen-opslagsets:");lastScan.daySets.forEach(s=>lines.push(`${s.key}: ${s.count} dagen, range ${s.range}`));lines.push("");lines.push("Samengevoegd:");lines.push(`Ritten: ${lastScan.merged.trips.length}`);lines.push(`Werkdagen: ${Object.keys(lastScan.merged.dayData).length}`);lines.push(`Kentekens: ${lastScan.merged.plates.length}`);lines.push(`Adressen: ${lastScan.merged.addresses.length}`);lastReport=lines.join("\n");$("report").textContent=lastReport}
+async function copyReport(){if(!lastReport)scanOldStorage();try{await navigator.clipboard.writeText(lastReport);alert("Rapport gekopieerd.")}catch(e){alert("Kopiëren lukt niet. Maak dan een screenshot.")}}
+function downloadBackup(){const backup={};for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);backup[key]=localStorage.getItem(key)}const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="rittenapp-localstorage-backup-v100.json";a.click()}
+scanOldStorage();readIndexedDB().catch(()=>{});
+</script>
+</body>
+</html>
