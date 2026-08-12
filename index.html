@@ -93,6 +93,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .postbox-check-label span{line-height:1.3}
 @keyframes postboxBlink{50%{box-shadow:0 0 0 5px rgba(196,0,0,.22);background:#ffdede}}
 
+.trip-missing-required{background:#fff0f0 !important;}
+.trip-missing-note{display:block;margin-top:4px;color:#b00000;font-weight:bold;font-size:12px;}
 .edit-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:18px;z-index:9999}
 .edit-modal-overlay.active{display:flex}
 .edit-modal{width:min(420px,100%);background:#fff;border-radius:14px;padding:18px;box-shadow:0 10px 35px rgba(0,0,0,.25)}
@@ -117,14 +119,14 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     <div class="dayhint" id="dayReminder"></div>
 
     <div class="wizard">
-      <div class="progress-text" id="progressText">Stap 1 van 8</div>
+      <div class="progress-text" id="progressText">Stap 1 van 7</div>
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 
       <div class="step active" data-step="0">
         <div class="step-title">Datum</div>
 <div class="version">
-    <strong>App-versie:</strong> v45 SNEL WIJZIGEN & POSTBAK<br>
-    Gebaseerd op v44. Nieuw: één knop Snel wijzigen voor eindtijd en km-stand, plus compacte postbakcontrole met afvinkvakjes per Breeland-vestiging.
+    <strong>App-versie:</strong> v46 WAZE & RIT AFRONDEN<br>
+    Waze vervangt Apple Kaarten. Km-stand na de rit vul je voortaan via Snel wijzigen in; verplichte ontbrekende km-standen worden in het rittenoverzicht gemarkeerd.
   </div>
 
         <div class="step-sub">Kies de datum van de rit.</div>
@@ -198,15 +200,10 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="voice-note" id="voiceStatus">Je kunt bijvoorbeeld zeggen: van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen en Perfect Carwrapping.</div>
       </div>
 
-      <div class="step" data-step="6">
-        <div class="step-title">Km-stand</div>
-        <div class="step-sub">Niet verplicht, wel reminder voor bepaalde kentekens.</div>
-        <div class="warning" id="odoWarning">Let op: km-stand invullen!</div>
-        <label for="odometer">Km-stand na rit</label>
-        <input type="number" id="odometer" inputmode="numeric" placeholder="Bijv. 123456">
-      </div>
+      <input type="hidden" id="odometer" value="">
+      <div class="warning" id="odoWarning" style="display:none"></div>
 
-      <div class="step" data-step="7">
+      <div class="step" data-step="6">
         <div class="step-title">Controle</div>
         <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
         <div class="review" id="reviewBox"></div>
@@ -221,7 +218,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <div class="small">Vink iedere vestiging af nadat je de betreffende postbak hebt gecontroleerd.</div>
         </div>
         <div class="toolbar">
-          <button type="button" class="btn-map" id="mapsAppleBtn">Apple Kaarten</button>
+          <button type="button" class="btn-map" id="mapsAppleBtn">Waze</button>
           <button type="button" class="btn-map" id="mapsGoogleBtn">Google Maps</button>
           <button type="button" class="btn-secondary" id="copyFlitsBtn">Kopieer voor Flitsmeister</button>
           <button type="button" class="btn-primary" id="saveTripBtn">Opslaan rit</button>
@@ -417,7 +414,7 @@ const DEFAULT_ADDRESSES = {
 };
 let standardAddresses = {...DEFAULT_ADDRESSES};
 let QUICK_LOCATIONS = Object.keys(standardAddresses);
-const ALL_STEPS = [0,1,2,3,4,5,6,7];
+const ALL_STEPS = [0,1,2,3,4,5,6];
 
 let trips = [];
 let dayData = {};
@@ -892,7 +889,7 @@ function updateHoursInfo(){
 function updatePlateStyle(){
   plateEl.value = normalizePlate(plateEl.value);
   plateEl.classList.toggle("filled", !!plateEl.value);
-  odoWarningEl.style.display = mandatoryOdoPlates.includes(plateEl.value) ? "block" : "none";
+  odoWarningEl.style.display = "none";
 }
 function cleanVehicleText(v){ return String(v||"").replace(/\s+/g," ").trim(); }
 function extractYearFromDateString(v){
@@ -1316,7 +1313,7 @@ $("saveTripBtn").addEventListener("click", async ()=>{
   sortTrips();
   await saveAllToDB();
   renderTrips();
-  markDraftSaved("Rit bijgewerkt en opgeslagen. Je kunt nu Apple Kaarten, Google Maps of Flitsmeister gebruiken.");
+  markDraftSaved("Rit bijgewerkt en opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
 });
 $("saveRouteBtn").addEventListener("click", async ()=>{
   if(!ensurePostboxesAcknowledged()) return;
@@ -1358,7 +1355,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
   sortTrips();
   saveAll();
   renderTrips();
-  markDraftSaved("Route met tussenstops opgeslagen. Je kunt nu Apple Kaarten, Google Maps of Flitsmeister gebruiken.");
+  markDraftSaved("Route met tussenstops opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
 });
 
 function clearForm(){
@@ -1430,7 +1427,7 @@ function openQuickTripEdit(id){
   const routeText = [t.date || "", t.from || "", "→", t.to || ""].filter(Boolean).join(" ");
   quickEditTitleEl.textContent = "Snel wijzigen";
   quickEditTextEl.textContent = routeText;
-  quickEditEndEl.value = t.timeEnd || "";
+  quickEditEndEl.value = t.timeEnd || now();
   quickEditOdometerEl.value = t.odometer || "";
   quickEditOverlayEl.classList.add("active");
   setTimeout(()=>quickEditEndEl.focus(),50);
@@ -1485,6 +1482,8 @@ function renderTrips(){
   tripTableEl.innerHTML = "";
   trips.forEach(t=>{
     const row = document.createElement("tr");
+    const needsOdometer = mandatoryOdoPlates.includes(normalizePlate(t.plate || "")) && !String(t.odometer || "").trim();
+    if(needsOdometer) row.classList.add("trip-missing-required");
     row.innerHTML = `
       <td>${escapeHtml(t.date||"")}</td>
       <td>${escapeHtml(t.timeStart||"")}</td>
@@ -1493,7 +1492,7 @@ function renderTrips(){
       <td>${escapeHtml(t.to||"")}</td>
       <td>${escapeHtml(t.plate||"")}</td>
       <td>${escapeHtml(t.vehicle||"")}${t.priceText ? '<br><span class="small">Nieuwprijs: ' + escapeHtml(t.priceText) + '</span>' : ''}</td>
-      <td>${escapeHtml(t.odometer||"")}</td>
+      <td>${escapeHtml(t.odometer||"")}${needsOdometer ? '<span class="trip-missing-note">⚠ Km-stand nog aanvullen</span>' : ''}</td>
       <td>
         <button type="button" class="btn-edit" data-action="quickEdit" data-id="${escapeHtml(t.id)}">Snel wijzigen</button>
         <button type="button" class="btn-edit" data-action="edit" data-id="${escapeHtml(t.id)}">Bewerk</button>
@@ -1865,16 +1864,14 @@ $("mapsAppleBtn").addEventListener("click", ()=>{
     return;
   }
   if(stops.length){
-    alert("Apple Kaarten ondersteunt in deze app nu nog geen tussenstops. Gebruik voor routes met tussenstop de knop Google Maps.");
+    alert("Waze kan vanuit deze app geen volledige route met meerdere tussenstops ontvangen. Gebruik voor routes met tussenstops Google Maps, of open Waze voor de eerstvolgende bestemming.");
     return;
   }
-  const appleUrl =
-    "http://maps.apple.com/?" +
-    "saddr=" + encodeURIComponent(from) +
-    "&daddr=" + encodeURIComponent(to) +
-    "&dirflg=d";
+  const wazeUrl =
+    "https://waze.com/ul?q=" + encodeURIComponent(to) +
+    "&navigate=yes&utm_source=rittenapp";
 
-  window.location.href = appleUrl;
+  window.location.href = wazeUrl;
 });
 $("mapsGoogleBtn").addEventListener("click", ()=>{
   const { from, to, stops } = getRoutePointsForMaps();
