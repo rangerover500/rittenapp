@@ -1,4 +1,4 @@
-const CACHE_NAME = "rittenapp-v46";
+const CACHE_NAME = "rittenapp-v47";
 
 const APP_FILES = [
   "./",

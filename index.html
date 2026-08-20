@@ -101,6 +101,20 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .edit-modal h3{margin:0 0 8px}
 .edit-modal p{margin:0 0 12px;color:#555}
 .edit-modal .toolbar{justify-content:flex-end}
+.workday-banner{display:none;margin-bottom:14px;padding:14px;border:2px solid #d5a000;border-radius:12px;background:#fff8d8}
+.workday-banner.active{display:block}
+.workday-banner.reminder{border-color:#b00020;background:#fff0f0;color:#8a1327}
+.workday-banner .toolbar{margin-top:10px}
+.big-choice{min-width:130px;min-height:64px;font-size:22px;font-weight:bold}
+.confirm-actions{display:flex;gap:14px;flex-wrap:wrap;margin-top:18px}
+.confirm-actions button{flex:1}
+.navigation-actions .btn-map{min-height:64px;font-size:20px;font-weight:bold}
+.arrival-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:10000}
+.arrival-overlay.active{display:flex}
+.arrival-card{width:min(480px,100%);background:#fff;border-radius:16px;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.arrival-card h2{font-size:28px}
+.tts-status{margin-top:10px;padding:10px;border-radius:10px;background:#eef1f7;min-height:40px}
+.field-block{margin-bottom:16px}
 </style>
 </head>
 <body>
@@ -115,34 +129,27 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     <button type="button" data-screen-btn="export">Export</button>
   </div>
 
+  <div class="workday-banner" id="workdayBanner">
+      <div id="workdayBannerText"></div>
+      <div class="toolbar">
+        <button type="button" class="btn-primary" id="startWorkdayNowBtn">Start werkdag nu</button>
+        <button type="button" class="btn-primary" id="finishWorkdayNowBtn">Werkdag afronden nu</button>
+        <button type="button" class="btn-secondary" id="openWorkdayBtn">Andere tijd</button>
+      </div>
+  </div>
   <div id="screen-invoer" class="screen active">
     <div class="dayhint" id="dayReminder"></div>
 
     <div class="wizard">
-      <div class="progress-text" id="progressText">Stap 1 van 7</div>
+      <div class="progress-text" id="progressText">Stap 1 van 5</div>
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 
       <div class="step active" data-step="0">
-        <div class="step-title">Datum</div>
-<div class="version">
-    <strong>App-versie:</strong> v46 WAZE & RIT AFRONDEN<br>
-    Waze vervangt Apple Kaarten. Km-stand na de rit vul je voortaan via Snel wijzigen in; verplichte ontbrekende km-standen worden in het rittenoverzicht gemarkeerd.
-  </div>
-
-        <div class="step-sub">Kies de datum van de rit.</div>
-        <label for="date">Datum</label>
-        <input type="date" id="date">
-      </div>
-
-      <div class="step" data-step="1">
-        <div class="step-title">Starttijd rit</div>
-        <div class="step-sub">Hoe laat begint de rit?</div>
-        <label for="timeStart">Starttijd rit</label>
-        <input type="time" id="timeStart">
-      </div>
-
-      <div class="step" data-step="2">
         <div class="step-title">Kenteken</div>
+<div class="version">
+    <strong>App-versie:</strong> v47 SNELLE RITFLOW<br>
+    Kies kenteken en route, controleer hardop en rond de rit bij aankomst af.
+  </div>
         <div class="step-sub">Voer het kenteken in of kies een recent kenteken.</div>
         <label for="plate">Kenteken</label>
         <input id="plate" placeholder="Bijv. X-605-VJ" autocomplete="off">
@@ -151,9 +158,10 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="info" id="rdwInfo"></div>
       </div>
 
-      <div class="step" data-step="3">
-        <div class="step-title">Van</div>
-        <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
+      <div class="step" data-step="1">
+        <div class="step-title">Route</div>
+        <div class="step-sub">Vul vertrek, bestemming en eventueel tussenstops in.</div>
+        <div class="field-block">
         <label for="from">Van</label>
         <div class="input-row">
           <input id="from" autocomplete="off">
@@ -163,11 +171,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="quick" id="fromButtons"></div>
         <div class="history-title">Eerder gebruikt</div>
         <div class="quick" id="fromHistoryButtons"></div>
-      </div>
-
-      <div class="step" data-step="4">
-        <div class="step-title">Naar</div>
-        <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
+        </div>
+        <div class="field-block">
         <label for="to">Naar</label>
         <div class="input-row">
           <input id="to" autocomplete="off">
@@ -180,11 +185,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="toolbar">
           <button type="button" class="btn-secondary" id="swapBtn">Retour</button>
         </div>
-      </div>
-
-      <div class="step" data-step="5">
-        <div class="step-title">Tussenstops</div>
-        <div class="step-sub">Optioneel. Meerdere tussenstops scheid je met komma's.</div>
+        </div>
+        <div class="field-block">
         <label for="stops">Tussenstop(s)</label>
         <div class="input-row">
           <input id="stops" placeholder="Bijv. ABS den Elzen, Perfect Carwrapping" autocomplete="off">
@@ -198,19 +200,32 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <button type="button" class="btn-secondary" id="voiceRouteBtn">🎤 Slimme routezin</button>
         </div>
         <div class="voice-note" id="voiceStatus">Je kunt bijvoorbeeld zeggen: van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen en Perfect Carwrapping.</div>
+        <div class="toolbar">
+          <button type="button" class="btn-secondary" id="clearBtn">Leegmaken</button>
+          <button type="button" class="btn-secondary" id="cancelEditBtn" style="display:none">Bewerken annuleren</button>
+        </div>
+        </div>
       </div>
 
       <input type="hidden" id="odometer" value="">
       <div class="warning" id="odoWarning" style="display:none"></div>
 
-      <div class="step" data-step="6">
+      <div class="step" data-step="2">
+        <div class="step-title">Vertrektijd</div>
+        <div class="step-sub">De actuele tijd wordt voorgesteld. Wijzig deze alleen indien nodig.</div>
+        <label for="date">Ritdatum</label>
+        <input type="date" id="date">
+        <label for="timeStart" style="margin-top:14px">Vertrektijd</label>
+        <input type="time" id="timeStart">
+      </div>
+
+      <div class="step" data-step="3">
         <div class="step-title">Controle</div>
-        <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
+        <div class="step-sub">Luister, controleer de postbakken en bevestig met JA of NEE.</div>
         <div class="review" id="reviewBox"></div>
-        <div class="conditional-block" id="rotterdamEndBlock">
+        <div class="conditional-block" id="rotterdamEndBlock" style="display:none">
           <label for="timeEndRotterdam">Eindtijd rit (optioneel)</label>
           <input type="time" id="timeEndRotterdam">
-          <div class="small">Niet verplicht. Vul deze alleen in als je de eindtijd al weet of later wilt aanvullen.</div>
         </div>
         <div class="postbox-alert" id="postboxAlert">
           <div class="postbox-title">⚠️ Postbak controleren</div>
@@ -218,13 +233,23 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <div class="small">Vink iedere vestiging af nadat je de betreffende postbak hebt gecontroleerd.</div>
         </div>
         <div class="toolbar">
+          <button type="button" class="btn-secondary" id="readAloudBtn">🔊 Lees opnieuw voor</button>
+        </div>
+        <div class="tts-status" id="confirmationStatus">Gebruik JA of NEE. Spraakherkenning is een extra mogelijkheid.</div>
+        <div class="confirm-actions">
+          <button type="button" class="btn-primary big-choice" id="saveTripBtn">JA</button>
+          <button type="button" class="btn-delete big-choice" id="confirmNoBtn">NEE</button>
+        </div>
+        <button type="button" id="saveRouteBtn" style="display:none"></button>
+      </div>
+
+      <div class="step" data-step="4">
+        <div class="step-title">Rit opgeslagen</div>
+        <div class="step-sub">De rit en actieve status zijn veilig opgeslagen. Kies navigatie.</div>
+        <div class="toolbar navigation-actions">
           <button type="button" class="btn-map" id="mapsAppleBtn">Waze</button>
           <button type="button" class="btn-map" id="mapsGoogleBtn">Google Maps</button>
           <button type="button" class="btn-secondary" id="copyFlitsBtn">Kopieer voor Flitsmeister</button>
-          <button type="button" class="btn-primary" id="saveTripBtn">Opslaan rit</button>
-          <button type="button" class="btn-secondary" id="saveRouteBtn">Route met tussenstops opslaan</button>
-          <button type="button" class="btn-secondary" id="clearBtn">Leegmaken</button>
-          <button type="button" class="btn-secondary" id="cancelEditBtn" style="display:none;">Bewerken annuleren</button>
         </div>
       </div>
 
@@ -392,6 +417,22 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       </div>
     </div>
   </div>
+  <div class="arrival-overlay" id="arrivalOverlay" role="dialog" aria-modal="true" aria-labelledby="arrivalTitle">
+    <div class="arrival-card">
+      <h2 id="arrivalTitle">Aangekomen?</h2>
+      <p id="arrivalRouteText"></p>
+      <label for="arrivalTime">Aankomsttijd</label>
+      <input type="time" id="arrivalTime">
+      <div id="arrivalOdometerBlock" style="display:none;margin-top:14px">
+        <label for="arrivalOdometer">Eind-km-stand</label>
+        <input type="number" id="arrivalOdometer" inputmode="numeric" placeholder="Bijv. 123456">
+      </div>
+      <div class="toolbar">
+        <button type="button" class="btn-secondary" id="arrivalNotYetBtn">Nog niet</button>
+        <button type="button" class="btn-primary big-choice" id="finishActiveRideBtn">Rit afronden</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -414,7 +455,7 @@ const DEFAULT_ADDRESSES = {
 };
 let standardAddresses = {...DEFAULT_ADDRESSES};
 let QUICK_LOCATIONS = Object.keys(standardAddresses);
-const ALL_STEPS = [0,1,2,3,4,5,6];
+const ALL_STEPS = [0,1,2,3,4];
 
 let trips = [];
 let dayData = {};
@@ -422,6 +463,10 @@ let plates = [];
 let addressHistory = [];
 let currentDraftSaved = false;
 let postboxChecks = {};
+let appMeta = {};
+let confirmationInProgress = false;
+let confirmationRecognition = null;
+let departureTimeTouched = false;
 
 let currentStep = 0;
 let editingTripId = null;
@@ -475,6 +520,14 @@ const stdAddressValueEl = document.getElementById("stdAddressValue");
 const stdAddressTableEl = document.getElementById("stdAddressTable");
 const stdPlateInputEl = document.getElementById("stdPlateInput");
 const stdPlateTableEl = document.getElementById("stdPlateTable");
+const workdayBannerEl = document.getElementById("workdayBanner");
+const workdayBannerTextEl = document.getElementById("workdayBannerText");
+const confirmationStatusEl = document.getElementById("confirmationStatus");
+const arrivalOverlayEl = document.getElementById("arrivalOverlay");
+const arrivalRouteTextEl = document.getElementById("arrivalRouteText");
+const arrivalTimeEl = document.getElementById("arrivalTime");
+const arrivalOdometerBlockEl = document.getElementById("arrivalOdometerBlock");
+const arrivalOdometerEl = document.getElementById("arrivalOdometer");
 
 function $(id){ return document.getElementById(id); }
 
@@ -632,6 +685,10 @@ async function loadAllFromDB(){
     const dbPlates = await dbGetAll("kentekens");
     const dbAddresses = await dbGetAll("adressen");
     const dbStandardAddresses = await dbGetAll("standaardAdressen");
+    const dbMeta = await dbGetAll("meta");
+
+    appMeta = {};
+    dbMeta.forEach(item=>{ if(item && item.key) appMeta[item.key] = item; });
 
     standardAddresses = {...DEFAULT_ADDRESSES};
     dbStandardAddresses.forEach(a=>{
@@ -666,7 +723,53 @@ async function saveAllToDB(){
   await dbReplaceAll("kentekens", plateRows);
   await dbReplaceAll("adressen", addressRows);
   await dbReplaceAll("standaardAdressen", standardAddressRows);
-  await dbReplaceAll("meta", [{key:"lastSave", value:new Date().toISOString(), trips:trips.length, workdays:workdayRows.length}]);
+  appMeta.lastSave = {key:"lastSave", value:new Date().toISOString(), trips:trips.length, workdays:workdayRows.length};
+  await dbReplaceAll("meta", Object.values(appMeta));
+}
+async function saveCriticalStateToDB(){
+  const workdayRows = Object.keys(dayData).map(d=>({date:d, workStart:(dayData[d]||{}).workStart || "", workEnd:(dayData[d]||{}).workEnd || ""}));
+  const rowsByStore = {
+    ritten:trips,
+    werkdagen:workdayRows,
+    kentekens:plates.map(plate=>({plate})),
+    adressen:addressHistory.map(label=>({label})),
+    standaardAdressen:Object.keys(standardAddresses).map(label=>({label,address:standardAddresses[label]}))
+  };
+  appMeta.lastSave = {key:"lastSave",value:new Date().toISOString(),trips:trips.length,workdays:workdayRows.length};
+  rowsByStore.meta = Object.values(appMeta);
+  const db = await openRittenDB();
+  await new Promise((resolve,reject)=>{
+    const names = Object.keys(rowsByStore);
+    const tx = db.transaction(names,"readwrite");
+    names.forEach(name=>{
+      const store = tx.objectStore(name);
+      store.clear();
+      rowsByStore[name].forEach(item=>store.put(item));
+    });
+    tx.oncomplete = resolve;
+    tx.onerror = ()=>reject(tx.error || new Error("IndexedDB-transactie mislukt"));
+    tx.onabort = ()=>reject(tx.error || new Error("IndexedDB-transactie afgebroken"));
+  });
+}
+
+function getActiveRide(){
+  const value = appMeta.activeRide;
+  return value && value.status === "active" ? value : null;
+}
+function setActiveRide(value){
+  if(value) appMeta.activeRide = {...value, key:"activeRide", status:"active"};
+  else delete appMeta.activeRide;
+}
+function setLastReachedDestination(value){
+  const location = normalizeLocation(value);
+  if(location) appMeta.lastReachedDestination = {key:"lastReachedDestination", value:location};
+}
+function getLastReachedDestination(){
+  if(getActiveRide()) return "";
+  const saved = appMeta.lastReachedDestination && appMeta.lastReachedDestination.value;
+  if(saved) return normalizeLocation(saved);
+  const completed = trips.filter(t=>t.timeEnd).sort((a,b)=>((b.date||"")+" "+(b.timeEnd||b.timeStart||"")).localeCompare((a.date||"")+" "+(a.timeEnd||a.timeStart||"")))[0];
+  return completed ? normalizeLocation(completed.to) : "";
 }
 async function migrateLocalStorageIfDatabaseEmpty(){
   if(trips.length || Object.keys(dayData).length) return;
@@ -1067,9 +1170,74 @@ function fillSmartRouteFromTranscript(transcript){
   setVoiceStatus("Route ingevuld: " + parsed.from + " naar " + parsed.to + stopText + ".");
 }
 
+function buildSpokenReview(){
+  const plate = normalizePlate(plateEl.value).split("").join(" ");
+  const vehicleName = rdwInfoEl.textContent
+    .replace(normalizePlate(plateEl.value), "")
+    .replace(/^\s*[—-]\s*/, "")
+    .split(/\s+—\s+Nieuwprijs:/i)[0]
+    .replace(/\s*\(\d{4}\)\s*$/, "")
+    .trim();
+  const vehicle = vehicleName ? ", " + vehicleName : "";
+  const stops = getStopsList();
+  const routeText = "Van " + (fromEl.value || "onbekend") + (stops.length ? ", via " + stops.join(", vervolgens ") : "") + ", naar " + (toEl.value || "onbekend") + ".";
+  const postboxes = getBreelandRouteDestinations();
+  const postboxText = postboxes.length ? " Controleer " + postboxes.map(v=>"de postbak van " + v).join(" en ") + "." : "";
+  return "Kenteken " + plate + vehicle + ". " + routeText + " Vertrektijd " + (timeStartEl.value || "onbekend") + "." + postboxText + " Kloppen deze gegevens? Zeg ja of nee, of gebruik de knoppen.";
+}
+function readCurrentTripAloud(){
+  stopConfirmationAudio();
+  if(!("speechSynthesis" in window)){
+    confirmationStatusEl.textContent = "Voorlezen wordt niet ondersteund. Controleer visueel en gebruik JA of NEE.";
+    startYesNoRecognition();
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(buildSpokenReview());
+  utterance.lang = "nl-NL";
+  utterance.onstart = ()=>{ confirmationStatusEl.textContent = "Rit wordt voorgelezen…"; };
+  utterance.onend = ()=>{ if(currentStep===3){ confirmationStatusEl.textContent = "Zeg JA of NEE, of gebruik de grote knoppen."; startYesNoRecognition(); } };
+  window.speechSynthesis.speak(utterance);
+}
+function stopConfirmationAudio(){
+  if("speechSynthesis" in window) window.speechSynthesis.cancel();
+  if(confirmationRecognition){
+    try{ confirmationRecognition.abort(); }catch(e){}
+    confirmationRecognition = null;
+  }
+}
+function startYesNoRecognition(){
+  const Ctor = getSpeechRecognitionCtor();
+  if(!Ctor){
+    confirmationStatusEl.textContent = "Spraakherkenning niet beschikbaar. Gebruik de grote knoppen JA of NEE.";
+    return;
+  }
+  if(confirmationRecognition) return;
+  const recognition = new Ctor();
+  confirmationRecognition = recognition;
+  recognition.lang = "nl-NL";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 3;
+  recognition.onresult = event=>{
+    const words = Array.from(event.results[0]).map(r=>String(r.transcript||"").toLowerCase());
+    if(words.some(v=>/\b(ja|klopt|correct|bevestig|bevestigen)\b/.test(v))){
+      confirmationRecognition = null;
+      confirmCurrentTrip("spraak-JA");
+    }else if(words.some(v=>/\b(nee|neen|niet goed|aanpassen)\b/.test(v))){
+      confirmationRecognition = null;
+      $("confirmNoBtn").click();
+    }else{
+      confirmationStatusEl.textContent = "Geen duidelijke JA of NEE herkend. Gebruik de knoppen.";
+    }
+  };
+  recognition.onerror = ()=>{ confirmationStatusEl.textContent = "Spraakherkenning niet beschikbaar. Gebruik JA of NEE."; };
+  recognition.onend = ()=>{ if(confirmationRecognition===recognition) confirmationRecognition = null; };
+  try{ recognition.start(); }catch(e){ confirmationRecognition = null; }
+}
+
 function updateDayReminder(){
   const d = dateEl.value || today();
-  if(isToday(d) && currentHour() >= 17 && !(dayData[d] && dayData[d].workEnd)){
+  if(isToday(d) && currentHour() >= 18 && !(dayData[d] && dayData[d].workEnd)){
     dayReminderEl.style.display = "block";
     dayReminderEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
     editStatusEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
@@ -1077,6 +1245,22 @@ function updateDayReminder(){
     dayReminderEl.style.display = "none";
     if(!editingTripId) editStatusEl.textContent = "";
   }
+  updateWorkdayBanner();
+}
+function updateWorkdayBanner(){
+  if(!workdayBannerEl) return;
+  const item = dayData[today()] || {};
+  const missingStart = !item.workStart;
+  const missingEnd = !!item.workStart && !item.workEnd && currentHour() >= 18;
+  workdayBannerEl.classList.toggle("active", missingStart || missingEnd);
+  workdayBannerEl.classList.toggle("reminder", missingEnd);
+  $("startWorkdayNowBtn").style.display = missingStart ? "inline-block" : "none";
+  $("finishWorkdayNowBtn").style.display = missingEnd ? "inline-block" : "none";
+  workdayBannerTextEl.innerHTML = missingStart
+    ? "<strong>Werkdag nog niet gestart.</strong> Start eenvoudig met de huidige tijd."
+    : missingEnd
+      ? "<strong>⚠ Werkdag nog niet afgerond.</strong> Vul je eindtijd in."
+      : "";
 }
 function buildReviewHtml(){
   const d = dateEl.value || today();
@@ -1211,9 +1395,7 @@ function updateReview(){
   $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
   $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "none";
   $("copyFlitsBtn").style.display = showMaps ? "inline-block" : "none";
-  $("rotterdamEndBlock").style.display = "block";
-  $("saveTripBtn").style.display = hasStops ? "none" : "inline-block";
-  $("saveRouteBtn").style.display = hasStops ? "inline-block" : "none";
+  $("rotterdamEndBlock").style.display = "none";
   updateDayReminder();
 }
 function renderStep(){
@@ -1225,9 +1407,21 @@ function renderStep(){
   progressFillEl.style.width = (((currentStep + 1)/ALL_STEPS.length) * 100) + "%";
   prevBtnEl.disabled = currentStep === 0;
   nextBtnEl.textContent = currentStep === ALL_STEPS.length - 1 ? "Klaar" : "Volgende";
+  if(currentStep === 2 && !departureTimeTouched) timeStartEl.value = now();
+  if(currentStep === 3){
+    readCurrentTripAloud();
+  }else{
+    stopConfirmationAudio();
+  }
   updateReview();
 }
 function nextStep(){
+  if(currentStep === 0 && !normalizePlate(plateEl.value)){
+    alert("Vul eerst een kenteken in."); return;
+  }
+  if(currentStep === 1 && (!fromEl.value.trim() || !toEl.value.trim())){
+    alert("Vul eerst Van en Naar in."); return;
+  }
   if(currentStep < ALL_STEPS.length - 1){
     currentStep += 1;
     renderStep();
@@ -1287,85 +1481,118 @@ function clearDraftSavedStatus(){
   editStatusEl.classList.remove("saved-ok");
   if(!editingTripId) editStatusEl.textContent = "";
 }
-$("saveTripBtn").addEventListener("click", async ()=>{
-  if(!ensurePostboxesAcknowledged()) return;
-  const info = await lookupPlate();
-  const existing = editingTripId ? trips.find(t=>t.id===editingTripId) : null;
-  const trip = buildTripObject(existing ? existing.id : null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
-  if(!validateTrip(trip)){
-    alert("Vul datum, starttijd, van, naar en kenteken in.");
+function buildRouteSegments(info){
+  let points = [normalizeLocation(fromEl.value), ...getStopsList(), normalizeLocation(toEl.value)];
+  points = points.filter((point,index)=>index===0 || point!==points[index-1]);
+  const segments = [];
+  for(let i=0;i<points.length-1;i++){
+    segments.push(buildTripObject(null, info.vehicleText, info.priceText, points[i], points[i+1]));
+  }
+  return {points, segments, tripIds:segments.map(t=>t.id), finalTripId:segments.length ? segments[segments.length-1].id : ""};
+}
+
+async function confirmCurrentTrip(source){
+  if(confirmationInProgress || currentDraftSaved) return;
+  if(!editingTripId && getActiveRide()){
+    alert("Rond eerst de actieve rit af voordat je een nieuwe rit opslaat.");
+    showArrivalPrompt();
     return;
   }
-  savePlateToList(trip.plate);
-  saveCurrentAddressesToHistory();
-  if(editingTripId){
-    const editIndex = trips.findIndex(t => t.id === editingTripId);
-    if(editIndex === -1){
-      alert("De te bewerken rit is niet meer gevonden. Er is niets opgeslagen om een dubbele rit te voorkomen.");
+  if(!ensurePostboxesAcknowledged()) return;
+  const base = buildTripObject(editingTripId, "", "", fromEl.value, toEl.value);
+  if(!validateTrip(base)){
+    alert("Vul datum, vertrektijd, van, naar en kenteken in."); return;
+  }
+  confirmationInProgress = true;
+  const previousTrips = trips.map(t=>({...t}));
+  const previousPlates = [...plates];
+  const previousAddresses = [...addressHistory];
+  const previousMeta = JSON.parse(JSON.stringify(appMeta));
+  $("saveTripBtn").disabled = true;
+  confirmationStatusEl.textContent = "Rit veilig opslaan…";
+  stopConfirmationAudio();
+  try{
+    const info = await lookupPlate();
+    if(editingTripId){
+      const editIndex = trips.findIndex(t=>t.id===editingTripId);
+      if(editIndex === -1) throw new Error("De te bewerken rit is niet meer gevonden.");
+      const old = trips[editIndex];
+      trips[editIndex] = buildTripObject(old.id, info.vehicleText || old.vehicle, info.priceText || old.priceText, fromEl.value, toEl.value);
+      const active = getActiveRide();
+      if(active && active.finalTripId===old.id){
+        active.finalDestination = trips[editIndex].to;
+        active.plate = trips[editIndex].plate;
+        appMeta.activeRide = active;
+      }
+      editingTripId = null;
+      sortTrips();
+      await saveCriticalStateToDB();
+      renderTrips();
+      markDraftSaved("Bestaande rit bijgewerkt.");
+      confirmationStatusEl.textContent = "Bestaande rit bijgewerkt zonder een nieuwe rit aan te maken.";
+      setScreen("ritten");
       return;
     }
-    trips[editIndex] = trip;
-    editingTripId = null;
-    $("cancelEditBtn").style.display = "none";
-  } else {
-    trips.push(trip);
-  }
-  sortTrips();
-  await saveAllToDB();
-  renderTrips();
-  markDraftSaved("Rit bijgewerkt en opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
-});
-$("saveRouteBtn").addEventListener("click", async ()=>{
-  if(!ensurePostboxesAcknowledged()) return;
-  const p = normalizePlate(plateEl.value);
-  if(!dateEl.value || !timeStartEl.value || !fromEl.value || !toEl.value || !p){
-    alert("Vul datum, starttijd, van, naar en kenteken in.");
-    return;
-  }
-  const info = await lookupPlate();
-  let points = [normalizeLocation(fromEl.value), ...stopsEl.value.split(",").map(s=>normalizeLocation(s.trim())).filter(Boolean), normalizeLocation(toEl.value)];
-  points = points.filter((p,i)=>i===0 || p!==points[i-1]);
-  if(points.length < 2){
-    alert("Te weinig routepunten.");
-    return;
-  }
-  if(editingTripId){
-    if(!confirm("Je staat in bewerkmodus. Route met tussenstops opslaan maakt meerdere nieuwe ritten. Doorgaan?")) return;
-    editingTripId = null;
-  }
-  savePlateToList(p);
-  saveCurrentAddressesToHistory();
-  const optionalEndTime = String(timeEndRotterdamEl.value || "").trim();
-  const newTrips = [];
-  for(let i=0;i<points.length-1;i++){
-    newTrips.push({
-      id: createTripId(),
-      date: dateEl.value || today(),
-      timeStart: timeStartEl.value,
-      timeEnd: (optionalEndTime && i === points.length - 2) ? optionalEndTime : "",
-      from: points[i],
-      to: points[i+1],
-      plate: p,
-      vehicle: info.vehicleText || "",
-      priceText: info.priceText || "",
-      odometer: String(odometerEl.value || "").trim()
+    const route = buildRouteSegments(info);
+    if(!route.segments.length) throw new Error("Te weinig routepunten.");
+    trips = [...route.segments, ...trips];
+    plates = plates.filter(x=>normalizePlate(x)!==base.plate);
+    plates.unshift(base.plate);
+    plates = plates.slice(0,500);
+    saveAddressToHistory(fromEl.value);
+    saveAddressToHistory(toEl.value);
+    getStopsList().forEach(saveAddressToHistory);
+    setActiveRide({
+      tripIds:route.tripIds,
+      finalTripId:route.finalTripId,
+      routePoints:route.points,
+      finalDestination:route.points[route.points.length-1],
+      plate:base.plate,
+      startedDate:base.date,
+      startedTime:base.timeStart,
+      createdAt:new Date().toISOString()
     });
+    sortTrips();
+    await saveCriticalStateToDB();
+    renderPlateButtons();
+    renderAddressHistoryButtons();
+    renderManagementTables();
+    renderTrips();
+    markDraftSaved("Rit opgeslagen. Navigatie is nu beschikbaar.");
+    confirmationStatusEl.textContent = "Rit en actieve status opgeslagen via " + source + ".";
+    currentStep = 4;
+    renderStep();
+  }catch(e){
+    trips = previousTrips;
+    plates = previousPlates;
+    addressHistory = previousAddresses;
+    appMeta = previousMeta;
+    renderTrips();
+    confirmationStatusEl.textContent = "Opslaan mislukt. Er is geen navigatie gestart.";
+    alert("Opslaan mislukt: " + e.message);
+  }finally{
+    confirmationInProgress = false;
+    if(!currentDraftSaved) $("saveTripBtn").disabled = false;
   }
-  trips = [...newTrips, ...trips];
-  sortTrips();
-  saveAll();
-  renderTrips();
-  markDraftSaved("Route met tussenstops opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
+}
+$("saveTripBtn").addEventListener("click", ()=>confirmCurrentTrip("JA-knop"));
+$("confirmNoBtn").addEventListener("click", ()=>{
+  stopConfirmationAudio();
+  confirmationStatusEl.textContent = "Gegevens behouden. Pas aan wat niet klopt.";
+  currentStep = 1;
+  renderStep();
 });
 
 function clearForm(){
+  const activeRide = getActiveRide();
+  const activeRideDeparture = activeRide ? fromEl.value : "";
   clearDraftSavedStatus();
   dateEl.value = dateEl.value || today();
   timeStartEl.value = now();
   timeEndRotterdamEl.value = "";
   plateEl.value = "";
   odometerEl.value = "";
-  fromEl.value = "";
+  fromEl.value = activeRide ? activeRideDeparture : getLastReachedDestination();
   toEl.value = "";
   stopsEl.value = "";
   rdwInfoEl.textContent = "";
@@ -1374,6 +1601,7 @@ function clearForm(){
   $("cancelEditBtn").style.display = "none";
   updatePlateStyle();
   currentStep = 0;
+  departureTimeTouched = false;
   renderStep();
 }
 $("cancelEditBtn").addEventListener("click", clearForm);
@@ -1400,6 +1628,21 @@ $("saveWorkdayBtn").addEventListener("click", ()=>{
   saveWorkdayFromForm();
   alert("Werkdag opgeslagen.");
 });
+$("startWorkdayNowBtn").addEventListener("click", async ()=>{
+  const d = today();
+  const existing = dayData[d] || {};
+  dayData[d] = {workStart:existing.workStart || now(), workEnd:existing.workEnd || ""};
+  await saveAllToDB();
+  loadWorkdayForm(d); renderWorkdays(); updateWorkdayBanner(); updateReview();
+});
+$("finishWorkdayNowBtn").addEventListener("click", async ()=>{
+  const d = today();
+  const existing = dayData[d] || {};
+  dayData[d] = {workStart:existing.workStart || "", workEnd:now()};
+  await saveAllToDB();
+  loadWorkdayForm(d); renderWorkdays(); updateWorkdayBanner(); updateReview();
+});
+$("openWorkdayBtn").addEventListener("click", ()=>{ loadWorkdayForm(today()); setScreen("werkdag"); });
 $("clearWorkdayBtn").addEventListener("click", ()=>{
   workStartEl.value = "";
   workEndEl.value = "";
@@ -1438,6 +1681,63 @@ function closeQuickTripEdit(){
   quickEditTripId = null;
 }
 
+function validateActiveRide(active){
+  if(!active || !Array.isArray(active.tripIds) || !active.tripIds.length || !active.finalTripId) return null;
+  const linked = active.tripIds.map(id=>trips.find(t=>t.id===id)).filter(Boolean);
+  const finalTrip = trips.find(t=>t.id===active.finalTripId);
+  if(!finalTrip || linked.length!==active.tripIds.length) return null;
+  return {active, linked, finalTrip};
+}
+function showArrivalPrompt(){
+  const validated = validateActiveRide(getActiveRide());
+  if(!validated){
+    if(getActiveRide()){
+      setActiveRide(null);
+      saveAllToDB().catch(e=>console.error("Ongeldige actieve rit opruimen mislukt",e));
+    }
+    return;
+  }
+  if(validated.finalTrip.timeEnd){
+    setLastReachedDestination(validated.finalTrip.to);
+    setActiveRide(null);
+    saveAllToDB().catch(e=>console.error("Actieve rit afsluiten mislukt",e));
+    return;
+  }
+  arrivalRouteTextEl.textContent = "Uiteindelijke bestemming: " + (validated.active.finalDestination || validated.finalTrip.to || "-");
+  arrivalTimeEl.value = now();
+  arrivalOdometerEl.value = validated.finalTrip.odometer || "";
+  arrivalOdometerBlockEl.style.display = mandatoryOdoPlates.includes(normalizePlate(validated.active.plate)) ? "block" : "none";
+  arrivalOverlayEl.classList.add("active");
+}
+function closeArrivalPrompt(){ arrivalOverlayEl.classList.remove("active"); }
+async function finishActiveRide(){
+  const validated = validateActiveRide(getActiveRide());
+  if(!validated){ closeArrivalPrompt(); alert("De actieve rit kon niet veilig worden gevonden."); return; }
+  const endTime = String(arrivalTimeEl.value||"").trim();
+  const mandatory = mandatoryOdoPlates.includes(normalizePlate(validated.active.plate));
+  const odometer = String(arrivalOdometerEl.value||"").replace(/[^0-9]/g,"");
+  if(!/^\d{2}:\d{2}$/.test(endTime)){ alert("Vul een geldige aankomsttijd in."); return; }
+  if(mandatory && (!odometer || Number(odometer)<=0 || odometer.length>8)){
+    alert("Vul een geldige eind-km-stand in, alleen cijfers."); return;
+  }
+  $("finishActiveRideBtn").disabled = true;
+  try{
+    validated.finalTrip.timeEnd = endTime;
+    if(mandatory) validated.linked.forEach(t=>{ t.odometer = odometer; });
+    setLastReachedDestination(validated.active.finalDestination || validated.finalTrip.to);
+    setActiveRide(null);
+    await saveCriticalStateToDB();
+    renderTrips();
+    closeArrivalPrompt();
+    clearForm();
+    setScreen("invoer");
+    editStatusEl.classList.add("saved-ok");
+    editStatusEl.textContent = "Rit afgerond. De volgende rit vertrekt standaard vanaf " + fromEl.value + ".";
+  }catch(e){
+    alert("Afronden mislukt: " + e.message);
+  }finally{ $("finishActiveRideBtn").disabled = false; }
+}
+
 async function saveQuickTripEdit(){
   const t = trips.find(x=>x.id===quickEditTripId);
   if(!t){
@@ -1457,6 +1757,11 @@ async function saveQuickTripEdit(){
   }
   t.timeEnd = endTime;
   t.odometer = odometer;
+  const active = getActiveRide();
+  if(active && active.finalTripId===t.id && endTime){
+    setLastReachedDestination(t.to);
+    setActiveRide(null);
+  }
   try{
     await saveAllToDB();
     renderTrips();
@@ -1549,6 +1854,7 @@ tripTableEl.addEventListener("click", e=>{
     stopsEl.value = "";
     rdwInfoEl.textContent = (t.plate || "") + (t.vehicle ? " — " + t.vehicle : "") + (t.priceText ? " — Nieuwprijs: " + t.priceText : "");
     editingTripId = t.id;
+    departureTimeTouched = true;
     postboxChecks = {};
     $("cancelEditBtn").style.display = "inline-block";
     editStatusEl.textContent = "Je bewerkt nu een bestaande rit.";
@@ -1560,6 +1866,8 @@ tripTableEl.addEventListener("click", e=>{
   }
   if(btn.dataset.action === "delete"){
     if(!confirm("Deze rit verwijderen?")) return;
+    const active = getActiveRide();
+    if(active && active.tripIds.includes(id)) setActiveRide(null);
     trips = trips.filter(x=>x.id !== id);
     saveAll();
     renderTrips();
@@ -1839,7 +2147,10 @@ plateEl.addEventListener("input", ()=>{
 fromEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(fromEl, fromSuggestionsEl); updateReview(); });
 toEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(toEl, toSuggestionsEl); updateReview(); });
 stopsEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(stopsEl, stopsSuggestionsEl, true); updateReview(); });
-[timeStartEl, timeEndRotterdamEl, odometerEl].forEach(el=>el.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateReview(); }));
+[timeStartEl, timeEndRotterdamEl, odometerEl].forEach(el=>el.addEventListener("input", ()=>{
+  if(el===timeStartEl) departureTimeTouched = true;
+  clearDraftSavedStatus(); updateReview();
+}));
 [plateEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("blur", ()=>setTimeout(()=>{
   plateSuggestionsEl.classList.remove("visible"); fromSuggestionsEl.classList.remove("visible");
   toSuggestionsEl.classList.remove("visible"); stopsSuggestionsEl.classList.remove("visible");
@@ -1908,6 +2219,15 @@ $("voiceFromBtn").addEventListener("click", ()=>startRecognition(t => applySpeec
 $("voiceToBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(toEl, t)));
 $("voiceStopsBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(stopsEl, t, true)));
 $("voiceRouteBtn").addEventListener("click", ()=>startRecognition(fillSmartRouteFromTranscript));
+$("readAloudBtn").addEventListener("click", readCurrentTripAloud);
+$("arrivalNotYetBtn").addEventListener("click", closeArrivalPrompt);
+$("finishActiveRideBtn").addEventListener("click", finishActiveRide);
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible"){
+    updateDayReminder();
+    showArrivalPrompt();
+  }
+});
 
 async function bootApp(){
   dateEl.value = today();
@@ -1932,6 +2252,8 @@ async function bootApp(){
   renderTrips();
   renderWorkdays();
   renderStep();
+  updateWorkdayBanner();
+  if(getActiveRide()) setTimeout(showArrivalPrompt, 100);
   setInterval(updateDayReminder, 60000);
 }
 bootApp().catch(err=>{
