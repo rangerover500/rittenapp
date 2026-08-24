@@ -1234,7 +1234,7 @@ async function processShortcutCallback(){
     if(getActiveRide()){
       if(isValidShortcutToken(token) && handoff && handoff.token === token) markShortcutTokenUsed(token);
       clearShortcutHandoff(token);
-      showArrivalPrompt();
+      restoreActiveRideAfterForeground();
       return true;
     }
     if(!isValidShortcutToken(token)) throw new Error("De tijdelijke beveiligingstoken is ongeldig.");
@@ -1839,6 +1839,7 @@ async function confirmCurrentTrip(source){
     renderTrips();
     markDraftSaved("Rit opgeslagen. Navigatie is nu beschikbaar.");
     confirmationStatusEl.textContent = "Rit en actieve status opgeslagen via " + source + ".";
+    closeArrivalPrompt();
     currentStep = 4;
     renderStep();
   }catch(e){
@@ -2041,6 +2042,11 @@ function showActiveRideState(){
 }
 function showArrivalPrompt(){ showActiveRideState(); }
 function closeArrivalPrompt(){ arrivalOverlayEl.classList.remove("active"); }
+function restoreActiveRideAfterForeground(){
+  const validated = validateActiveRide(getActiveRide());
+  if(validated && !validated.legacy && validated.active.phase !== "en_route") closeArrivalPrompt();
+  showActiveRideState();
+}
 async function confirmSegmentPostbox(){
   if(activeTransitionInProgress) return;
   const validated = validateActiveRide(getActiveRide());
@@ -2683,7 +2689,7 @@ $("confirmSegmentPostboxBtn").addEventListener("click", confirmSegmentPostbox);
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible"){
     updateDayReminder();
-    showArrivalPrompt();
+    restoreActiveRideAfterForeground();
   }
 });
 
@@ -2713,7 +2719,7 @@ async function bootApp(){
   renderWorkdays();
   if(!shortcutHandled) renderStep();
   updateWorkdayBanner();
-  if(getActiveRide()) setTimeout(showArrivalPrompt, 100);
+  if(getActiveRide()) setTimeout(restoreActiveRideAfterForeground, 100);
   setInterval(updateDayReminder, 60000);
 }
 bootApp().catch(err=>{
