@@ -156,6 +156,9 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="suggestions" id="plateSuggestions"></div>
         <div class="quick" id="plateButtons"></div>
         <div class="info" id="rdwInfo"></div>
+        <div class="toolbar" id="shortcutRouteBlock" style="display:none;margin-top:12px;">
+          <button type="button" class="btn-secondary" id="shortcutRouteBtn">Spreek route in met Apple Opdrachten</button>
+        </div>
       </div>
 
       <div class="step" data-step="1">
@@ -442,6 +445,10 @@ const STORAGE_TRIPS = "trips_v31";
 const STORAGE_DAYDATA = "dayData_v31";
 const STORAGE_PLATES = "plates_v31";
 const STORAGE_ADDRESSES = "addresses_v35";
+const SHORTCUT_HANDOFF_KEY = "rittenapp_shortcut_handoff_v47";
+const SHORTCUT_USED_TOKENS_KEY = "rittenapp_shortcut_used_tokens_v47";
+const SHORTCUT_HANDOFF_TTL_MS = 15 * 60 * 1000;
+const SHORTCUT_NAME = "Rittenapp ritinvoer";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const DEFAULT_ADDRESSES = {
@@ -467,6 +474,7 @@ let appMeta = {};
 let confirmationInProgress = false;
 let confirmationRecognition = null;
 let departureTimeTouched = false;
+let currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
 
 let currentStep = 0;
 let editingTripId = null;
@@ -498,6 +506,7 @@ const timeStartEl = document.getElementById("timeStart");
 const timeEndRotterdamEl = document.getElementById("timeEndRotterdam");
 const plateEl = document.getElementById("plate");
 const rdwInfoEl = document.getElementById("rdwInfo");
+const shortcutRouteBlockEl = document.getElementById("shortcutRouteBlock");
 const odoWarningEl = document.getElementById("odoWarning");
 const odometerEl = document.getElementById("odometer");
 const fromEl = document.getElementById("from");
@@ -993,6 +1002,7 @@ function updatePlateStyle(){
   plateEl.value = normalizePlate(plateEl.value);
   plateEl.classList.toggle("filled", !!plateEl.value);
   odoWarningEl.style.display = "none";
+  shortcutRouteBlockEl.style.display = plateEl.value.length >= 6 ? "flex" : "none";
 }
 function cleanVehicleText(v){ return String(v||"").replace(/\s+/g," ").trim(); }
 function extractYearFromDateString(v){
@@ -1042,16 +1052,212 @@ async function lookupPlate(){
   updatePlateStyle();
   if(!plateEl.value){
     rdwInfoEl.textContent = "";
+    currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
     updateReview();
     return {vehicleText:"", priceText:""};
   }
-  const info = await fetchPlateInfo(plateEl.value);
-  let text = plateEl.value;
+  const requestedPlate = normalizePlate(plateEl.value);
+  const fetchedInfo = await fetchPlateInfo(requestedPlate);
+  if(normalizePlate(plateEl.value) !== requestedPlate) return fetchedInfo;
+  if(fetchedInfo.vehicleText || fetchedInfo.priceText || currentPlateInfo.plate !== requestedPlate){
+    currentPlateInfo = {plate:requestedPlate, vehicleText:fetchedInfo.vehicleText || "", priceText:fetchedInfo.priceText || ""};
+  }
+  const info = {vehicleText:currentPlateInfo.vehicleText, priceText:currentPlateInfo.priceText};
+  let text = requestedPlate;
   if(info.vehicleText) text += " — " + info.vehicleText;
   if(info.priceText) text += " — Nieuwprijs: " + info.priceText;
   rdwInfoEl.textContent = text;
   updateReview();
   return info;
+}
+
+function createShortcutToken(){
+  if(window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+  if(!window.crypto || typeof window.crypto.getRandomValues !== "function") throw new Error("Veilige tokenopslag wordt niet ondersteund.");
+  const bytes = new Uint8Array(24);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, b=>b.toString(16).padStart(2,"0")).join("");
+}
+function isValidShortcutToken(value){
+  return /^(?:[0-9a-f]{32,64}|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(String(value || ""));
+}
+function readShortcutHandoff(){
+  try{
+    const raw = localStorage.getItem(SHORTCUT_HANDOFF_KEY);
+    if(!raw) return null;
+    const value = JSON.parse(raw);
+    if(!value || !isValidShortcutToken(value.token) || !Number.isFinite(value.expiresAt)){
+      localStorage.removeItem(SHORTCUT_HANDOFF_KEY);
+      return null;
+    }
+    return value;
+  }catch(e){
+    localStorage.removeItem(SHORTCUT_HANDOFF_KEY);
+    return null;
+  }
+}
+function clearShortcutHandoff(token){
+  const value = readShortcutHandoff();
+  if(!value || !token || value.token === token) localStorage.removeItem(SHORTCUT_HANDOFF_KEY);
+}
+function readUsedShortcutTokens(){
+  try{
+    const values = JSON.parse(localStorage.getItem(SHORTCUT_USED_TOKENS_KEY) || "[]");
+    const fresh = Array.isArray(values) ? values.filter(item=>item && isValidShortcutToken(item.token) && Number(item.expiresAt) > Date.now()) : [];
+    if(fresh.length) localStorage.setItem(SHORTCUT_USED_TOKENS_KEY, JSON.stringify(fresh));
+    else localStorage.removeItem(SHORTCUT_USED_TOKENS_KEY);
+    return fresh;
+  }catch(e){
+    localStorage.removeItem(SHORTCUT_USED_TOKENS_KEY);
+    return [];
+  }
+}
+function shortcutTokenWasUsed(token){ return readUsedShortcutTokens().some(item=>item.token === token); }
+function markShortcutTokenUsed(token){
+  if(!isValidShortcutToken(token)) return;
+  const values = readUsedShortcutTokens().filter(item=>item.token !== token);
+  values.push({token, expiresAt:Date.now() + SHORTCUT_HANDOFF_TTL_MS});
+  localStorage.setItem(SHORTCUT_USED_TOKENS_KEY, JSON.stringify(values.slice(-20)));
+}
+function cleanShortcutQuery(){
+  if(window.location.search) history.replaceState(null, document.title, window.location.pathname + window.location.hash);
+}
+function shortcutCallbackUrl(status, token, plate, issuedAt){
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("shortcut", status);
+  url.searchParams.set("handoff", token);
+  url.searchParams.set("kenteken", plate);
+  url.searchParams.set("issued", String(issuedAt));
+  return url.toString();
+}
+async function startRouteShortcut(){
+  if(getActiveRide()){
+    alert("Rond eerst de actieve rit af voordat je een nieuwe route invoert.");
+    showArrivalPrompt();
+    return;
+  }
+  const plate = normalizePlate(plateEl.value);
+  if(plate.length < 6){ alert("Vul eerst een geldig kenteken in."); return; }
+  try{
+    const info = await lookupPlate();
+    const token = createShortcutToken();
+    const createdAt = Date.now();
+    const handoff = {token, createdAt, expiresAt:createdAt + SHORTCUT_HANDOFF_TTL_MS, plate, rdwInfo:{vehicleText:info.vehicleText || "", priceText:info.priceText || ""}};
+    localStorage.setItem(SHORTCUT_HANDOFF_KEY, JSON.stringify(handoff));
+    const input = JSON.stringify({token, kenteken:plate, callbackUrl:shortcutCallbackUrl("success", token, plate, createdAt)});
+    const launch = new URL("shortcuts://x-callback-url/run-shortcut");
+    launch.searchParams.set("name", SHORTCUT_NAME);
+    launch.searchParams.set("input", "text");
+    launch.searchParams.set("text", input);
+    launch.searchParams.set("x-success", shortcutCallbackUrl("success", token, plate, createdAt));
+    launch.searchParams.set("x-cancel", shortcutCallbackUrl("cancel", token, plate, createdAt));
+    launch.searchParams.set("x-error", shortcutCallbackUrl("error", token, plate, createdAt));
+    window.location.href = launch.toString();
+  }catch(e){
+    clearShortcutHandoff();
+    alert("Apple Opdrachten kon niet veilig worden gestart: " + e.message);
+  }
+}
+function cleanShortcutText(value, maxLength){
+  const text = String(value == null ? "" : value).replace(/\s+/g," ").trim();
+  if(!text || text.length > maxLength || /[\u0000-\u001f\u007f]/.test(text)) return "";
+  return text;
+}
+function parseShortcutRoute(params){
+  let source = {};
+  const result = params.get("result");
+  if(result){
+    try{ source = JSON.parse(result); }catch(e){ throw new Error("De route-uitvoer van Apple Opdrachten is geen geldige JSON."); }
+  }
+  const vertrek = cleanShortcutText(source.vertrek ?? params.get("vertrek"), 250);
+  const bestemming = cleanShortcutText(source.bestemming ?? params.get("bestemming"), 250);
+  let stops = source.tussenstops;
+  if(stops == null){
+    const repeated = params.getAll("tussenstop");
+    stops = repeated.length ? repeated : String(params.get("tussenstops") || "").split("|");
+  }
+  if(typeof stops === "string") stops = stops.split("|");
+  if(!Array.isArray(stops)) stops = [];
+  stops = stops.map(v=>cleanShortcutText(v,250)).filter(Boolean);
+  if(stops.length > 20) throw new Error("Er zijn te veel tussenstops ontvangen.");
+  const vertrektijdRaw = cleanShortcutText(source.vertrektijd ?? params.get("vertrektijd"), 5);
+  const vertrektijd = vertrektijdRaw || now();
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(vertrektijd)) throw new Error("De vertrektijd is ongeldig.");
+  if(!vertrek || !bestemming) throw new Error("Vertrek of bestemming ontbreekt.");
+  return {vertrek, bestemming, stops, vertrektijd};
+}
+async function processShortcutCallback(){
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get("shortcut");
+  if(!status){
+    const stale = readShortcutHandoff();
+    if(stale && Date.now() > stale.expiresAt) clearShortcutHandoff(stale.token);
+    return false;
+  }
+  const token = params.get("handoff") || "";
+  const issuedAt = Number(params.get("issued"));
+  const handoff = readShortcutHandoff();
+  try{
+    if(getActiveRide()){
+      if(isValidShortcutToken(token) && handoff && handoff.token === token) markShortcutTokenUsed(token);
+      clearShortcutHandoff(token);
+      showArrivalPrompt();
+      return true;
+    }
+    if(!isValidShortcutToken(token)) throw new Error("De tijdelijke beveiligingstoken is ongeldig.");
+    if(!Number.isFinite(issuedAt) || issuedAt > Date.now() + 60000 || Date.now() - issuedAt > SHORTCUT_HANDOFF_TTL_MS){
+      throw new Error("De tijdelijke ritinvoer is verlopen. Start Apple Opdrachten opnieuw.");
+    }
+    if(shortcutTokenWasUsed(token)) throw new Error("Deze eenmalige beveiligingstoken is al gebruikt.");
+    if(handoff && handoff.token === token && Date.now() > handoff.expiresAt){
+      clearShortcutHandoff(token);
+      throw new Error("De tijdelijke ritinvoer is verlopen. Start Apple Opdrachten opnieuw.");
+    }
+    if(status === "cancel" || status === "error"){
+      markShortcutTokenUsed(token);
+      clearShortcutHandoff(token);
+      return true;
+    }
+    if(status !== "success") throw new Error("Onbekende callbackstatus.");
+    if(handoff && handoff.token !== token) throw new Error("De beveiligingstoken hoort niet bij deze ritinvoer.");
+    if(handoff && handoff.token === token && handoff.createdAt !== issuedAt) throw new Error("De beveiligingstoken hoort niet bij deze callback.");
+    const route = parseShortcutRoute(params);
+    const fallbackPlate = normalizePlate(params.get("kenteken"));
+    const plate = normalizePlate(handoff && handoff.token === token ? handoff.plate : fallbackPlate);
+    if(plate.length < 6) throw new Error("Het kenteken ontbreekt of is ongeldig.");
+    plateEl.value = plate;
+    if(handoff && handoff.token === token){
+      const savedInfo = handoff.rdwInfo || {};
+      currentPlateInfo = {plate, vehicleText:cleanVehicleText(savedInfo.vehicleText), priceText:cleanVehicleText(savedInfo.priceText)};
+      rdwInfoEl.textContent = plate + (currentPlateInfo.vehicleText ? " — " + currentPlateInfo.vehicleText : "") + (currentPlateInfo.priceText ? " — Nieuwprijs: " + currentPlateInfo.priceText : "");
+    }else{
+      currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
+      await lookupPlate();
+    }
+    fromEl.value = route.vertrek;
+    toEl.value = route.bestemming;
+    stopsEl.value = route.stops.join(", ");
+    timeStartEl.value = route.vertrektijd;
+    dateEl.value = today();
+    departureTimeTouched = true;
+    postboxChecks = {};
+    clearDraftSavedStatus();
+    currentStep = 3;
+    updatePlateStyle();
+    renderStep();
+    markShortcutTokenUsed(token);
+    clearShortcutHandoff(token);
+    return true;
+  }catch(e){
+    if(isValidShortcutToken(token) && handoff && handoff.token === token) markShortcutTokenUsed(token);
+    clearShortcutHandoff(token);
+    alert("Route uit Apple Opdrachten niet overgenomen: " + e.message);
+    return true;
+  }finally{
+    cleanShortcutQuery();
+  }
 }
 
 function getSpeechRecognitionCtor(){
@@ -1267,16 +1473,16 @@ function buildReviewHtml(){
   const wd = dayData[d] || {};
   const stopsList = stopsEl.value.trim() ? stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).join(", ") : "-";
   return `
-    <div><strong>Werkdag:</strong> ${wd.workStart || "-"} → ${wd.workEnd || "-"}</div>
-    <div><strong>Datum:</strong> ${d || "-"}</div>
-    <div><strong>Starttijd rit:</strong> ${timeStartEl.value || "-"}</div>
-    <div><strong>Eindtijd rit:</strong> ${timeEndRotterdamEl.value || "-"}</div>
-    <div><strong>Kenteken:</strong> ${plateEl.value || "-"}</div>
-    <div><strong>Auto:</strong> ${rdwInfoEl.textContent || "-"}</div>
-    <div><strong>Km-stand:</strong> ${odometerEl.value || "-"}</div>
-    <div><strong>Van:</strong> ${fromEl.value || "-"}</div>
-    <div><strong>Naar:</strong> ${toEl.value || "-"}</div>
-    <div><strong>Tussenstops:</strong> ${stopsList}</div>
+    <div><strong>Werkdag:</strong> ${escapeHtml(wd.workStart || "-")} → ${escapeHtml(wd.workEnd || "-")}</div>
+    <div><strong>Datum:</strong> ${escapeHtml(d || "-")}</div>
+    <div><strong>Starttijd rit:</strong> ${escapeHtml(timeStartEl.value || "-")}</div>
+    <div><strong>Eindtijd rit:</strong> ${escapeHtml(timeEndRotterdamEl.value || "-")}</div>
+    <div><strong>Kenteken:</strong> ${escapeHtml(plateEl.value || "-")}</div>
+    <div><strong>Auto:</strong> ${escapeHtml(rdwInfoEl.textContent || "-")}</div>
+    <div><strong>Km-stand:</strong> ${escapeHtml(odometerEl.value || "-")}</div>
+    <div><strong>Van:</strong> ${escapeHtml(fromEl.value || "-")}</div>
+    <div><strong>Naar:</strong> ${escapeHtml(toEl.value || "-")}</div>
+    <div><strong>Tussenstops:</strong> ${escapeHtml(stopsList)}</div>
   `;
 }
 function getAllKnownAddresses(){
@@ -1584,6 +1790,7 @@ $("confirmNoBtn").addEventListener("click", ()=>{
 });
 
 function clearForm(){
+  clearShortcutHandoff();
   const activeRide = getActiveRide();
   const activeRideDeparture = activeRide ? fromEl.value : "";
   clearDraftSavedStatus();
@@ -1596,6 +1803,7 @@ function clearForm(){
   toEl.value = "";
   stopsEl.value = "";
   rdwInfoEl.textContent = "";
+  currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
   editingTripId = null;
   postboxChecks = {};
   $("cancelEditBtn").style.display = "none";
@@ -2219,6 +2427,7 @@ $("voiceFromBtn").addEventListener("click", ()=>startRecognition(t => applySpeec
 $("voiceToBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(toEl, t)));
 $("voiceStopsBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(stopsEl, t, true)));
 $("voiceRouteBtn").addEventListener("click", ()=>startRecognition(fillSmartRouteFromTranscript));
+$("shortcutRouteBtn").addEventListener("click", startRouteShortcut);
 $("readAloudBtn").addEventListener("click", readCurrentTripAloud);
 $("arrivalNotYetBtn").addEventListener("click", closeArrivalPrompt);
 $("finishActiveRideBtn").addEventListener("click", finishActiveRide);
@@ -2242,6 +2451,8 @@ async function bootApp(){
   sortTrips();
   await saveAllToDB();
 
+  const shortcutHandled = await processShortcutCallback();
+
   loadWorkdayForm(today());
   updatePlateStyle();
   updateReview();
@@ -2251,7 +2462,7 @@ async function bootApp(){
   renderManagementTables();
   renderTrips();
   renderWorkdays();
-  renderStep();
+  if(!shortcutHandled) renderStep();
   updateWorkdayBanner();
   if(getActiveRide()) setTimeout(showArrivalPrompt, 100);
   setInterval(updateDayReminder, 60000);
