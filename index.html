@@ -117,6 +117,8 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .confirm-actions{display:flex;gap:14px;flex-wrap:wrap;margin-top:18px}
 .confirm-actions button{flex:1}
 .navigation-actions .btn-map{min-height:64px;font-size:20px;font-weight:bold}
+#arrivedActionBlock{margin-top:16px}
+#arrivedBtn{width:100%;min-height:64px;font-size:20px;font-weight:bold}
 .arrival-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:10000}
 .arrival-overlay.active{display:flex}
 .arrival-card{width:min(480px,100%);background:#fff;border-radius:16px;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
@@ -262,6 +264,9 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <button type="button" class="btn-map" id="mapsAppleBtn">Waze</button>
           <button type="button" class="btn-map" id="mapsGoogleBtn">Google Maps</button>
           <button type="button" class="btn-secondary" id="copyFlitsBtn">Kopieer voor Flitsmeister</button>
+        </div>
+        <div class="toolbar" id="arrivedActionBlock" style="display:none">
+          <button type="button" class="btn-primary" id="arrivedBtn">Ik ben aangekomen</button>
         </div>
       </div>
 
@@ -496,8 +501,6 @@ let confirmationRecognition = null;
 let departureTimeTouched = false;
 let currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
 let activeTransitionInProgress = false;
-let pendingGoogleNavigationLaunch = null;
-const GOOGLE_NAVIGATION_MIN_HIDDEN_MS = 1500;
 
 let currentStep = 0;
 let editingTripId = null;
@@ -1161,7 +1164,7 @@ function shortcutCallbackUrl(status, token, plate, issuedAt){
 async function startRouteShortcut(){
   if(getActiveRide()){
     alert("Rond eerst de actieve rit af voordat je een nieuwe route invoert.");
-    showArrivalPrompt();
+    showActiveRideState();
     return;
   }
   const plate = normalizePlate(plateEl.value);
@@ -1651,7 +1654,7 @@ function ensurePostboxesAcknowledged(){
 function updateReview(){
   reviewBoxEl.innerHTML = buildReviewHtml();
   const activeNavigation = validateActiveRide(getActiveRide());
-  const showActiveSegment = !!(activeNavigation && !activeNavigation.legacy && activeNavigation.active.phase === "ready_to_navigate");
+  const showActiveSegment = !!(activeNavigation && !activeNavigation.legacy && ["ready_to_navigate","en_route"].includes(activeNavigation.active.phase));
   const showMaps = showActiveSegment || !!(fromEl.value.trim() && toEl.value.trim());
   const hasStops = !!stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).length;
   renderPostboxReminder();
@@ -1676,7 +1679,11 @@ function renderStep(){
   }else{
     stopConfirmationAudio();
   }
-  if(currentStep === 4) updateActiveNavigationView(validateActiveRide(getActiveRide()));
+  if(currentStep === 4){
+    const activeNavigation = validateActiveRide(getActiveRide());
+    updateActiveNavigationView(activeNavigation);
+    $("arrivedActionBlock").style.display = activeNavigation && !activeNavigation.legacy && activeNavigation.active.phase === "en_route" ? "flex" : "none";
+  }
   updateReview();
 }
 function nextStep(){
@@ -1763,7 +1770,7 @@ async function confirmCurrentTrip(source){
   if(confirmationInProgress || currentDraftSaved) return;
   if(!editingTripId && getActiveRide()){
     alert("Rond eerst de actieve rit af voordat je een nieuwe rit opslaat.");
-    showArrivalPrompt();
+    showActiveRideState();
     return;
   }
   if(!ensurePostboxesAcknowledged()) return;
@@ -1996,9 +2003,19 @@ function updateActiveNavigationView(validated){
   if(!validated || validated.legacy){ activeSegmentTextEl.textContent = ""; return; }
   activeSegmentTextEl.textContent = "Volgende etappe: " + validated.currentTrip.from + " → " + validated.currentTrip.to;
 }
+function showActiveNavigationScreen(validated){
+  closeArrivalPrompt();
+  closeSegmentPostboxPrompt();
+  updateActiveNavigationView(validated);
+  $("arrivedActionBlock").style.display = validated.active.phase === "en_route" ? "flex" : "none";
+  currentStep = 4;
+  setScreen("invoer");
+  renderStep();
+}
 function showActiveRideState(){
   const rawActive = getActiveRide();
   const validated = validateActiveRide(rawActive);
+  $("arrivedActionBlock").style.display = "none";
   if(!validated){
     if(rawActive && rawActive.flowVersion === 2){
       alert("De actieve opdracht is niet volledig terug te vinden. Er zijn geen ritten of voortgang gewijzigd.");
@@ -2021,16 +2038,16 @@ function showActiveRideState(){
     showSegmentPostboxPrompt(validated);
     return;
   }
-  if(!validated.legacy && validated.active.phase === "ready_to_navigate"){
-    closeArrivalPrompt();
-    closeSegmentPostboxPrompt();
-    updateActiveNavigationView(validated);
-    currentStep = 4;
-    setScreen("invoer");
-    renderStep();
+  if(!validated.legacy && ["ready_to_navigate","en_route"].includes(validated.active.phase)){
+    showActiveNavigationScreen(validated);
     return;
   }
-  if(!validated.legacy && validated.active.phase !== "en_route") return;
+  if(!validated.legacy) return;
+  showArrivalPrompt();
+}
+function showArrivalPrompt(){
+  const validated = validateActiveRide(getActiveRide());
+  if(!validated || (!validated.legacy && validated.active.phase !== "en_route")) return;
   closeSegmentPostboxPrompt();
   arrivalRouteTextEl.textContent = validated.legacy
     ? "Uiteindelijke bestemming: " + (validated.active.finalDestination || validated.finalTrip.to || "-")
@@ -2042,11 +2059,10 @@ function showActiveRideState(){
   $("finishActiveRideBtn").textContent = !validated.legacy && !validated.isFinal ? "Etappe afronden" : "Opdracht afronden";
   arrivalOverlayEl.classList.add("active");
 }
-function showArrivalPrompt(){ showActiveRideState(); }
 function closeArrivalPrompt(){ arrivalOverlayEl.classList.remove("active"); }
 function restoreActiveRideAfterForeground(){
   const validated = validateActiveRide(getActiveRide());
-  if(validated && !validated.legacy && validated.active.phase !== "en_route") closeArrivalPrompt();
+  if(validated && !validated.legacy) closeArrivalPrompt();
   showActiveRideState();
 }
 async function confirmSegmentPostbox(){
@@ -2588,6 +2604,7 @@ function getNavigationRoute(){
 }
 async function prepareSegmentNavigation(validated){
   if(!validated || validated.legacy) return true;
+  if(validated.active.phase === "en_route") return true;
   if(activeTransitionInProgress || validated.active.phase !== "ready_to_navigate") return false;
   activeTransitionInProgress = true;
   const previousMeta = JSON.parse(JSON.stringify(appMeta));
@@ -2605,48 +2622,6 @@ async function prepareSegmentNavigation(validated){
 function isIOSDevice(){
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-}
-async function prepareGoogleNavigation(validated){
-  if(!isIOSDevice() || !validated || validated.legacy) return prepareSegmentNavigation(validated);
-  if(pendingGoogleNavigationLaunch || activeTransitionInProgress || validated.active.phase !== "ready_to_navigate") return false;
-  pendingGoogleNavigationLaunch = {
-    finalTripId:validated.active.finalTripId,
-    segmentIndex:validated.index,
-    hiddenAt:0,
-    resetTimer:setTimeout(()=>{
-      if(pendingGoogleNavigationLaunch && !pendingGoogleNavigationLaunch.hiddenAt){
-        pendingGoogleNavigationLaunch = null;
-        restoreActiveRideAfterForeground();
-      }
-    }, 3000)
-  };
-  return true;
-}
-async function settleGoogleNavigationLaunch(){
-  const pending = pendingGoogleNavigationLaunch;
-  if(!pending) return false;
-  pendingGoogleNavigationLaunch = null;
-  clearTimeout(pending.resetTimer);
-  const validated = validateActiveRide(getActiveRide());
-  if(!validated || validated.legacy || validated.active.finalTripId !== pending.finalTripId || validated.index !== pending.segmentIndex) return true;
-  if(!pending.hiddenAt || Date.now() - pending.hiddenAt < GOOGLE_NAVIGATION_MIN_HIDDEN_MS){
-    restoreActiveRideAfterForeground();
-    return true;
-  }
-  activeTransitionInProgress = true;
-  const previousMeta = JSON.parse(JSON.stringify(appMeta));
-  try{
-    validated.active.phase = "en_route";
-    appMeta.activeRide = validated.active;
-    await saveCriticalStateToDB();
-  }catch(e){
-    appMeta = previousMeta;
-    alert("Navigatiestatus kon niet veilig worden opgeslagen: " + e.message);
-  }finally{
-    activeTransitionInProgress = false;
-  }
-  restoreActiveRideAfterForeground();
-  return true;
 }
 function openGoogleMaps(googleUrl, from, to, stops){
   if(!isIOSDevice() || stops.length){
@@ -2681,7 +2656,7 @@ $("mapsGoogleBtn").addEventListener("click", async ()=>{
     alert("Vul eerst Van en Naar in.");
     return;
   }
-  if(!(await prepareGoogleNavigation(validated))) return;
+  if(!(await prepareSegmentNavigation(validated))) return;
   let googleUrl =
     "https://www.google.com/maps/dir/?api=1" +
     "&origin=" + encodeURIComponent(from) +
@@ -2714,19 +2689,15 @@ $("voiceRouteBtn").addEventListener("click", ()=>startRecognition(fillSmartRoute
 $("shortcutRouteBtn").addEventListener("click", startRouteShortcut);
 $("readAloudBtn").addEventListener("click", readCurrentTripAloud);
 $("arrivalNotYetBtn").addEventListener("click", closeArrivalPrompt);
+$("arrivedBtn").addEventListener("click", showArrivalPrompt);
 $("finishActiveRideBtn").addEventListener("click", finishActiveRide);
 $("segmentPostboxNotYetBtn").addEventListener("click", closeSegmentPostboxPrompt);
 $("confirmSegmentPostboxBtn").addEventListener("click", confirmSegmentPostbox);
-document.addEventListener("visibilitychange", async ()=>{
-  if(document.visibilityState === "hidden"){
-    if(pendingGoogleNavigationLaunch && !pendingGoogleNavigationLaunch.hiddenAt){
-      pendingGoogleNavigationLaunch.hiddenAt = Date.now();
-    }
-    return;
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible"){
+    updateDayReminder();
+    restoreActiveRideAfterForeground();
   }
-  updateDayReminder();
-  if(await settleGoogleNavigationLaunch()) return;
-  restoreActiveRideAfterForeground();
 });
 
 async function bootApp(){
