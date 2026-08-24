@@ -1154,7 +1154,12 @@ async function startRouteShortcut(){
     launch.searchParams.set("x-success", shortcutCallbackUrl("success", token, plate, createdAt));
     launch.searchParams.set("x-cancel", shortcutCallbackUrl("cancel", token, plate, createdAt));
     launch.searchParams.set("x-error", shortcutCallbackUrl("error", token, plate, createdAt));
-    window.location.href = launch.toString();
+    const encodedShortcutName = encodeURIComponent(SHORTCUT_NAME);
+    const launchUrl = launch.toString().replace(
+      "name=" + SHORTCUT_NAME.replace(/ /g, "+"),
+      "name=" + encodedShortcutName
+    );
+    window.location.href = launchUrl;
   }catch(e){
     clearShortcutHandoff();
     alert("Apple Opdrachten kon niet veilig worden gestart: " + e.message);
