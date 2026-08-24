@@ -67,6 +67,14 @@ button{cursor:pointer}
 table{width:100%;border-collapse:collapse;margin-top:10px}
 th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:top;font-size:14px}
 .version{margin-top:18px;font-size:13px;color:#555;background:#f7f7f7;border:1px solid #ddd;border-radius:10px;padding:12px}
+#screen-invoer .step[data-step="0"] .version{margin:0 0 8px;padding:7px 9px;line-height:1.25}
+#screen-invoer .step[data-step="0"] .step-sub{margin-bottom:8px}
+#screen-invoer .step[data-step="0"] #plateButtons{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+#screen-invoer .step[data-step="0"] #plateButtons::-webkit-scrollbar{display:none}
+#screen-invoer .step[data-step="0"] #plateButtons button{flex:0 0 auto;padding:7px 10px}
+#screen-invoer .step[data-step="0"] #rdwInfo{margin-top:6px;min-height:18px;line-height:1.25}
+#shortcutRouteBlock{width:100%;margin-top:8px!important;position:sticky;bottom:66px;z-index:6;background:#fafbff;padding:4px 0}
+#shortcutRouteBtn{width:100%;min-height:56px;font-size:16px;font-weight:700}
 .status{font-size:13px;color:#444;margin-top:10px;min-height:18px}
 .status.saved-ok{background:#e6f7e6;border:1px solid #88c888;color:#176b17;border-radius:10px;padding:10px;font-weight:bold}
 .fileblock{margin-top:16px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fafafa}
@@ -157,7 +165,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="quick" id="plateButtons"></div>
         <div class="info" id="rdwInfo"></div>
         <div class="toolbar" id="shortcutRouteBlock" style="display:none;margin-top:12px;">
-          <button type="button" class="btn-secondary" id="shortcutRouteBtn">Spreek route in met Apple Opdrachten</button>
+          <button type="button" class="btn-primary" id="shortcutRouteBtn">Spreek route in met Apple Opdrachten</button>
         </div>
       </div>
 
