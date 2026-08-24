@@ -496,6 +496,8 @@ let confirmationRecognition = null;
 let departureTimeTouched = false;
 let currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
 let activeTransitionInProgress = false;
+let pendingGoogleNavigationLaunch = null;
+const GOOGLE_NAVIGATION_MIN_HIDDEN_MS = 1500;
 
 let currentStep = 0;
 let editingTripId = null;
@@ -2600,10 +2602,54 @@ async function prepareSegmentNavigation(validated){
     return false;
   }finally{ activeTransitionInProgress = false; }
 }
-function openGoogleMaps(googleUrl, from, to, stops){
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+function isIOSDevice(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  if(!isIOS || stops.length){
+}
+async function prepareGoogleNavigation(validated){
+  if(!isIOSDevice() || !validated || validated.legacy) return prepareSegmentNavigation(validated);
+  if(pendingGoogleNavigationLaunch || activeTransitionInProgress || validated.active.phase !== "ready_to_navigate") return false;
+  pendingGoogleNavigationLaunch = {
+    finalTripId:validated.active.finalTripId,
+    segmentIndex:validated.index,
+    hiddenAt:0,
+    resetTimer:setTimeout(()=>{
+      if(pendingGoogleNavigationLaunch && !pendingGoogleNavigationLaunch.hiddenAt){
+        pendingGoogleNavigationLaunch = null;
+        restoreActiveRideAfterForeground();
+      }
+    }, 3000)
+  };
+  return true;
+}
+async function settleGoogleNavigationLaunch(){
+  const pending = pendingGoogleNavigationLaunch;
+  if(!pending) return false;
+  pendingGoogleNavigationLaunch = null;
+  clearTimeout(pending.resetTimer);
+  const validated = validateActiveRide(getActiveRide());
+  if(!validated || validated.legacy || validated.active.finalTripId !== pending.finalTripId || validated.index !== pending.segmentIndex) return true;
+  if(!pending.hiddenAt || Date.now() - pending.hiddenAt < GOOGLE_NAVIGATION_MIN_HIDDEN_MS){
+    restoreActiveRideAfterForeground();
+    return true;
+  }
+  activeTransitionInProgress = true;
+  const previousMeta = JSON.parse(JSON.stringify(appMeta));
+  try{
+    validated.active.phase = "en_route";
+    appMeta.activeRide = validated.active;
+    await saveCriticalStateToDB();
+  }catch(e){
+    appMeta = previousMeta;
+    alert("Navigatiestatus kon niet veilig worden opgeslagen: " + e.message);
+  }finally{
+    activeTransitionInProgress = false;
+  }
+  restoreActiveRideAfterForeground();
+  return true;
+}
+function openGoogleMaps(googleUrl, from, to, stops){
+  if(!isIOSDevice() || stops.length){
     window.location.href = googleUrl;
     return;
   }
@@ -2635,7 +2681,7 @@ $("mapsGoogleBtn").addEventListener("click", async ()=>{
     alert("Vul eerst Van en Naar in.");
     return;
   }
-  if(!(await prepareSegmentNavigation(validated))) return;
+  if(!(await prepareGoogleNavigation(validated))) return;
   let googleUrl =
     "https://www.google.com/maps/dir/?api=1" +
     "&origin=" + encodeURIComponent(from) +
@@ -2671,11 +2717,16 @@ $("arrivalNotYetBtn").addEventListener("click", closeArrivalPrompt);
 $("finishActiveRideBtn").addEventListener("click", finishActiveRide);
 $("segmentPostboxNotYetBtn").addEventListener("click", closeSegmentPostboxPrompt);
 $("confirmSegmentPostboxBtn").addEventListener("click", confirmSegmentPostbox);
-document.addEventListener("visibilitychange", ()=>{
-  if(document.visibilityState === "visible"){
-    updateDayReminder();
-    restoreActiveRideAfterForeground();
+document.addEventListener("visibilitychange", async ()=>{
+  if(document.visibilityState === "hidden"){
+    if(pendingGoogleNavigationLaunch && !pendingGoogleNavigationLaunch.hiddenAt){
+      pendingGoogleNavigationLaunch.hiddenAt = Date.now();
+    }
+    return;
   }
+  updateDayReminder();
+  if(await settleGoogleNavigationLaunch()) return;
+  restoreActiveRideAfterForeground();
 });
 
 async function bootApp(){
