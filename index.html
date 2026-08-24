@@ -1676,6 +1676,10 @@ function nextStep(){
   if(currentStep === 1 && (!fromEl.value.trim() || !toEl.value.trim())){
     alert("Vul eerst Van en Naar in."); return;
   }
+  if(currentStep === 3){
+    confirmCurrentTrip("Volgende-knop");
+    return;
+  }
   if(currentStep < ALL_STEPS.length - 1){
     currentStep += 1;
     renderStep();
