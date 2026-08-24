@@ -2600,32 +2600,17 @@ async function prepareSegmentNavigation(validated){
     return false;
   }finally{ activeTransitionInProgress = false; }
 }
-function openGoogleMaps(googleUrl){
+function openGoogleMaps(googleUrl, from, to, stops){
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  if(!isIOS){
+  if(!isIOS || stops.length){
     window.location.href = googleUrl;
     return;
   }
-
-  const iosGoogleUrl = googleUrl.replace(/^https:\/\//, "comgooglemapsurl://");
-  let fallbackTimer = null;
-  const cleanup = ()=>{
-    if(fallbackTimer !== null) clearTimeout(fallbackTimer);
-    document.removeEventListener("visibilitychange", handleVisibility);
-    window.removeEventListener("pagehide", cleanup);
-  };
-  const handleVisibility = ()=>{
-    if(document.visibilityState === "hidden") cleanup();
-  };
-
-  document.addEventListener("visibilitychange", handleVisibility);
-  window.addEventListener("pagehide", cleanup, {once:true});
-  fallbackTimer = setTimeout(()=>{
-    cleanup();
-    if(document.visibilityState === "visible") window.location.href = googleUrl;
-  }, 1500);
-  window.location.href = iosGoogleUrl;
+  window.location.href =
+    "comgooglemaps://?saddr=" + encodeURIComponent(from) +
+    "&daddr=" + encodeURIComponent(to) +
+    "&directionsmode=driving";
 }
 $("mapsAppleBtn").addEventListener("click", async ()=>{
   const { from, to, stops, validated } = getNavigationRoute();
@@ -2660,7 +2645,7 @@ $("mapsGoogleBtn").addEventListener("click", async ()=>{
   if(stops.length){
     googleUrl += "&waypoints=" + encodeURIComponent(stops.join("|"));
   }
-  openGoogleMaps(googleUrl);
+  openGoogleMaps(googleUrl, from, to, stops);
 });
 $("copyFlitsBtn").addEventListener("click", async ()=>{
   const { to } = getNavigationRoute();
