@@ -1225,29 +1225,117 @@ function parseShortcutRoute(params){
   const postboxConfirmed = postboxValue === true || /^(ja|true|1)$/i.test(String(postboxValue || "").trim());
   return {vertrek, bestemming, stops, vertrektijd, postboxConfirmed};
 }
+function normalizeShortcutDraft(value, handoff){
+  if(!value || typeof value !== "object") throw new Error("De tijdelijke route-invoer ontbreekt.");
+  const token = String(value.token || "");
+  const issuedAt = Number(value.issuedAt);
+  if(!isValidShortcutToken(token) || !handoff || handoff.token !== token || !Number.isFinite(issuedAt) || handoff.createdAt !== issuedAt){
+    throw new Error("De tijdelijke route-invoer hoort niet bij deze Apple Opdrachten-callback.");
+  }
+  const plate = normalizePlate(value.plate);
+  const vertrek = cleanShortcutText(value.vertrek,250);
+  const bestemming = cleanShortcutText(value.bestemming,250);
+  const stops = Array.isArray(value.stops) ? value.stops.map(v=>cleanShortcutText(v,250)).filter(Boolean) : [];
+  const vertrektijd = cleanShortcutText(value.vertrektijd,5);
+  if(plate.length < 6 || !vertrek || !bestemming || stops.length > 20 || !/^([01]\d|2[0-3]):[0-5]\d$/.test(vertrektijd)){
+    throw new Error("De tijdelijke route-invoer is ongeldig.");
+  }
+  const rdwInfo = value.rdwInfo && typeof value.rdwInfo === "object" ? value.rdwInfo : {};
+  return {
+    token, issuedAt, acceptedAt:Number(value.acceptedAt) || issuedAt, plate, vertrek, bestemming, stops, vertrektijd,
+    postboxConfirmed:value.postboxConfirmed === true,
+    rdwInfo:{vehicleText:cleanVehicleText(rdwInfo.vehicleText),priceText:cleanVehicleText(rdwInfo.priceText)}
+  };
+}
+function classifyActiveRideForShortcut(handoff){
+  const rawActive = getActiveRide();
+  if(!rawActive) return {rawActive:null,validated:null,stale:false,blocks:false};
+  const validated = validateActiveRide(rawActive);
+  if(!validated) return {rawActive,validated:null,stale:true,blocks:false};
+  const activeCreatedAt = Date.parse(validated.active.createdAt || "");
+  const handoffCreatedAt = handoff && Number(handoff.createdAt);
+  const belongsToHandoff = !!(handoff && isValidShortcutToken(handoff.token));
+  if(belongsToHandoff && Number.isFinite(activeCreatedAt) && Number.isFinite(handoffCreatedAt) && activeCreatedAt < handoffCreatedAt){
+    return {rawActive,validated,stale:true,blocks:false};
+  }
+  return {rawActive,validated,stale:false,blocks:true};
+}
+async function removeStaleActiveRideForShortcut(classification){
+  if(!classification || !classification.stale) return;
+  setActiveRide(null);
+  await saveCriticalStateToDB();
+}
+function applyShortcutDraft(draft){
+  plateEl.value = draft.plate;
+  currentPlateInfo = {plate:draft.plate,vehicleText:draft.rdwInfo.vehicleText,priceText:draft.rdwInfo.priceText};
+  rdwInfoEl.textContent = draft.plate + (currentPlateInfo.vehicleText ? " — " + currentPlateInfo.vehicleText : "") + (currentPlateInfo.priceText ? " — Nieuwprijs: " + currentPlateInfo.priceText : "");
+  fromEl.value = draft.vertrek;
+  toEl.value = draft.bestemming;
+  stopsEl.value = draft.stops.join(", ");
+  timeStartEl.value = draft.vertrektijd;
+  timeEndRotterdamEl.value = "";
+  odometerEl.value = "";
+  dateEl.value = today();
+  departureTimeTouched = true;
+  editingTripId = null;
+  $("cancelEditBtn").style.display = "none";
+  postboxChecks = {__routeKey:postboxRouteKey()};
+  const firstPostboxDestinations = getBreelandRouteDestinations();
+  if(draft.postboxConfirmed) firstPostboxDestinations.forEach(location=>{ postboxChecks[location] = true; });
+  clearDraftSavedStatus();
+  currentStep = 3;
+  updatePlateStyle();
+  renderStep();
+}
 async function processShortcutCallback(){
   const params = new URLSearchParams(window.location.search);
   const status = params.get("shortcut");
   if(!status){
-    const stale = readShortcutHandoff();
-    if(stale && Date.now() > stale.expiresAt) clearShortcutHandoff(stale.token);
+    const pending = readShortcutHandoff();
+    if(pending && pending.callbackDraft){
+      try{
+        const draft = normalizeShortcutDraft(pending.callbackDraft,pending);
+        const activeState = classifyActiveRideForShortcut(pending);
+        if(activeState.blocks){
+          clearShortcutHandoff(pending.token);
+          restoreActiveRideAfterForeground();
+          return true;
+        }
+        await removeStaleActiveRideForShortcut(activeState);
+        applyShortcutDraft(draft);
+        return true;
+      }catch(e){
+        clearShortcutHandoff(pending.token);
+        alert("Tijdelijke route-invoer kon niet worden hersteld: " + e.message);
+      }
+    }else if(pending && Date.now() > pending.expiresAt){
+      clearShortcutHandoff(pending.token);
+    }
     return false;
   }
   const token = params.get("handoff") || "";
   const issuedAt = Number(params.get("issued"));
   const handoff = readShortcutHandoff();
   try{
-    if(getActiveRide()){
-      if(isValidShortcutToken(token) && handoff && handoff.token === token) markShortcutTokenUsed(token);
-      clearShortcutHandoff(token);
-      restoreActiveRideAfterForeground();
-      return true;
-    }
     if(!isValidShortcutToken(token)) throw new Error("De tijdelijke beveiligingstoken is ongeldig.");
     if(!Number.isFinite(issuedAt) || issuedAt > Date.now() + 60000 || Date.now() - issuedAt > SHORTCUT_HANDOFF_TTL_MS){
       throw new Error("De tijdelijke ritinvoer is verlopen. Start Apple Opdrachten opnieuw.");
     }
-    if(shortcutTokenWasUsed(token)) throw new Error("Deze eenmalige beveiligingstoken is al gebruikt.");
+    if(shortcutTokenWasUsed(token)){
+      if(handoff && handoff.token === token && handoff.callbackDraft){
+        const draft = normalizeShortcutDraft(handoff.callbackDraft,handoff);
+        const activeState = classifyActiveRideForShortcut(handoff);
+        if(activeState.blocks){
+          clearShortcutHandoff(token);
+          restoreActiveRideAfterForeground();
+          return true;
+        }
+        await removeStaleActiveRideForShortcut(activeState);
+        applyShortcutDraft(draft);
+        return true;
+      }
+      throw new Error("Deze eenmalige beveiligingstoken is al gebruikt.");
+    }
     if(handoff && handoff.token === token && Date.now() > handoff.expiresAt){
       clearShortcutHandoff(token);
       throw new Error("De tijdelijke ritinvoer is verlopen. Start Apple Opdrachten opnieuw.");
@@ -1264,30 +1352,35 @@ async function processShortcutCallback(){
     const fallbackPlate = normalizePlate(params.get("kenteken"));
     const plate = normalizePlate(handoff && handoff.token === token ? handoff.plate : fallbackPlate);
     if(plate.length < 6) throw new Error("Het kenteken ontbreekt of is ongeldig.");
-    plateEl.value = plate;
+    const activeState = classifyActiveRideForShortcut(handoff && handoff.token === token ? handoff : null);
+    if(activeState.blocks){
+      markShortcutTokenUsed(token);
+      clearShortcutHandoff(token);
+      restoreActiveRideAfterForeground();
+      return true;
+    }
+    await removeStaleActiveRideForShortcut(activeState);
+    let rdwInfo;
     if(handoff && handoff.token === token){
       const savedInfo = handoff.rdwInfo || {};
-      currentPlateInfo = {plate, vehicleText:cleanVehicleText(savedInfo.vehicleText), priceText:cleanVehicleText(savedInfo.priceText)};
-      rdwInfoEl.textContent = plate + (currentPlateInfo.vehicleText ? " — " + currentPlateInfo.vehicleText : "") + (currentPlateInfo.priceText ? " — Nieuwprijs: " + currentPlateInfo.priceText : "");
+      rdwInfo = {vehicleText:cleanVehicleText(savedInfo.vehicleText),priceText:cleanVehicleText(savedInfo.priceText)};
     }else{
+      plateEl.value = plate;
       currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
-      await lookupPlate();
+      const info = await lookupPlate();
+      rdwInfo = {vehicleText:info.vehicleText || "",priceText:info.priceText || ""};
     }
-    fromEl.value = route.vertrek;
-    toEl.value = route.bestemming;
-    stopsEl.value = route.stops.join(", ");
-    timeStartEl.value = route.vertrektijd;
-    dateEl.value = today();
-    departureTimeTouched = true;
-    postboxChecks = {__routeKey:postboxRouteKey()};
-    const firstPostboxDestinations = getBreelandRouteDestinations();
-    if(route.postboxConfirmed) firstPostboxDestinations.forEach(location=>{ postboxChecks[location] = true; });
-    clearDraftSavedStatus();
-    currentStep = 3;
-    updatePlateStyle();
-    renderStep();
+    const acceptedHandoff = handoff && handoff.token === token ? handoff : {
+      token, createdAt:issuedAt, expiresAt:issuedAt + SHORTCUT_HANDOFF_TTL_MS, plate, rdwInfo
+    };
+    acceptedHandoff.callbackDraft = {
+      token, issuedAt, acceptedAt:Date.now(), plate, rdwInfo,
+      vertrek:route.vertrek,bestemming:route.bestemming,stops:route.stops,
+      vertrektijd:route.vertrektijd,postboxConfirmed:route.postboxConfirmed
+    };
+    localStorage.setItem(SHORTCUT_HANDOFF_KEY,JSON.stringify(acceptedHandoff));
+    applyShortcutDraft(normalizeShortcutDraft(acceptedHandoff.callbackDraft,acceptedHandoff));
     markShortcutTokenUsed(token);
-    clearShortcutHandoff(token);
     return true;
   }catch(e){
     if(isValidShortcutToken(token) && handoff && handoff.token === token) markShortcutTokenUsed(token);
@@ -1844,6 +1937,7 @@ async function confirmCurrentTrip(source){
     });
     sortTrips();
     await saveCriticalStateToDB();
+    clearShortcutHandoff();
     renderPlateButtons();
     renderAddressHistoryButtons();
     renderManagementTables();
