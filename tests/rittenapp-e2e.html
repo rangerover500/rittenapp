@@ -19,6 +19,13 @@ const frame = document.getElementById("app");
 const results = [];
 const sleep = ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function assert(condition,message){ if(!condition) throw new Error(message); }
+function currentGoogleMapsUrl(w){
+  const button=w.document.getElementById("mapsGoogleBtn");
+  assert(button&&button.tagName==="BUTTON"&&button.type==="button","Google Maps gebruikt niet de v46-buttonconstructie");
+  assert(!button.hasAttribute("href"),"Google Maps-button bevat onverwacht een href");
+  const {from,to,stops}=w.getNavigationRoute();
+  return w.buildGoogleMapsHttpsUrl(from,to,stops);
+}
 async function waitFor(check,message,timeout=6000){
   const end=Date.now()+timeout;
   while(Date.now()<end){ try{ if(await check()) return; }catch(e){} await sleep(25); }
@@ -160,7 +167,7 @@ async function test1And4And5(){
   assert(saved.text==="Volgende etappe: Breeland Rotterdam → Breeland Brielle","navigatietekst wijkt af");
   assert(saved.active.routePoints.join("|")==="Breeland Rotterdam|Breeland Brielle","activeRide.routePoints wijkt af");
   assert(saved.active.departurePostboxChecks&&saved.active.departurePostboxChecks["0"],"callback-postbakbevestiging ontbreekt");
-  const mapsHref=w.document.getElementById("mapsGoogleBtn").href;
+  const mapsHref=currentGoogleMapsUrl(w);
   assert(mapsHref.startsWith("https://www.google.com/maps/dir/?api=1"),"Google Maps gebruikt niet de HTTPS-launch");
   assert(mapsHref.includes("dir_action=navigate")&&!mapsHref.includes("waypoints="),"Google Maps URL heeft verkeerde navigatieparameters");
   assert(!w.document.querySelector(".step.active").textContent.includes("Den Haag"),"Den Haag staat zichtbaar in het navigatiescherm");
@@ -380,7 +387,7 @@ async function testNoStopsSentinel(){
     assert(saved.validated.currentTrip.from===variant.expectedPoints[0]&&saved.validated.currentTrip.to===variant.expectedPoints[1],variant.name+" currentTrip wijkt af");
     const expectedText="Volgende etappe: "+variant.expectedPoints[0]+" → "+variant.expectedPoints[1];
     assert(saved.text===expectedText,variant.name+" navigatietekst expected '"+expectedText+"', actual '"+saved.text+"'");
-    const maps=new URL(w.document.getElementById("mapsGoogleBtn").href);
+    const maps=new URL(currentGoogleMapsUrl(w));
     assert(maps.searchParams.get("destination")===MATRIX_ADDRESSES[variant.expectedPoints[1]],variant.name+" Maps-bestemming wijkt af");
     if(!variant.expectedStops.length) assert(!JSON.stringify({draftStops,parsedStops,active:saved.active,text:saved.text}).toLowerCase().includes("geen"),variant.name+" bevat 'geen' als routepunt");
     variants.push({variant:variant.name,callbackStops:draftStops,stopsEl:stopsValue,getStopsList:parsedStops,routePoints:saved.active.routePoints,segmenten:saved.validated.linked.length,currentTrip:{from:saved.validated.currentTrip.from,to:saved.validated.currentTrip.to},navigatietekst:saved.text,mapsBestemming:maps.searchParams.get("destination"),status:"PASS"});
@@ -458,7 +465,7 @@ async function assertMatrixSegment(w,points,index){
   assert(validated.currentTrip.to===expectedTo,"currentTrip.to expected "+expectedTo+", actual "+validated.currentTrip.to);
   const text=w.document.getElementById("activeSegmentText").textContent.trim();
   assert(text===expectedText,"navigatietekst expected "+expectedText+", actual "+text);
-  const maps=new URL(w.document.getElementById("mapsGoogleBtn").href);
+  const maps=new URL(currentGoogleMapsUrl(w));
   assert(maps.searchParams.get("origin")===MATRIX_ADDRESSES[expectedFrom],"Maps-origin expected "+MATRIX_ADDRESSES[expectedFrom]+", actual "+maps.searchParams.get("origin"));
   assert(maps.searchParams.get("destination")===MATRIX_ADDRESSES[expectedTo],"Maps-destination expected "+MATRIX_ADDRESSES[expectedTo]+", actual "+maps.searchParams.get("destination"));
   assert(maps.searchParams.get("dir_action")==="navigate","Maps mist dir_action=navigate");

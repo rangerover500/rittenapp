@@ -117,7 +117,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .confirm-actions{display:flex;gap:14px;flex-wrap:wrap;margin-top:18px}
 .confirm-actions button{flex:1}
 .navigation-actions .btn-map{min-height:64px;font-size:20px;font-weight:bold}
-.navigation-actions a.btn-map{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 #arrivedActionBlock{margin-top:16px}
 #arrivedBtn{width:100%;min-height:64px;font-size:20px;font-weight:bold}
 .arrival-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:10000}
@@ -263,7 +262,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="info" id="activeSegmentText"></div>
         <div class="toolbar navigation-actions">
           <button type="button" class="btn-map" id="mapsAppleBtn">Waze</button>
-          <a class="btn-map" id="mapsGoogleBtn" href="#">Google Maps</a>
+          <button type="button" class="btn-map" id="mapsGoogleBtn">Google Maps</button>
           <button type="button" class="btn-secondary" id="copyFlitsBtn">Kopieer voor Flitsmeister</button>
         </div>
         <div class="toolbar" id="arrivedActionBlock" style="display:none">
@@ -1759,7 +1758,6 @@ function updateReview(){
   $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
   $("mapsGoogleBtn").style.display = showMaps ? "inline-flex" : "none";
   $("copyFlitsBtn").style.display = showMaps ? "inline-block" : "none";
-  updateGoogleMapsLink();
   $("rotterdamEndBlock").style.display = "none";
   updateDayReminder();
 }
@@ -2731,10 +2729,6 @@ function buildGoogleMapsHttpsUrl(from, to, stops){
   }
   return googleUrl;
 }
-function updateGoogleMapsLink(){
-  const {from, to, stops} = getNavigationRoute();
-  $("mapsGoogleBtn").setAttribute("href", from && to ? buildGoogleMapsHttpsUrl(from, to, stops) : "#");
-}
 $("mapsAppleBtn").addEventListener("click", async ()=>{
   const { from, to, stops, validated } = getNavigationRoute();
   if(!from || !to){
@@ -2752,8 +2746,7 @@ $("mapsAppleBtn").addEventListener("click", async ()=>{
 
   window.location.href = wazeUrl;
 });
-$("mapsGoogleBtn").addEventListener("click", event=>{
-  event.preventDefault();
+$("mapsGoogleBtn").addEventListener("click", ()=>{
   const { from, to, stops, validated } = getNavigationRoute();
   if(!from || !to){
     alert("Vul eerst Van en Naar in.");
