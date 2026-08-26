@@ -502,6 +502,7 @@ let confirmationRecognition = null;
 let departureTimeTouched = false;
 let currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
 let activeTransitionInProgress = false;
+let dbSaveQueue = Promise.resolve();
 
 let currentStep = 0;
 let editingTripId = null;
@@ -752,42 +753,51 @@ async function loadAllFromDB(){
     addressHistory = [];
   }
 }
-async function saveAllToDB(){
-  const workdayRows = Object.keys(dayData).map(d=>({date:d, workStart:(dayData[d]||{}).workStart || "", workEnd:(dayData[d]||{}).workEnd || ""}));
-  const plateRows = plates.map(plate=>({plate}));
-  const addressRows = addressHistory.map(label=>({label}));
-  const standardAddressRows = Object.keys(standardAddresses).map(label=>({label, address:standardAddresses[label]}));
-  await dbReplaceAll("ritten", trips);
-  await dbReplaceAll("werkdagen", workdayRows);
-  await dbReplaceAll("kentekens", plateRows);
-  await dbReplaceAll("adressen", addressRows);
-  await dbReplaceAll("standaardAdressen", standardAddressRows);
-  appMeta.lastSave = {key:"lastSave", value:new Date().toISOString(), trips:trips.length, workdays:workdayRows.length};
-  await dbReplaceAll("meta", Object.values(appMeta));
+function enqueueDBSave(saveOperation){
+  const queued = dbSaveQueue.then(saveOperation,saveOperation);
+  dbSaveQueue = queued.catch(()=>{});
+  return queued;
 }
-async function saveCriticalStateToDB(){
-  const workdayRows = Object.keys(dayData).map(d=>({date:d, workStart:(dayData[d]||{}).workStart || "", workEnd:(dayData[d]||{}).workEnd || ""}));
-  const rowsByStore = {
-    ritten:trips,
-    werkdagen:workdayRows,
-    kentekens:plates.map(plate=>({plate})),
-    adressen:addressHistory.map(label=>({label})),
-    standaardAdressen:Object.keys(standardAddresses).map(label=>({label,address:standardAddresses[label]}))
-  };
-  appMeta.lastSave = {key:"lastSave",value:new Date().toISOString(),trips:trips.length,workdays:workdayRows.length};
-  rowsByStore.meta = Object.values(appMeta);
-  const db = await openRittenDB();
-  await new Promise((resolve,reject)=>{
-    const names = Object.keys(rowsByStore);
-    const tx = db.transaction(names,"readwrite");
-    names.forEach(name=>{
-      const store = tx.objectStore(name);
-      store.clear();
-      rowsByStore[name].forEach(item=>store.put(item));
+function saveAllToDB(){
+  return enqueueDBSave(async()=>{
+    const workdayRows = Object.keys(dayData).map(d=>({date:d, workStart:(dayData[d]||{}).workStart || "", workEnd:(dayData[d]||{}).workEnd || ""}));
+    const plateRows = plates.map(plate=>({plate}));
+    const addressRows = addressHistory.map(label=>({label}));
+    const standardAddressRows = Object.keys(standardAddresses).map(label=>({label, address:standardAddresses[label]}));
+    await dbReplaceAll("ritten", trips);
+    await dbReplaceAll("werkdagen", workdayRows);
+    await dbReplaceAll("kentekens", plateRows);
+    await dbReplaceAll("adressen", addressRows);
+    await dbReplaceAll("standaardAdressen", standardAddressRows);
+    appMeta.lastSave = {key:"lastSave", value:new Date().toISOString(), trips:trips.length, workdays:workdayRows.length};
+    await dbReplaceAll("meta", Object.values(appMeta));
+  });
+}
+function saveCriticalStateToDB(){
+  return enqueueDBSave(async()=>{
+    const workdayRows = Object.keys(dayData).map(d=>({date:d, workStart:(dayData[d]||{}).workStart || "", workEnd:(dayData[d]||{}).workEnd || ""}));
+    const rowsByStore = {
+      ritten:trips,
+      werkdagen:workdayRows,
+      kentekens:plates.map(plate=>({plate})),
+      adressen:addressHistory.map(label=>({label})),
+      standaardAdressen:Object.keys(standardAddresses).map(label=>({label,address:standardAddresses[label]}))
+    };
+    appMeta.lastSave = {key:"lastSave",value:new Date().toISOString(),trips:trips.length,workdays:workdayRows.length};
+    rowsByStore.meta = Object.values(appMeta);
+    const db = await openRittenDB();
+    await new Promise((resolve,reject)=>{
+      const names = Object.keys(rowsByStore);
+      const tx = db.transaction(names,"readwrite");
+      names.forEach(name=>{
+        const store = tx.objectStore(name);
+        store.clear();
+        rowsByStore[name].forEach(item=>store.put(item));
+      });
+      tx.oncomplete = resolve;
+      tx.onerror = ()=>reject(tx.error || new Error("IndexedDB-transactie mislukt"));
+      tx.onabort = ()=>reject(tx.error || new Error("IndexedDB-transactie afgebroken"));
     });
-    tx.oncomplete = resolve;
-    tx.onerror = ()=>reject(tx.error || new Error("IndexedDB-transactie mislukt"));
-    tx.onabort = ()=>reject(tx.error || new Error("IndexedDB-transactie afgebroken"));
   });
 }
 

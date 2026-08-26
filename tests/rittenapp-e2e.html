@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="nl">
+<meta charset="utf-8">
+<title>Rittenapp v47 regressietest</title>
+<style>
+body{font-family:system-ui;margin:20px}#app{width:390px;height:844px;border:1px solid #999}pre{white-space:pre-wrap} .ok{color:#087a28}.fail{color:#b00020}
+</style>
+<h1>Rittenapp v47 regressietest</h1>
+<p id="status">Tests worden uitgevoerd…</p>
+<pre id="results"></pre>
+<iframe id="app" title="Rittenapp onder test"></iframe>
+<script>
+const DB_NAME = "rittenapp_v101_db";
+const DB_VERSION = 2;
+const HANDOFF_KEY = "rittenapp_shortcut_handoff_v47";
+const USED_KEY = "rittenapp_shortcut_used_tokens_v47";
+const stores = ["ritten","werkdagen","kentekens","adressen","standaardAdressen","meta"];
+const frame = document.getElementById("app");
+const results = [];
+const sleep = ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function assert(condition,message){ if(!condition) throw new Error(message); }
+async function waitFor(check,message,timeout=6000){
+  const end=Date.now()+timeout;
+  while(Date.now()<end){ try{ if(await check()) return; }catch(e){} await sleep(25); }
+  throw new Error(message);
+}
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const request=indexedDB.open(DB_NAME,DB_VERSION);
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error);
+  });
+}
+async function replaceStores(rows={}){
+  const db=await openDB();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction(stores,"readwrite");
+    stores.forEach(name=>{
+      const store=tx.objectStore(name); store.clear();
+      (rows[name]||[]).forEach(value=>store.put(value));
+    });
+    tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); tx.onabort=()=>reject(tx.error);
+  });
+  db.close();
+}
+async function readStore(name){
+  const db=await openDB();
+  const rows=await new Promise((resolve,reject)=>{
+    const request=db.transaction(name,"readonly").objectStore(name).getAll();
+    request.onsuccess=()=>resolve(request.result||[]); request.onerror=()=>reject(request.error);
+  });
+  db.close();
+  return rows;
+}
+function makeHandoff(plate="X605VJ",createdAt=Date.now()){
+  const token=crypto.randomUUID();
+  return {token,createdAt,expiresAt:createdAt+15*60*1000,plate,rdwInfo:{vehicleText:"TOYOTA YARIS (2023)",priceText:"€ 25.481"}};
+}
+function callbackPath(handoff,route){
+  const q=new URLSearchParams({shortcut:"success",handoff:handoff.token,kenteken:handoff.plate,issued:String(handoff.createdAt),result:JSON.stringify(route)});
+  q.set("e2eBuild",String(Date.now()));
+  return "../index.html?"+q.toString();
+}
+async function loadApp(path="../index.html",readyState="boot"){
+  if(path==="../index.html") path += "?e2eBuild="+Date.now();
+  const loaded=new Promise(resolve=>frame.addEventListener("load",resolve,{once:true}));
+  frame.src=path;
+  await loaded;
+  await waitFor(()=>frame.contentWindow && typeof frame.contentWindow.getActiveRide==="function","app bootte niet");
+  frame.contentWindow.alert=message=>{ throw new Error("Onverwachte alert: "+message); };
+  frame.contentWindow.fetch=async()=>({json:async()=>[{merk:"TOYOTA",handelsbenaming:"YARIS",datum_eerste_toelating:"20230101",catalogusprijs:"25481"}]});
+  if(readyState==="review"){
+    await waitFor(()=>{
+      const w=frame.contentWindow;
+      const step=w.document.querySelector('.step[data-step="3"]');
+      return step&&step.classList.contains("active")&&w.document.getElementById("plate").value&&w.document.getElementById("from").value&&w.document.getElementById("to").value&&w.document.getElementById("timeStart").value;
+    },"callback-controlescherm werd niet volledig hersteld",8000);
+  }else if(readyState==="navigation"){
+    await waitFor(()=>{
+      const w=frame.contentWindow;
+      const active=w.getActiveRide();
+      const validated=w.validateActiveRide(active);
+      const step=w.document.querySelector('.step[data-step="4"]');
+      const text=w.document.getElementById("activeSegmentText").textContent.trim();
+      return validated&&step&&step.classList.contains("active")&&text;
+    },"actieve rit bereikte na reload niet het navigatiescherm",8000);
+  }else{
+    await waitFor(()=>/^Stap \d+ van \d+$/.test(frame.contentWindow.document.getElementById("progressText").textContent.trim()),"normale appboot werd niet voltooid",8000);
+  }
+  return frame.contentWindow;
+}
+async function resetApp(){
+  localStorage.removeItem(HANDOFF_KEY); localStorage.removeItem(USED_KEY);
+  await replaceStores();
+  return loadApp();
+}
+function installHandoff(handoff){ localStorage.setItem(HANDOFF_KEY,JSON.stringify(handoff)); }
+function assertCallbackFields(w,expected){
+  assert(w.document.getElementById("plate").value===expected.plate,"kenteken wijkt af");
+  assert(w.document.getElementById("from").value===expected.vertrek,"Van wijkt af");
+  assert(w.document.getElementById("to").value===expected.bestemming,"Naar wijkt af");
+  assert(w.document.getElementById("stops").value===(expected.tussenstops||[]).join(", "),"tussenstops wijken af");
+  assert(w.document.getElementById("timeStart").value===expected.vertrektijd,"vertrektijd wijkt af");
+}
+function assertNavigationState(w,expected){
+  const active=w.getActiveRide();
+  const validated=w.validateActiveRide(active);
+  const text=w.document.getElementById("activeSegmentText").textContent;
+  assert(validated&&validated.linked.length===1,"navigatieherstel heeft niet exact één segment");
+  assert(validated.currentTrip.from===expected.vertrek&&validated.currentTrip.to===expected.bestemming,"currentTrip wijkt na reload af");
+  assert(active.routePoints.join("|")===expected.vertrek+"|"+expected.bestemming,"routePoints wijken na reload af");
+  assert(active.currentSegmentIndex===0,"currentSegmentIndex is na reload niet 0");
+  assert(text==="Volgende etappe: "+expected.vertrek+" → "+expected.bestemming,"gerenderde navigatietekst wijkt na reload af");
+  assert(!JSON.stringify(active).includes("Den Haag")&&!w.document.querySelector(".step.active").textContent.includes("Den Haag"),"Den Haag verscheen na navigatiereload");
+  return {active,validated,text};
+}
+async function confirmAndRead(w){
+  w.document.getElementById("saveTripBtn").click();
+  await waitFor(()=>{
+    const active=w.getActiveRide();
+    return active && w.document.getElementById("activeSegmentText").textContent.includes("Volgende etappe:");
+  },"rit werd niet bevestigd");
+  const active=w.getActiveRide();
+  const validated=w.validateActiveRide(active);
+  return {active,validated,text:w.document.getElementById("activeSegmentText").textContent,review:w.document.getElementById("reviewBox").textContent};
+}
+async function finishCurrent(w,time="22:10"){
+  const active=w.getActiveRide(); active.phase="en_route";
+  w.showActiveRideState();
+  w.document.getElementById("arrivedBtn").click();
+  w.document.getElementById("arrivalTime").value=time;
+  if(w.document.getElementById("arrivalOdometerBlock").style.display!=="none") w.document.getElementById("arrivalOdometer").value="123456";
+  w.document.getElementById("finishActiveRideBtn").click();
+  await waitFor(()=>!w.getActiveRide(),"actieve rit werd niet afgerond");
+}
+async function test1And4And5(){
+  await resetApp();
+  const first={plate:"X605VJ",vertrek:"Breeland Rotterdam",bestemming:"Breeland Brielle",tussenstops:[],vertrektijd:"21:52",postbakcontrole:true};
+  const handoff=makeHandoff(first.plate); installHandoff(handoff);
+  let w=await loadApp(callbackPath(handoff,first),"review");
+  const accepted=JSON.parse(localStorage.getItem(HANDOFF_KEY));
+  assert(accepted&&accepted.callbackDraft,"callbackDraft ontbreekt na callback");
+  assert(accepted.callbackDraft.vertrek===first.vertrek&&accepted.callbackDraft.bestemming===first.bestemming,"callbackDraft-route wijkt af");
+  assert(Array.isArray(accepted.callbackDraft.stops)&&accepted.callbackDraft.stops.length===0,"callbackDraft bevat tussenstops");
+  assert(accepted.callbackDraft.vertrektijd===first.vertrektijd&&accepted.callbackDraft.postboxConfirmed===true,"callbackDraft tijd/postbak wijkt af");
+  assert(!JSON.stringify(accepted.callbackDraft).includes("Den Haag"),"Den Haag staat in callbackDraft");
+  assertCallbackFields(w,first);
+  assert(!w.document.getElementById("reviewBox").textContent.includes("Den Haag"),"oude Den Haag-state stond in callbackreview");
+  w=await loadApp("../index.html","review");
+  assertCallbackFields(w,first);
+  const saved=await confirmAndRead(w);
+  assert(saved.validated && saved.validated.linked.length===1,"route heeft niet exact één segment");
+  assert(saved.validated.currentTrip.from==="Breeland Rotterdam","activeRide.from is niet Rotterdam");
+  assert(saved.validated.currentTrip.to==="Breeland Brielle","activeRide.to is niet Brielle");
+  assert(saved.text==="Volgende etappe: Breeland Rotterdam → Breeland Brielle","navigatietekst wijkt af");
+  assert(saved.active.routePoints.join("|")==="Breeland Rotterdam|Breeland Brielle","activeRide.routePoints wijkt af");
+  assert(saved.active.departurePostboxChecks&&saved.active.departurePostboxChecks["0"],"callback-postbakbevestiging ontbreekt");
+  const mapsHref=w.document.getElementById("mapsGoogleBtn").href;
+  assert(mapsHref.startsWith("https://www.google.com/maps/dir/?api=1"),"Google Maps gebruikt niet de HTTPS-launch");
+  assert(mapsHref.includes("dir_action=navigate")&&!mapsHref.includes("waypoints="),"Google Maps URL heeft verkeerde navigatieparameters");
+  assert(!w.document.querySelector(".step.active").textContent.includes("Den Haag"),"Den Haag staat zichtbaar in het navigatiescherm");
+  assert(!JSON.stringify(saved.active).includes("Den Haag")&&!saved.review.includes("Den Haag"),"Den Haag lekte in nieuwe actieve route");
+  assert(!localStorage.getItem(HANDOFF_KEY),"callbackdraft bleef na succesvolle opslag staan");
+  const storedTrips=await readStore("ritten");
+  const storedMeta=await readStore("meta");
+  const storedActive=storedMeta.find(item=>item.key==="activeRide");
+  assert(storedTrips.length===1&&storedTrips[0].from===first.vertrek&&storedTrips[0].to===first.bestemming,"IndexedDB bevat niet exact het nieuwe segment");
+  assert(storedActive&&storedActive.routePoints.join("|")===first.vertrek+"|"+first.bestemming,"IndexedDB activeRide wijkt af");
+  assert(!JSON.stringify(storedTrips).includes("Den Haag")&&!JSON.stringify(storedActive).includes("Den Haag"),"Den Haag staat in persistente nieuwe state");
+  w=await loadApp("../index.html","navigation");
+  assertNavigationState(w,first);
+  w=await loadApp("../index.html","navigation");
+  const restored=assertNavigationState(w,first);
+  const coreEvidence={
+    ritrecords:storedTrips.map(t=>({from:t.from,to:t.to,timeStart:t.timeStart,timeEnd:t.timeEnd})),
+    routePoints:[...restored.active.routePoints],
+    currentSegmentIndex:restored.active.currentSegmentIndex,
+    currentTrip:{from:restored.validated.currentTrip.from,to:restored.validated.currentTrip.to},
+    navigatietekst:restored.text,
+    bevatDenHaag:JSON.stringify({trips:storedTrips,active:restored.active,currentTrip:restored.validated.currentTrip,text:restored.text}).includes("Den Haag")
+  };
+  await finishCurrent(w);
+  const second={plate:"Z406BG",vertrek:"ABS den Elzen",bestemming:"Carwash Capelle",tussenstops:[],vertrektijd:"08:15",postbakcontrole:false};
+  const secondHandoff=makeHandoff(second.plate); installHandoff(secondHandoff);
+  w=await loadApp(callbackPath(secondHandoff,second),"review");
+  assertCallbackFields(w,second);
+  const secondSaved=await confirmAndRead(w);
+  assert(secondSaved.validated.linked.length===1,"tweede route heeft oude segmenten");
+  assert(secondSaved.validated.currentTrip.from===second.vertrek&&secondSaved.validated.currentTrip.to===second.bestemming,"tweede activeRide hergebruikt eerste route");
+  assert(!JSON.stringify(secondSaved.active).includes("Breeland Rotterdam")&&!JSON.stringify(secondSaved.active).includes("Breeland Brielle"),"eerste route lekte in tweede activeRide");
+  return coreEvidence;
+}
+async function test2(){
+  const oldTrip={id:"old-brielle-denhaag",date:"2026-08-25",timeStart:"20:00",timeEnd:"",from:"Breeland Brielle",to:"Breeland Den Haag",plate:"X605VJ",vehicle:"TOYOTA YARIS",priceText:"",odometer:"",sourceKey:"test"};
+  const oldActive={key:"activeRide",status:"active",flowVersion:2,tripIds:[oldTrip.id],finalTripId:oldTrip.id,routePoints:[oldTrip.from,oldTrip.to],currentSegmentIndex:0,phase:"ready_to_navigate",currentLocation:oldTrip.from,nextDestination:oldTrip.to,finalDestination:oldTrip.to,departurePostboxChecks:{},segmentArrivals:{},plate:oldTrip.plate,startedDate:oldTrip.date,startedTime:oldTrip.timeStart,createdAt:"2026-08-25T18:00:00.000Z"};
+  await replaceStores({ritten:[oldTrip],meta:[oldActive]});
+  localStorage.removeItem(USED_KEY);
+  const fresh={plate:"X605VJ",vertrek:"Breeland Rotterdam",bestemming:"Breeland Brielle",tussenstops:[],vertrektijd:"21:52",postbakcontrole:true};
+  const handoff=makeHandoff(fresh.plate); installHandoff(handoff);
+  const w=await loadApp(callbackPath(handoff,fresh),"review");
+  assertCallbackFields(w,fresh);
+  assert(!w.getActiveRide(),"oude activeRide bleef na geldige nieuwere handoff actief");
+  const saved=await confirmAndRead(w);
+  assert(saved.validated.linked.length===1,"stale scenario maakte meer dan één nieuw segment");
+  assert(saved.validated.currentTrip.from===fresh.vertrek&&saved.validated.currentTrip.to===fresh.bestemming,"oude activeRide won van callback");
+  assert(!JSON.stringify(saved.active).includes("Den Haag")&&!saved.review.includes("Den Haag"),"Den Haag bleef in nieuwe route-state staan");
+  const persistentTrips=await readStore("ritten");
+  const persistentActive=(await readStore("meta")).find(item=>item.key==="activeRide");
+  const newPersistentTrips=persistentTrips.filter(t=>persistentActive&&persistentActive.tripIds.includes(t.id));
+  assert(persistentActive&&persistentActive.routePoints.join("|")===fresh.vertrek+"|"+fresh.bestemming,"stale scenario is niet correct persistent opgeslagen");
+  assert(newPersistentTrips.length===1&&!JSON.stringify({newPersistentTrips,persistentActive}).includes("Breeland Den Haag"),"oude Den Haag-state lekte in nieuwe persistente ritstate");
+  return {routePoints:persistentActive.routePoints,currentSegmentIndex:persistentActive.currentSegmentIndex,currentTrip:{from:saved.validated.currentTrip.from,to:saved.validated.currentTrip.to},navigatietekst:saved.text};
+}
+async function test3(){
+  const w=await resetApp();
+  const originalOpen=w.openRittenDB;
+  const pending=[]; let persisted=null;
+  function fakeDB(label){
+    const puts={};
+    return {transaction(names){
+      const tx={objectStore(name){return {clear(){puts[name]=[]},put(value){(puts[name]||(puts[name]=[])).push(JSON.parse(JSON.stringify(value)))}}}};
+      queueMicrotask(()=>{ persisted=(puts.meta||[]).find(item=>item.key==="activeRide")||null; if(tx.oncomplete)tx.oncomplete(); });
+      return tx;
+    }};
+  }
+  w.openRittenDB=()=>new Promise(resolve=>pending.push(resolve));
+  const old={flowVersion:2,tripIds:["old"],finalTripId:"old",routePoints:["Breeland Brielle","Breeland Den Haag"],currentSegmentIndex:0,phase:"en_route",createdAt:"2026-08-25T18:00:00.000Z"};
+  const fresh={flowVersion:2,tripIds:["new"],finalTripId:"new",routePoints:["Breeland Rotterdam","Breeland Brielle"],currentSegmentIndex:0,phase:"ready_to_navigate",createdAt:"2026-08-25T21:52:00.000Z"};
+  w.setActiveRide(old); const oldSave=w.saveCriticalStateToDB();
+  w.setActiveRide(fresh); const newSave=w.saveCriticalStateToDB();
+  await sleep(0);
+  if(pending.length===2){
+    pending[1](fakeDB("new")); await newSave;
+    pending[0](fakeDB("old")); await oldSave;
+  }else{
+    assert(pending.length===1,"onverwachte savewachtrijstatus");
+    pending[0](fakeDB("old")); await oldSave; await waitFor(()=>pending.length===2,"tweede save startte niet");
+    pending[1](fakeDB("new")); await newSave;
+  }
+  w.openRittenDB=originalOpen;
+  assert(persisted&&persisted.routePoints.join("|")==="Breeland Rotterdam|Breeland Brielle","vertraagde oude save overschreef de nieuwere activeRide");
+  return {persistedRoutePoints:persisted.routePoints};
+}
+const MATRIX_ADDRESSES={
+  "Breeland Rotterdam":"Autolettestraat 16, 3063 NP Rotterdam",
+  "Breeland Dordrecht":"Mijlweg 25, 3316 BE Dordrecht",
+  "Breeland Den Haag":"Neckar 7, 2491 BB Den Haag",
+  "Breeland Brielle":"Seggelant-Oost 9, 3237 MH Brielle",
+  "ABS den Elzen":"Aploniastraat 1, 3084 CC Rotterdam",
+  "Carwash Capelle":"Kompasstraat 9-11, 2901 AM Capelle aan den IJssel"
+};
+const MATRIX_POSTBOXES=["Breeland Rotterdam","Breeland Dordrecht","Breeland Brielle","Breeland Den Haag"];
+const MATRIX_ROUTES=[
+  ["Rotterdam → Brielle",["Breeland Rotterdam","Breeland Brielle"]],
+  ["Rotterdam → Dordrecht",["Breeland Rotterdam","Breeland Dordrecht"]],
+  ["Rotterdam → Den Haag",["Breeland Rotterdam","Breeland Den Haag"]],
+  ["Rotterdam → ABS den Elzen",["Breeland Rotterdam","ABS den Elzen"]],
+  ["Rotterdam → Carwash Capelle",["Breeland Rotterdam","Carwash Capelle"]],
+  ["Dordrecht → Rotterdam",["Breeland Dordrecht","Breeland Rotterdam"]],
+  ["Brielle → Rotterdam",["Breeland Brielle","Breeland Rotterdam"]],
+  ["Den Haag → Rotterdam",["Breeland Den Haag","Breeland Rotterdam"]],
+  ["Rotterdam → Dordrecht → Brielle",["Breeland Rotterdam","Breeland Dordrecht","Breeland Brielle"]],
+  ["Rotterdam → Dordrecht → Den Haag",["Breeland Rotterdam","Breeland Dordrecht","Breeland Den Haag"]],
+  ["Rotterdam → ABS den Elzen → Brielle",["Breeland Rotterdam","ABS den Elzen","Breeland Brielle"]],
+  ["Brielle → Rotterdam → Dordrecht",["Breeland Brielle","Breeland Rotterdam","Breeland Dordrecht"]],
+  ["Rotterdam → Dordrecht → Brielle → Den Haag",["Breeland Rotterdam","Breeland Dordrecht","Breeland Brielle","Breeland Den Haag"]]
+];
+const MATRIX_POLLUTION=[
+  [["Breeland Den Haag","Breeland Rotterdam"],["Breeland Rotterdam","Breeland Dordrecht"]],
+  [["Breeland Rotterdam","Breeland Brielle"],["Breeland Rotterdam","Carwash Capelle"]],
+  [["Breeland Dordrecht","Breeland Brielle"],["Breeland Rotterdam","Breeland Den Haag"]],
+  [["Breeland Rotterdam","ABS den Elzen"],["Breeland Brielle","Breeland Rotterdam"]]
+];
+function matrixRoute(points,plate="X605VJ"){
+  return {plate,vertrek:points[0],bestemming:points[points.length-1],tussenstops:points.slice(1,-1),vertrektijd:"09:15",postbakcontrole:true};
+}
+function expectedMatrixPostbox(points,currentIndex){
+  const current=points[currentIndex];
+  const locations=[];
+  points.slice(currentIndex+1).forEach(location=>{
+    if(location!==current&&MATRIX_POSTBOXES.includes(location)&&!locations.includes(location)) locations.push(location);
+  });
+  const names=locations.map(location=>location.replace(/^Breeland\s+/,""));
+  if(!names.length) return "";
+  const joined=names.length===1?names[0]:names.slice(0,-1).join(", ")+" en "+names[names.length-1];
+  return names.length===1?"Heb je de postbak voor "+joined+" gecontroleerd?":"Heb je de postbakken voor "+joined+" gecontroleerd?";
+}
+function assertMatrixSegment(w,points,index){
+  const active=w.getActiveRide();
+  const validated=w.validateActiveRide(active);
+  const expectedFrom=points[index],expectedTo=points[index+1];
+  const expectedText="Volgende etappe: "+expectedFrom+" → "+expectedTo;
+  assert(validated,"segment "+index+" valideert niet");
+  assert(active.currentSegmentIndex===index,"currentSegmentIndex expected "+index+", actual "+active.currentSegmentIndex);
+  assert(active.routePoints.join("|")===points.join("|"),"routePoints expected "+points.join(" → ")+", actual "+active.routePoints.join(" → "));
+  assert(validated.currentTrip.from===expectedFrom,"currentTrip.from expected "+expectedFrom+", actual "+validated.currentTrip.from);
+  assert(validated.currentTrip.to===expectedTo,"currentTrip.to expected "+expectedTo+", actual "+validated.currentTrip.to);
+  const text=w.document.getElementById("activeSegmentText").textContent.trim();
+  assert(text===expectedText,"navigatietekst expected "+expectedText+", actual "+text);
+  const maps=new URL(w.document.getElementById("mapsGoogleBtn").href);
+  assert(maps.searchParams.get("origin")===MATRIX_ADDRESSES[expectedFrom],"Maps-origin expected "+MATRIX_ADDRESSES[expectedFrom]+", actual "+maps.searchParams.get("origin"));
+  assert(maps.searchParams.get("destination")===MATRIX_ADDRESSES[expectedTo],"Maps-destination expected "+MATRIX_ADDRESSES[expectedTo]+", actual "+maps.searchParams.get("destination"));
+  assert(maps.searchParams.get("dir_action")==="navigate","Maps mist dir_action=navigate");
+  assert(!maps.searchParams.has("waypoints"),"v2 Maps bevat onverwachte waypoints");
+  return {index,from:expectedFrom,to:expectedTo,navigatietekst:text,mapsBestemming:maps.searchParams.get("destination")};
+}
+async function arriveMatrixSegment(w,isFinal,index){
+  const active=w.getActiveRide();
+  active.phase="en_route";
+  await w.saveCriticalStateToDB();
+  w.showActiveRideState();
+  w.document.getElementById("arrivedBtn").click();
+  await waitFor(()=>w.document.getElementById("arrivalOverlay").classList.contains("active"),"Aangekomen-overlay verscheen niet voor segment "+index,8000);
+  w.document.getElementById("arrivalTime").value="10:"+String(10+index).padStart(2,"0");
+  if(isFinal&&w.document.getElementById("arrivalOdometerBlock").style.display!=="none") w.document.getElementById("arrivalOdometer").value="123456";
+  w.document.getElementById("finishActiveRideBtn").click();
+}
+async function runMatrixRoute(name,points){
+  await resetApp();
+  const route=matrixRoute(points);
+  const handoff=makeHandoff(route.plate); installHandoff(handoff);
+  const w=await loadApp(callbackPath(handoff,route),"review");
+  assertCallbackFields(w,route);
+  const initialQuestion=w.document.getElementById("postboxRows").textContent.trim();
+  const expectedInitial=expectedMatrixPostbox(points,0);
+  assert(initialQuestion===expectedInitial,"initiële postbakvraag expected '"+expectedInitial+"', actual '"+initialQuestion+"'");
+  const saved=await confirmAndRead(w);
+  assert(saved.validated.linked.length===points.length-1,"segmentaantal expected "+(points.length-1)+", actual "+saved.validated.linked.length);
+  const storedTrips=(await readStore("ritten")).filter(t=>saved.active.tripIds.includes(t.id));
+  assert(storedTrips.length===points.length-1,"IndexedDB segmentaantal expected "+(points.length-1)+", actual "+storedTrips.length);
+  const segments=[],postboxQuestions=expectedInitial?[expectedInitial]:[];
+  for(let index=0;index<points.length-1;index++){
+    segments.push(assertMatrixSegment(w,points,index));
+    const final=index===points.length-2;
+    await arriveMatrixSegment(w,final,index);
+    if(final){
+      await waitFor(()=>!w.getActiveRide(),"opdracht werd na eindsegment niet afgerond",8000);
+      break;
+    }
+    await waitFor(()=>{
+      const active=w.getActiveRide();
+      return active&&active.currentSegmentIndex===index+1;
+    },"volgend segment werd niet actief na aankomst",8000);
+    const expectedQuestion=expectedMatrixPostbox(points,index+1);
+    if(expectedQuestion){
+      await waitFor(()=>w.document.getElementById("segmentPostboxOverlay").classList.contains("active"),"postbakoverlay ontbreekt voor segment "+(index+1),8000);
+      const actual=w.document.getElementById("segmentPostboxText").textContent.trim();
+      assert(actual===expectedQuestion,"segmentpostbakvraag expected '"+expectedQuestion+"', actual '"+actual+"'");
+      postboxQuestions.push(actual);
+      w.document.getElementById("confirmSegmentPostboxBtn").click();
+    }
+    const expectedNextFrom=points[index+1];
+    const expectedNextTo=points[index+2];
+    const expectedNextText="Volgende etappe: "+expectedNextFrom+" → "+expectedNextTo;
+    await waitFor(()=>{
+      const active=w.getActiveRide();
+      const validated=w.validateActiveRide(active);
+      const actualText=w.document.getElementById("activeSegmentText").textContent.trim();
+      return validated&&active.currentSegmentIndex===index+1&&active.phase==="ready_to_navigate"&&validated.currentTrip.from===expectedNextFrom&&validated.currentTrip.to===expectedNextTo&&actualText===expectedNextText;
+    },"volgend segment werd niet exact navigatiegereed: expected "+expectedNextText,8000);
+  }
+  return {route:name,segments,postbakvraag:postboxQuestions.length?postboxQuestions:["geen"],mapsBestemmingen:segments.map(s=>s.mapsBestemming),status:"PASS"};
+}
+async function seedMatrixOldActive(points){
+  const trip={id:"pollution-"+crypto.randomUUID(),date:"2026-08-25",timeStart:"08:00",timeEnd:"",from:points[0],to:points[1],plate:"X605VJ",vehicle:"TOYOTA YARIS",priceText:"",odometer:"",sourceKey:"matrix"};
+  const active={key:"activeRide",status:"active",flowVersion:2,tripIds:[trip.id],finalTripId:trip.id,routePoints:points,currentSegmentIndex:0,phase:"ready_to_navigate",currentLocation:points[0],nextDestination:points[1],finalDestination:points[points.length-1],departurePostboxChecks:{},segmentArrivals:{},plate:trip.plate,startedDate:trip.date,startedTime:trip.timeStart,createdAt:"2026-08-25T08:00:00.000Z"};
+  await replaceStores({ritten:[trip],meta:[active]});
+  localStorage.removeItem(HANDOFF_KEY); localStorage.removeItem(USED_KEY);
+}
+async function runMatrixPollution(oldPoints,newPoints){
+  await seedMatrixOldActive(oldPoints);
+  const route=matrixRoute(newPoints);
+  const handoff=makeHandoff(route.plate); installHandoff(handoff);
+  const w=await loadApp(callbackPath(handoff,route),"review");
+  assertCallbackFields(w,route);
+  const saved=await confirmAndRead(w);
+  assert(saved.active.routePoints.join("|")===newPoints.join("|"),"vervuiling routePoints expected "+newPoints.join(" → ")+", actual "+saved.active.routePoints.join(" → "));
+  const forbidden=oldPoints.filter(location=>!newPoints.includes(location));
+  forbidden.forEach(location=>assert(!JSON.stringify(saved.active).includes(location)&&!saved.text.includes(location),"oude locatie "+location+" lekte in nieuwe activeRide/navigatie"));
+  const persistentActive=(await readStore("meta")).find(item=>item.key==="activeRide");
+  assert(persistentActive&&persistentActive.routePoints.join("|")===newPoints.join("|"),"vervuiling bleef in persistente activeRide");
+  return {oud:oldPoints.join(" → "),nieuw:newPoints.join(" → "),navigatietekst:saved.text,status:"PASS"};
+}
+async function testRouteMatrix(){
+  const routes=[];
+  for(const [name,points] of MATRIX_ROUTES) routes.push(await runMatrixRoute(name,points));
+  const pollution=[];
+  for(const [oldPoints,newPoints] of MATRIX_POLLUTION) pollution.push(await runMatrixPollution(oldPoints,newPoints));
+  return {routes,pollution,totalSegmentovergangen:routes.reduce((sum,item)=>sum+Math.max(0,item.segments.length-1),0),totaalSegmenten:routes.reduce((sum,item)=>sum+item.segments.length,0)};
+}
+async function run(name,test){
+  try{ const details=await test(); results.push({name,ok:true,details}); }
+  catch(error){ results.push({name,ok:false,error:error.message}); }
+  document.getElementById("results").textContent=JSON.stringify(results,null,2);
+}
+(async()=>{
+  if(new URLSearchParams(location.search).has("matrix")){
+    await run("Volledige routematrix",testRouteMatrix);
+  }else{
+    await run("Test 1 + 4 + 5: schone callback, reload, bevestiging, tweede rit",test1And4And5);
+    await run("Test 2: stale Brielle-Den Haag versus nieuwe callback",test2);
+    await run("Test 3: vertraagde oude IndexedDB-save",test3);
+  }
+  const ok=results.every(item=>item.ok);
+  const status=document.getElementById("status"); status.textContent=ok?"ALLE TESTS GESLAAGD":"TESTS MISLUKT"; status.className=ok?"ok":"fail";
+  document.title=ok?"PASS - Rittenapp E2E":"FAIL - Rittenapp E2E";
+})();
+</script>
+</html>
