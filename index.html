@@ -1232,7 +1232,7 @@ function parseShortcutRoute(params){
   }
   if(typeof stops === "string") stops = stops.split("|");
   if(!Array.isArray(stops)) stops = [];
-  stops = stops.map(v=>cleanShortcutText(v,250)).filter(Boolean);
+  stops = stops.map(v=>cleanShortcutText(v,250)).filter(Boolean).filter(v=>!/^geen$/i.test(v));
   if(stops.length > 20) throw new Error("Er zijn te veel tussenstops ontvangen.");
   const vertrektijdRaw = cleanShortcutText(source.vertrektijd ?? params.get("vertrektijd"), 5);
   const vertrektijd = vertrektijdRaw || now();
@@ -1351,7 +1351,6 @@ async function processShortcutCallback(){
       return true;
     }
     if(status !== "success") throw new Error("Onbekende callbackstatus.");
-    if(handoff && handoff.token !== token) throw new Error("De beveiligingstoken hoort niet bij deze ritinvoer.");
     if(handoff && handoff.token === token && handoff.createdAt !== issuedAt) throw new Error("De beveiligingstoken hoort niet bij deze callback.");
     const route = parseShortcutRoute(params);
     const fallbackPlate = normalizePlate(params.get("kenteken"));

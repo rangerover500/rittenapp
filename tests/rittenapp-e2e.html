@@ -32,6 +32,11 @@ function openDB(){
   });
 }
 async function replaceStores(rows={}){
+  if(frame.contentWindow && frame.contentWindow.location.href !== "about:blank"){
+    const unloaded=new Promise(resolve=>frame.addEventListener("load",resolve,{once:true}));
+    frame.src="about:blank";
+    await unloaded;
+  }
   const db=await openDB();
   await new Promise((resolve,reject)=>{
     const tx=db.transaction(stores,"readwrite");
@@ -347,6 +352,56 @@ async function testExternalContextB(params){
   const result=await runCrossContextRoute("Rotterdam → Brielle",["Breeland Rotterdam","Breeland Brielle"],handoff);
   return {contextBOrigin:location.origin,handoffVoorCallbackAanwezig:false,result};
 }
+const NO_STOPS_VARIANTS=[
+  {name:'tussenstops: "geen"',input:"geen",expectedStops:[],expectedPoints:["Breeland Rotterdam","Breeland Brielle"]},
+  {name:'tussenstops: "Geen"',input:"Geen",expectedStops:[],expectedPoints:["Breeland Rotterdam","Breeland Brielle"]},
+  {name:'tussenstops: "GEEN"',input:"GEEN",expectedStops:[],expectedPoints:["Breeland Rotterdam","Breeland Brielle"]},
+  {name:'tussenstops: ""',input:"",expectedStops:[],expectedPoints:["Breeland Rotterdam","Breeland Brielle"]},
+  {name:"tussenstops: []",input:[],expectedStops:[],expectedPoints:["Breeland Rotterdam","Breeland Brielle"]},
+  {name:"één echte tussenstop",input:["Breeland Dordrecht"],expectedStops:["Breeland Dordrecht"],expectedPoints:["Breeland Rotterdam","Breeland Dordrecht","Breeland Brielle"]},
+  {name:"twee echte tussenstops",input:["Breeland Dordrecht","Breeland Brielle"],expectedStops:["Breeland Dordrecht","Breeland Brielle"],expectedPoints:["Breeland Rotterdam","Breeland Dordrecht","Breeland Brielle"]}
+];
+async function testNoStopsSentinel(){
+  const variants=[];
+  for(const variant of NO_STOPS_VARIANTS){
+    await resetApp();
+    const route={plate:"X605VJ",vertrek:"Breeland Rotterdam",bestemming:"Breeland Brielle",tussenstops:variant.input,vertrektijd:"09:15",postbakcontrole:true};
+    const token=makeHandoff(route.plate);
+    const w=await loadApp(callbackPath(token,route),"review");
+    const draft=JSON.parse(localStorage.getItem(HANDOFF_KEY)||"null");
+    const draftStops=draft&&draft.callbackDraft?draft.callbackDraft.stops:null;
+    const stopsValue=w.document.getElementById("stops").value;
+    const parsedStops=w.getStopsList();
+    assert(JSON.stringify(draftStops)===JSON.stringify(variant.expectedStops),variant.name+" callbackDraft.stops expected "+JSON.stringify(variant.expectedStops)+", actual "+JSON.stringify(draftStops));
+    assert(JSON.stringify(parsedStops)===JSON.stringify(variant.expectedStops),variant.name+" getStopsList expected "+JSON.stringify(variant.expectedStops)+", actual "+JSON.stringify(parsedStops)+", stopsEl='"+stopsValue+"'");
+    const saved=await confirmAndRead(w);
+    assert(JSON.stringify(saved.active.routePoints)===JSON.stringify(variant.expectedPoints),variant.name+" routePoints expected "+JSON.stringify(variant.expectedPoints)+", actual "+JSON.stringify(saved.active.routePoints));
+    assert(saved.validated.linked.length===variant.expectedPoints.length-1,variant.name+" segmentaantal wijkt af");
+    assert(saved.validated.currentTrip.from===variant.expectedPoints[0]&&saved.validated.currentTrip.to===variant.expectedPoints[1],variant.name+" currentTrip wijkt af");
+    const expectedText="Volgende etappe: "+variant.expectedPoints[0]+" → "+variant.expectedPoints[1];
+    assert(saved.text===expectedText,variant.name+" navigatietekst expected '"+expectedText+"', actual '"+saved.text+"'");
+    const maps=new URL(w.document.getElementById("mapsGoogleBtn").href);
+    assert(maps.searchParams.get("destination")===MATRIX_ADDRESSES[variant.expectedPoints[1]],variant.name+" Maps-bestemming wijkt af");
+    if(!variant.expectedStops.length) assert(!JSON.stringify({draftStops,parsedStops,active:saved.active,text:saved.text}).toLowerCase().includes("geen"),variant.name+" bevat 'geen' als routepunt");
+    variants.push({variant:variant.name,callbackStops:draftStops,stopsEl:stopsValue,getStopsList:parsedStops,routePoints:saved.active.routePoints,segmenten:saved.validated.linked.length,currentTrip:{from:saved.validated.currentTrip.from,to:saved.validated.currentTrip.to},navigatietekst:saved.text,mapsBestemming:maps.searchParams.get("destination"),status:"PASS"});
+  }
+  return {variants};
+}
+async function testOldReceivingStorage(){
+  localStorage.removeItem(HANDOFF_KEY); localStorage.removeItem(USED_KEY);
+  const old=oldChromeState();
+  await replaceStores({ritten:[old.trip],meta:[old.active]});
+  const staleHandoff=makeHandoff("Z406BG",Date.now()-16*60*1000);
+  localStorage.setItem(HANDOFF_KEY,JSON.stringify(staleHandoff));
+  const w=await loadApp();
+  const route={plate:"X605VJ",vertrek:"Breeland Rotterdam",bestemming:"Breeland Brielle",tussenstops:"Geen",vertrektijd:"09:15",postbakcontrole:true};
+  const bearer=makeHandoff(route.plate);
+  const alerts=await invokeCallbackInLoadedApp(w,callbackPath(bearer,route));
+  assert(!alerts.length,"geldige bearer-callback werd door oude ontvangende localStorage geweigerd: "+alerts.join(" | "));
+  assertCallbackFields(w,{...route,tussenstops:[]});
+  assert(!w.getActiveRide(),"oude activeRide bleef na autoritatieve nieuwe callback actief");
+  return {oudeActiveRide:old.active.routePoints,oudeHandoffToken:staleHandoff.token,nieuweRoute:[route.vertrek,route.bestemming],status:"PASS"};
+}
 const MATRIX_ADDRESSES={
   "Breeland Rotterdam":"Autolettestraat 16, 3063 NP Rotterdam",
   "Breeland Dordrecht":"Mijlweg 25, 3316 BE Dordrecht",
@@ -391,7 +446,7 @@ function expectedMatrixPostbox(points,currentIndex){
   const joined=names.length===1?names[0]:names.slice(0,-1).join(", ")+" en "+names[names.length-1];
   return names.length===1?"Heb je de postbak voor "+joined+" gecontroleerd?":"Heb je de postbakken voor "+joined+" gecontroleerd?";
 }
-function assertMatrixSegment(w,points,index){
+async function assertMatrixSegment(w,points,index){
   const active=w.getActiveRide();
   const validated=w.validateActiveRide(active);
   const expectedFrom=points[index],expectedTo=points[index+1];
@@ -408,25 +463,46 @@ function assertMatrixSegment(w,points,index){
   assert(maps.searchParams.get("destination")===MATRIX_ADDRESSES[expectedTo],"Maps-destination expected "+MATRIX_ADDRESSES[expectedTo]+", actual "+maps.searchParams.get("destination"));
   assert(maps.searchParams.get("dir_action")==="navigate","Maps mist dir_action=navigate");
   assert(!maps.searchParams.has("waypoints"),"v2 Maps bevat onverwachte waypoints");
-  return {index,from:expectedFrom,to:expectedTo,navigatietekst:text,mapsBestemming:maps.searchParams.get("destination")};
+  const navigation=w.getNavigationRoute();
+  assert(navigation.to===MATRIX_ADDRESSES[expectedTo],"Waze-bestemming expected "+MATRIX_ADDRESSES[expectedTo]+", actual "+navigation.to);
+  assert(w.document.getElementById("mapsAppleBtn").textContent.trim()==="Waze","Waze-knop ontbreekt in de DOM");
+  const persistentActive=(await readStore("meta")).find(item=>item.key==="activeRide");
+  assert(persistentActive&&persistentActive.currentSegmentIndex===index,"persistente currentSegmentIndex wijkt af voor segment "+index);
+  assert(persistentActive.routePoints.join("|")===points.join("|"),"persistente routePoints wijken af voor segment "+index);
+  return {index,from:expectedFrom,to:expectedTo,navigatietekst:text,mapsBestemming:maps.searchParams.get("destination"),wazeBestemming:navigation.to};
 }
 async function arriveMatrixSegment(w,isFinal,index){
   const active=w.getActiveRide();
   active.phase="en_route";
   await w.saveCriticalStateToDB();
   w.showActiveRideState();
+  assert(w.document.getElementById("arrivedActionBlock").style.display==="flex","Ik ben aangekomen is niet zichtbaar voor segment "+index);
+  assert(w.document.getElementById("arrivedBtn").textContent.trim()==="Ik ben aangekomen","Aankomstknop heeft onverwachte tekst");
   w.document.getElementById("arrivedBtn").click();
   await waitFor(()=>w.document.getElementById("arrivalOverlay").classList.contains("active"),"Aangekomen-overlay verscheen niet voor segment "+index,8000);
   w.document.getElementById("arrivalTime").value="10:"+String(10+index).padStart(2,"0");
   if(isFinal&&w.document.getElementById("arrivalOdometerBlock").style.display!=="none") w.document.getElementById("arrivalOdometer").value="123456";
   w.document.getElementById("finishActiveRideBtn").click();
 }
-async function runMatrixRoute(name,points){
-  await resetApp();
+async function runMatrixRoute(name,points,options={}){
+  if(options.polluted){
+    await seedMatrixOldActive(options.oldPoints||["Breeland Brielle","Breeland Den Haag"]);
+    if(options.oldStorage){
+      const oldHandoff=makeHandoff("Z406BG",Date.now()-16*60*1000);
+      localStorage.setItem(HANDOFF_KEY,JSON.stringify(oldHandoff));
+    }
+  }else await resetApp();
   const route=matrixRoute(points);
-  const handoff=makeHandoff(route.plate); installHandoff(handoff);
-  const w=await loadApp(callbackPath(handoff,route),"review");
+  const handoff=makeHandoff(route.plate);
+  if(!options.bearer) installHandoff(handoff);
+  const callback=callbackPath(handoff,route);
+  const callbackData=JSON.parse(new URL(callback,location.href).searchParams.get("result"));
+  assert(callbackData.vertrek===route.vertrek&&callbackData.bestemming===route.bestemming&&JSON.stringify(callbackData.tussenstops)===JSON.stringify(route.tussenstops),"callbackdata wijken af voor "+name);
+  const w=await loadApp(callback,"review");
   assertCallbackFields(w,route);
+  const accepted=JSON.parse(localStorage.getItem(HANDOFF_KEY)||"null");
+  assert(accepted&&accepted.callbackDraft,"callbackDraft ontbreekt voor "+name);
+  assert(accepted.callbackDraft.vertrek===route.vertrek&&accepted.callbackDraft.bestemming===route.bestemming&&JSON.stringify(accepted.callbackDraft.stops)===JSON.stringify(route.tussenstops),"callbackDraft wijkt af voor "+name);
   const initialQuestion=w.document.getElementById("postboxRows").textContent.trim();
   const expectedInitial=expectedMatrixPostbox(points,0);
   assert(initialQuestion===expectedInitial,"initiële postbakvraag expected '"+expectedInitial+"', actual '"+initialQuestion+"'");
@@ -436,11 +512,18 @@ async function runMatrixRoute(name,points){
   assert(storedTrips.length===points.length-1,"IndexedDB segmentaantal expected "+(points.length-1)+", actual "+storedTrips.length);
   const segments=[],postboxQuestions=expectedInitial?[expectedInitial]:[];
   for(let index=0;index<points.length-1;index++){
-    segments.push(assertMatrixSegment(w,points,index));
+    segments.push(await assertMatrixSegment(w,points,index));
     const final=index===points.length-2;
     await arriveMatrixSegment(w,final,index);
     if(final){
-      await waitFor(()=>!w.getActiveRide(),"opdracht werd na eindsegment niet afgerond",8000);
+      await waitFor(async()=>!w.getActiveRide()&&!(await readStore("meta")).some(item=>item.key==="activeRide"),"opdracht werd na eindsegment niet volledig persistent afgerond",8000);
+      const finalMeta=await readStore("meta");
+      assert(!finalMeta.some(item=>item.key==="activeRide"),"activeRide bleef persistent na definitieve aankomst");
+      const finalTrips=await readStore("ritten");
+      const finalRecord=finalTrips.find(t=>t.id===saved.active.finalTripId);
+      assert(finalRecord&&finalRecord.timeEnd,"laatste segment kreeg geen persistente eindtijd");
+      const reached=finalMeta.find(item=>item.key==="lastReachedDestination");
+      assert(reached&&reached.value===points[points.length-1],"lastReachedDestination wijkt af na definitieve aankomst");
       break;
     }
     await waitFor(()=>{
@@ -465,7 +548,7 @@ async function runMatrixRoute(name,points){
       return validated&&active.currentSegmentIndex===index+1&&active.phase==="ready_to_navigate"&&validated.currentTrip.from===expectedNextFrom&&validated.currentTrip.to===expectedNextTo&&actualText===expectedNextText;
     },"volgend segment werd niet exact navigatiegereed: expected "+expectedNextText,8000);
   }
-  return {route:name,segments,postbakvraag:postboxQuestions.length?postboxQuestions:["geen"],mapsBestemmingen:segments.map(s=>s.mapsBestemming),status:"PASS"};
+  return {route:name,segments,postbakvraag:postboxQuestions.length?postboxQuestions:["geen"],mapsBestemmingen:segments.map(s=>s.mapsBestemming),wazeBestemmingen:segments.map(s=>s.wazeBestemming),status:"PASS"};
 }
 async function seedMatrixOldActive(points){
   const trip={id:"pollution-"+crypto.randomUUID(),date:"2026-08-25",timeStart:"08:00",timeEnd:"",from:points[0],to:points[1],plate:"X605VJ",vehicle:"TOYOTA YARIS",priceText:"",odometer:"",sourceKey:"matrix"};
@@ -494,6 +577,26 @@ async function testRouteMatrix(){
   for(const [oldPoints,newPoints] of MATRIX_POLLUTION) pollution.push(await runMatrixPollution(oldPoints,newPoints));
   return {routes,pollution,totalSegmentovergangen:routes.reduce((sum,item)=>sum+Math.max(0,item.segments.length-1),0),totaalSegmenten:routes.reduce((sum,item)=>sum+item.segments.length,0)};
 }
+async function testPollutedRouteMatrix(){
+  const routes=[];
+  for(const [name,points] of MATRIX_ROUTES){
+    const oldPoints=points.includes("Breeland Den Haag")?["ABS den Elzen","Carwash Capelle"]:["Breeland Brielle","Breeland Den Haag"];
+    routes.push(await runMatrixRoute(name+" met oude ontvangende state",points,{polluted:true,oldStorage:true,bearer:true,oldPoints}));
+  }
+  return {routes,totalSegmentovergangen:routes.reduce((sum,item)=>sum+Math.max(0,item.segments.length-1),0),totaalSegmenten:routes.reduce((sum,item)=>sum+item.segments.length,0)};
+}
+async function testReleaseCandidate(){
+  return {
+    basis:await test1And4And5(),
+    staleActiveRide:await test2(),
+    saveRace:await test3(),
+    crossContext:await testCrossContextBearer(),
+    oudeOntvangendeState:await testOldReceivingStorage(),
+    geenSentinel:await testNoStopsSentinel(),
+    routematrix:await testRouteMatrix(),
+    vervuildeRoutematrix:await testPollutedRouteMatrix()
+  };
+}
 async function run(name,test){
   try{ const details=await test(); results.push({name,ok:true,details}); }
   catch(error){ results.push({name,ok:false,error:error.message}); }
@@ -507,6 +610,12 @@ async function run(name,test){
     await run("Context B callbackontvangst",()=>testExternalContextB(testParams));
   }else if(testParams.has("crosscontext")){
     await run("Cross-context bearer-callback",testCrossContextBearer);
+  }else if(testParams.has("nostops")){
+    await run("Geen-tussenstops-sentinel",testNoStopsSentinel);
+  }else if(testParams.has("oldstorage")){
+    await run("Oude ontvangende IndexedDB/localStorage-state",testOldReceivingStorage);
+  }else if(testParams.has("release")){
+    await run("Volledige release-candidate suite",testReleaseCandidate);
   }else if(new URLSearchParams(location.search).has("matrix")){
     await run("Volledige routematrix",testRouteMatrix);
   }else{
