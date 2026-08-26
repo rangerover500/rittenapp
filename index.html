@@ -2729,6 +2729,16 @@ function buildGoogleMapsHttpsUrl(from, to, stops){
   }
   return googleUrl;
 }
+function isIOSDevice(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+function buildGoogleMapsLaunchUrl(from, to, stops){
+  if(!isIOSDevice()) return buildGoogleMapsHttpsUrl(from, to, stops);
+  return "comgooglemaps://?saddr=" + encodeURIComponent(from) +
+    "&daddr=" + encodeURIComponent(to) +
+    "&directionsmode=driving";
+}
 $("mapsAppleBtn").addEventListener("click", async ()=>{
   const { from, to, stops, validated } = getNavigationRoute();
   if(!from || !to){
@@ -2755,7 +2765,7 @@ $("mapsGoogleBtn").addEventListener("click", ()=>{
   if(validated && !validated.legacy && (activeTransitionInProgress || !["ready_to_navigate","en_route"].includes(validated.active.phase))){
     return;
   }
-  const googleUrl = buildGoogleMapsHttpsUrl(from, to, stops);
+  const googleUrl = buildGoogleMapsLaunchUrl(from, to, stops);
   const phaseChanged = !!(validated && !validated.legacy && validated.active.phase === "ready_to_navigate");
   if(phaseChanged){
     validated.active.phase = "en_route";

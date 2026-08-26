@@ -24,7 +24,19 @@ function currentGoogleMapsUrl(w){
   assert(button&&button.tagName==="BUTTON"&&button.type==="button","Google Maps gebruikt niet de v46-buttonconstructie");
   assert(!button.hasAttribute("href"),"Google Maps-button bevat onverwacht een href");
   const {from,to,stops}=w.getNavigationRoute();
-  return w.buildGoogleMapsHttpsUrl(from,to,stops);
+  return w.buildGoogleMapsLaunchUrl(from,to,stops);
+}
+function currentGoogleMapsIOSUrl(w){
+  const descriptor=Object.getOwnPropertyDescriptor(w.navigator,"userAgent");
+  Object.defineProperty(w.navigator,"userAgent",{configurable:true,value:"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"});
+  try{
+    const {from,to,stops}=w.getNavigationRoute();
+    assert(w.isIOSDevice(),"iOS-testpad werd niet herkend");
+    return w.buildGoogleMapsLaunchUrl(from,to,stops);
+  }finally{
+    if(descriptor) Object.defineProperty(w.navigator,"userAgent",descriptor);
+    else delete w.navigator.userAgent;
+  }
 }
 async function waitFor(check,message,timeout=6000){
   const end=Date.now()+timeout;
@@ -470,13 +482,19 @@ async function assertMatrixSegment(w,points,index){
   assert(maps.searchParams.get("destination")===MATRIX_ADDRESSES[expectedTo],"Maps-destination expected "+MATRIX_ADDRESSES[expectedTo]+", actual "+maps.searchParams.get("destination"));
   assert(maps.searchParams.get("dir_action")==="navigate","Maps mist dir_action=navigate");
   assert(!maps.searchParams.has("waypoints"),"v2 Maps bevat onverwachte waypoints");
+  const iosMaps=new URL(currentGoogleMapsIOSUrl(w));
+  assert(iosMaps.protocol==="comgooglemaps:","iOS Maps gebruikt niet het native URL-schema");
+  assert(iosMaps.searchParams.get("saddr")===MATRIX_ADDRESSES[expectedFrom],"iOS Maps saddr wijkt af");
+  assert(iosMaps.searchParams.get("daddr")===MATRIX_ADDRESSES[expectedTo],"iOS Maps daddr wijkt af");
+  assert(iosMaps.searchParams.get("directionsmode")==="driving","iOS Maps mist directionsmode=driving");
+  assert(!iosMaps.searchParams.has("waypoints"),"iOS v2 Maps bevat onverwachte waypoints");
   const navigation=w.getNavigationRoute();
   assert(navigation.to===MATRIX_ADDRESSES[expectedTo],"Waze-bestemming expected "+MATRIX_ADDRESSES[expectedTo]+", actual "+navigation.to);
   assert(w.document.getElementById("mapsAppleBtn").textContent.trim()==="Waze","Waze-knop ontbreekt in de DOM");
   const persistentActive=(await readStore("meta")).find(item=>item.key==="activeRide");
   assert(persistentActive&&persistentActive.currentSegmentIndex===index,"persistente currentSegmentIndex wijkt af voor segment "+index);
   assert(persistentActive.routePoints.join("|")===points.join("|"),"persistente routePoints wijken af voor segment "+index);
-  return {index,from:expectedFrom,to:expectedTo,navigatietekst:text,mapsBestemming:maps.searchParams.get("destination"),wazeBestemming:navigation.to};
+  return {index,from:expectedFrom,to:expectedTo,navigatietekst:text,mapsBestemming:maps.searchParams.get("destination"),iosMapsBestemming:iosMaps.searchParams.get("daddr"),wazeBestemming:navigation.to};
 }
 async function arriveMatrixSegment(w,isFinal,index){
   const active=w.getActiveRide();
