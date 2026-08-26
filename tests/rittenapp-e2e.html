@@ -241,6 +241,112 @@ async function test3(){
   assert(persisted&&persisted.routePoints.join("|")==="Breeland Rotterdam|Breeland Brielle","vertraagde oude save overschreef de nieuwere activeRide");
   return {persistedRoutePoints:persisted.routePoints};
 }
+const CROSS_CONTEXT_ROUTES=[
+  ["Rotterdam → Brielle",["Breeland Rotterdam","Breeland Brielle"]],
+  ["Rotterdam → Dordrecht",["Breeland Rotterdam","Breeland Dordrecht"]],
+  ["Rotterdam → Den Haag",["Breeland Rotterdam","Breeland Den Haag"]],
+  ["Rotterdam → ABS den Elzen",["Breeland Rotterdam","ABS den Elzen"]],
+  ["Rotterdam → Carwash Capelle",["Breeland Rotterdam","Carwash Capelle"]],
+  ["Rotterdam → Dordrecht → Brielle",["Breeland Rotterdam","Breeland Dordrecht","Breeland Brielle"]],
+  ["Rotterdam → Dordrecht → Brielle → Den Haag",["Breeland Rotterdam","Breeland Dordrecht","Breeland Brielle","Breeland Den Haag"]]
+];
+function oldChromeState(){
+  const trip={id:"old-cross-brielle-denhaag",date:"2026-08-25",timeStart:"20:00",timeEnd:"",from:"Breeland Brielle",to:"Breeland Den Haag",plate:"X605VJ",vehicle:"TOYOTA YARIS",priceText:"",odometer:"",sourceKey:"cross-context"};
+  const active={key:"activeRide",status:"active",flowVersion:2,tripIds:[trip.id],finalTripId:trip.id,routePoints:[trip.from,trip.to],currentSegmentIndex:0,phase:"ready_to_navigate",currentLocation:trip.from,nextDestination:trip.to,finalDestination:trip.to,departurePostboxChecks:{},segmentArrivals:{},plate:trip.plate,startedDate:trip.date,startedTime:trip.timeStart,createdAt:"2026-08-25T18:00:00.000Z"};
+  return {trip,active};
+}
+async function invokeCallbackInLoadedApp(w,path){
+  const url=new URL(path,location.href);
+  w.history.pushState(null,"",url.pathname+url.search);
+  const alerts=[];
+  w.alert=message=>alerts.push(String(message));
+  await w.processShortcutCallback();
+  return alerts;
+}
+async function runCrossContextRoute(name,points,contextAHandoff){
+  localStorage.removeItem(HANDOFF_KEY); localStorage.removeItem(USED_KEY);
+  const old=oldChromeState();
+  await replaceStores({ritten:[old.trip],meta:[old.active]});
+  const route=matrixRoute(points);
+  contextAHandoff=contextAHandoff||makeHandoff(route.plate);
+  const contextA={handoff:contextAHandoff};
+  assert(contextA.handoff.token&&!localStorage.getItem(HANDOFF_KEY),"Context B ontving ten onrechte Context A-localStorage");
+  let w=await loadApp(callbackPath(contextA.handoff,route),"review");
+  assertCallbackFields(w,route);
+  assert(!w.getActiveRide(),"oude Chrome-activeRide blokkeerde bearer-callback");
+  const draft=JSON.parse(localStorage.getItem(HANDOFF_KEY)||"null");
+  assert(draft&&draft.callbackDraft&&draft.callbackDraft.token===contextA.handoff.token,"callbackdraft is niet in Context B opgeslagen");
+  assert(draft.callbackDraft.vertrek===route.vertrek&&draft.callbackDraft.bestemming===route.bestemming,"Context B-draft bevat verkeerde route");
+  const afterCallbackTrips=await readStore("ritten");
+  assert(afterCallbackTrips.some(t=>t.id===old.trip.id),"historisch ritrecord werd samen met conflicterende metadata verwijderd");
+  assert(!(await readStore("meta")).some(item=>item.key==="activeRide"),"conflicterende activeRide-metadata bleef persistent aanwezig");
+  w=await loadApp("../index.html","review");
+  assertCallbackFields(w,route);
+  const saved=await confirmAndRead(w);
+  assert(saved.active.routePoints.join("|")===points.join("|"),"nieuwe activeRide gebruikt niet uitsluitend callback-route");
+  assert(saved.validated.linked.length===points.length-1,"callback-route heeft verkeerd segmentaantal");
+  const visible="Volgende etappe: "+points[0]+" → "+points[1];
+  assert(saved.text===visible,"zichtbare eerste etappe wijkt af: "+saved.text);
+  if(name==="Rotterdam → Brielle"){
+    assert(!JSON.stringify(saved.active).includes("Den Haag"),"Den Haag lekte in nieuwe Rotterdam-Brielle-activeRide");
+    assert(!saved.text.includes("Den Haag"),"Den Haag lekte in nieuwe navigatietekst");
+  }
+  return {route:name,routePoints:saved.active.routePoints,segmenten:saved.validated.linked.length,navigatietekst:saved.text,status:"PASS"};
+}
+async function testCrossContextBearer(){
+  const routeResults=[];
+  for(const [name,points] of CROSS_CONTEXT_ROUTES) routeResults.push(await runCrossContextRoute(name,points));
+
+  await resetApp();
+  const replayRoute=matrixRoute(["Breeland Rotterdam","Breeland Brielle"]);
+  const replayToken=makeHandoff(replayRoute.plate);
+  let w=await loadApp(callbackPath(replayToken,replayRoute),"review");
+  const originalDraft=localStorage.getItem(HANDOFF_KEY);
+  const replayAlerts=await invokeCallbackInLoadedApp(w,callbackPath(replayToken,replayRoute));
+  assert(replayAlerts.some(text=>text.includes("al gebruikt")),"replay van gebruikte token werd niet geweigerd");
+  assert(localStorage.getItem(HANDOFF_KEY)===originalDraft,"replay verwijderde de reeds geaccepteerde callbackdraft");
+
+  await resetApp(); w=frame.contentWindow;
+  const expired=makeHandoff("X605VJ",Date.now()-16*60*1000);
+  const expiredAlerts=await invokeCallbackInLoadedApp(w,callbackPath(expired,replayRoute));
+  assert(expiredAlerts.some(text=>text.includes("verlopen")),"verlopen bearer-token werd niet geweigerd");
+  assert(!localStorage.getItem(HANDOFF_KEY),"verlopen callback maakte een draft");
+
+  await resetApp(); w=frame.contentWindow;
+  const missing=makeHandoff();
+  const missingPath=callbackPath(missing,{vertrek:"Breeland Rotterdam",tussenstops:[],vertrektijd:"09:15",postbakcontrole:true});
+  const missingAlerts=await invokeCallbackInLoadedApp(w,missingPath);
+  assert(missingAlerts.some(text=>text.includes("Vertrek of bestemming ontbreekt")),"callback met ontbrekende velden werd niet geweigerd");
+
+  await resetApp(); w=frame.contentWindow;
+  const invalidJson=makeHandoff();
+  const invalidParams=new URLSearchParams({shortcut:"success",handoff:invalidJson.token,kenteken:invalidJson.plate,issued:String(invalidJson.createdAt),result:"{ongeldig"});
+  const invalidAlerts=await invokeCallbackInLoadedApp(w,"../index.html?"+invalidParams.toString());
+  assert(invalidAlerts.some(text=>text.includes("geen geldige JSON")),"ongeldige route-JSON werd niet geweigerd");
+
+  await resetApp(); w=frame.contentWindow;
+  const invalidType=makeHandoff();
+  const invalidTypeRoute={vertrek:42,bestemming:"Breeland Brielle",tussenstops:[],vertrektijd:"09:15",postbakcontrole:true};
+  const typeAlerts=await invokeCallbackInLoadedApp(w,callbackPath(invalidType,invalidTypeRoute));
+  assert(typeAlerts.some(text=>text.includes("Vertrek heeft een ongeldig type")),"ongeldig routeveldtype werd niet geweigerd");
+
+  return {contexten:{A:"eigen handoff-opslag",B:"geen handoff; eigen IndexedDB/localStorage"},routes:routeResults,replay:"PASS",verlopen:"PASS",ontbrekendeVelden:"PASS",ongeldigeJson:"PASS",ongeldigVeldtype:"PASS"};
+}
+async function issueContextACallback(){
+  await resetApp();
+  const w=frame.contentWindow;
+  const createdAt=Date.now();
+  const handoff={token:w.createShortcutToken(),createdAt,expiresAt:createdAt+15*60*1000,plate:"X605VJ",rdwInfo:{vehicleText:"TOYOTA YARIS (2023)",priceText:"€ 25.481"}};
+  installHandoff(handoff);
+  return {token:handoff.token,issued:handoff.createdAt,contextAOrigin:location.origin,handoffLokaalAanwezig:!!localStorage.getItem(HANDOFF_KEY)};
+}
+async function testExternalContextB(params){
+  const token=params.get("token")||"";
+  const issued=Number(params.get("issued"));
+  const handoff={token,createdAt:issued,expiresAt:issued+15*60*1000,plate:"X605VJ",rdwInfo:{vehicleText:"",priceText:""}};
+  const result=await runCrossContextRoute("Rotterdam → Brielle",["Breeland Rotterdam","Breeland Brielle"],handoff);
+  return {contextBOrigin:location.origin,handoffVoorCallbackAanwezig:false,result};
+}
 const MATRIX_ADDRESSES={
   "Breeland Rotterdam":"Autolettestraat 16, 3063 NP Rotterdam",
   "Breeland Dordrecht":"Mijlweg 25, 3316 BE Dordrecht",
@@ -394,7 +500,14 @@ async function run(name,test){
   document.getElementById("results").textContent=JSON.stringify(results,null,2);
 }
 (async()=>{
-  if(new URLSearchParams(location.search).has("matrix")){
+  const testParams=new URLSearchParams(location.search);
+  if(testParams.has("contexta")){
+    await run("Context A tokenuitgifte",issueContextACallback);
+  }else if(testParams.has("contextb")){
+    await run("Context B callbackontvangst",()=>testExternalContextB(testParams));
+  }else if(testParams.has("crosscontext")){
+    await run("Cross-context bearer-callback",testCrossContextBearer);
+  }else if(new URLSearchParams(location.search).has("matrix")){
     await run("Volledige routematrix",testRouteMatrix);
   }else{
     await run("Test 1 + 4 + 5: schone callback, reload, bevestiging, tweede rit",test1And4And5);

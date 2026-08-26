@@ -1215,6 +1215,13 @@ function parseShortcutRoute(params){
   const result = params.get("result");
   if(result){
     try{ source = JSON.parse(result); }catch(e){ throw new Error("De route-uitvoer van Apple Opdrachten is geen geldige JSON."); }
+    if(!source || typeof source !== "object" || Array.isArray(source)) throw new Error("De route-uitvoer van Apple Opdrachten heeft een ongeldig formaat.");
+    if(source.vertrek != null && typeof source.vertrek !== "string") throw new Error("Vertrek heeft een ongeldig type.");
+    if(source.bestemming != null && typeof source.bestemming !== "string") throw new Error("Bestemming heeft een ongeldig type.");
+    if(source.vertrektijd != null && typeof source.vertrektijd !== "string") throw new Error("Vertrektijd heeft een ongeldig type.");
+    if(source.tussenstops != null && typeof source.tussenstops !== "string" && !Array.isArray(source.tussenstops)) throw new Error("Tussenstops hebben een ongeldig type.");
+    if(Array.isArray(source.tussenstops) && source.tussenstops.some(value=>typeof value !== "string")) throw new Error("Een tussenstop heeft een ongeldig type.");
+    if(source.postbakcontrole != null && typeof source.postbakcontrole !== "boolean" && typeof source.postbakcontrole !== "string" && typeof source.postbakcontrole !== "number") throw new Error("Postbakcontrole heeft een ongeldig type.");
   }
   const vertrek = cleanShortcutText(source.vertrek ?? params.get("vertrek"), 250);
   const bestemming = cleanShortcutText(source.bestemming ?? params.get("bestemming"), 250);
@@ -1232,6 +1239,7 @@ function parseShortcutRoute(params){
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(vertrektijd)) throw new Error("De vertrektijd is ongeldig.");
   if(!vertrek || !bestemming) throw new Error("Vertrek of bestemming ontbreekt.");
   const postboxValue = source.postbakcontrole ?? params.get("postbakcontrole");
+  if(postboxValue != null && !/^(?:ja|nee|true|false|1|0)$/i.test(String(postboxValue).trim())) throw new Error("Postbakcontrole heeft een ongeldige waarde.");
   const postboxConfirmed = postboxValue === true || /^(ja|true|1)$/i.test(String(postboxValue || "").trim());
   return {vertrek, bestemming, stops, vertrektijd, postboxConfirmed};
 }
@@ -1257,15 +1265,16 @@ function normalizeShortcutDraft(value, handoff){
     rdwInfo:{vehicleText:cleanVehicleText(rdwInfo.vehicleText),priceText:cleanVehicleText(rdwInfo.priceText)}
   };
 }
-function classifyActiveRideForShortcut(handoff){
+function classifyActiveRideForShortcut(handoff, callbackIssuedAt){
   const rawActive = getActiveRide();
   if(!rawActive) return {rawActive:null,validated:null,stale:false,blocks:false};
   const validated = validateActiveRide(rawActive);
   if(!validated) return {rawActive,validated:null,stale:true,blocks:false};
   const activeCreatedAt = Date.parse(validated.active.createdAt || "");
-  const handoffCreatedAt = handoff && Number(handoff.createdAt);
-  const belongsToHandoff = !!(handoff && isValidShortcutToken(handoff.token));
-  if(belongsToHandoff && Number.isFinite(activeCreatedAt) && Number.isFinite(handoffCreatedAt) && activeCreatedAt < handoffCreatedAt){
+  const authoritativeIssuedAt = handoff && isValidShortcutToken(handoff.token)
+    ? Number(handoff.createdAt)
+    : Number(callbackIssuedAt);
+  if(Number.isFinite(activeCreatedAt) && Number.isFinite(authoritativeIssuedAt) && activeCreatedAt < authoritativeIssuedAt){
     return {rawActive,validated,stale:true,blocks:false};
   }
   return {rawActive,validated,stale:false,blocks:true};
@@ -1331,21 +1340,7 @@ async function processShortcutCallback(){
     if(!Number.isFinite(issuedAt) || issuedAt > Date.now() + 60000 || Date.now() - issuedAt > SHORTCUT_HANDOFF_TTL_MS){
       throw new Error("De tijdelijke ritinvoer is verlopen. Start Apple Opdrachten opnieuw.");
     }
-    if(shortcutTokenWasUsed(token)){
-      if(handoff && handoff.token === token && handoff.callbackDraft){
-        const draft = normalizeShortcutDraft(handoff.callbackDraft,handoff);
-        const activeState = classifyActiveRideForShortcut(handoff);
-        if(activeState.blocks){
-          clearShortcutHandoff(token);
-          restoreActiveRideAfterForeground();
-          return true;
-        }
-        await removeStaleActiveRideForShortcut(activeState);
-        applyShortcutDraft(draft);
-        return true;
-      }
-      throw new Error("Deze eenmalige beveiligingstoken is al gebruikt.");
-    }
+    if(shortcutTokenWasUsed(token)) throw new Error("Deze eenmalige beveiligingstoken is al gebruikt.");
     if(handoff && handoff.token === token && Date.now() > handoff.expiresAt){
       clearShortcutHandoff(token);
       throw new Error("De tijdelijke ritinvoer is verlopen. Start Apple Opdrachten opnieuw.");
@@ -1362,7 +1357,7 @@ async function processShortcutCallback(){
     const fallbackPlate = normalizePlate(params.get("kenteken"));
     const plate = normalizePlate(handoff && handoff.token === token ? handoff.plate : fallbackPlate);
     if(plate.length < 6) throw new Error("Het kenteken ontbreekt of is ongeldig.");
-    const activeState = classifyActiveRideForShortcut(handoff && handoff.token === token ? handoff : null);
+    const activeState = classifyActiveRideForShortcut(handoff && handoff.token === token ? handoff : null, issuedAt);
     if(activeState.blocks){
       markShortcutTokenUsed(token);
       clearShortcutHandoff(token);
@@ -1394,7 +1389,7 @@ async function processShortcutCallback(){
     return true;
   }catch(e){
     if(isValidShortcutToken(token) && handoff && handoff.token === token) markShortcutTokenUsed(token);
-    clearShortcutHandoff(token);
+    if(!(handoff && handoff.token === token && handoff.callbackDraft)) clearShortcutHandoff(token);
     alert("Route uit Apple Opdrachten niet overgenomen: " + e.message);
     return true;
   }finally{
