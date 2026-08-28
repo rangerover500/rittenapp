@@ -67,14 +67,6 @@ button{cursor:pointer}
 table{width:100%;border-collapse:collapse;margin-top:10px}
 th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:top;font-size:14px}
 .version{margin-top:18px;font-size:13px;color:#555;background:#f7f7f7;border:1px solid #ddd;border-radius:10px;padding:12px}
-#screen-invoer .step[data-step="0"] .version{margin:0 0 8px;padding:7px 9px;line-height:1.25}
-#screen-invoer .step[data-step="0"] .step-sub{margin-bottom:8px}
-#screen-invoer .step[data-step="0"] #plateButtons{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
-#screen-invoer .step[data-step="0"] #plateButtons::-webkit-scrollbar{display:none}
-#screen-invoer .step[data-step="0"] #plateButtons button{flex:0 0 auto;padding:7px 10px}
-#screen-invoer .step[data-step="0"] #rdwInfo{margin-top:6px;min-height:18px;line-height:1.25}
-#shortcutRouteBlock{width:100%;margin-top:8px!important;position:sticky;bottom:66px;z-index:6;background:#fafbff;padding:4px 0}
-#shortcutRouteBtn{width:100%;min-height:56px;font-size:16px;font-weight:700}
 .status{font-size:13px;color:#444;margin-top:10px;min-height:18px}
 .status.saved-ok{background:#e6f7e6;border:1px solid #88c888;color:#176b17;border-radius:10px;padding:10px;font-weight:bold}
 .fileblock{margin-top:16px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fafafa}
@@ -109,22 +101,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .edit-modal h3{margin:0 0 8px}
 .edit-modal p{margin:0 0 12px;color:#555}
 .edit-modal .toolbar{justify-content:flex-end}
-.workday-banner{display:none;margin-bottom:14px;padding:14px;border:2px solid #d5a000;border-radius:12px;background:#fff8d8}
-.workday-banner.active{display:block}
-.workday-banner.reminder{border-color:#b00020;background:#fff0f0;color:#8a1327}
-.workday-banner .toolbar{margin-top:10px}
-.big-choice{min-width:130px;min-height:64px;font-size:22px;font-weight:bold}
-.confirm-actions{display:flex;gap:14px;flex-wrap:wrap;margin-top:18px}
-.confirm-actions button{flex:1}
-.navigation-actions .btn-map{min-height:64px;font-size:20px;font-weight:bold}
-#arrivedActionBlock{margin-top:16px}
-#arrivedBtn{width:100%;min-height:64px;font-size:20px;font-weight:bold}
-.arrival-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:10000}
-.arrival-overlay.active{display:flex}
-.arrival-card{width:min(480px,100%);background:#fff;border-radius:16px;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
-.arrival-card h2{font-size:28px}
-.tts-status{margin-top:10px;padding:10px;border-radius:10px;background:#eef1f7;min-height:40px}
-.field-block{margin-bottom:16px}
 </style>
 </head>
 <body>
@@ -139,42 +115,45 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     <button type="button" data-screen-btn="export">Export</button>
   </div>
 
-  <div class="workday-banner" id="workdayBanner">
-      <div id="workdayBannerText"></div>
-      <div class="toolbar">
-        <button type="button" class="btn-primary" id="startWorkdayNowBtn">Start werkdag nu</button>
-        <button type="button" class="btn-primary" id="finishWorkdayNowBtn">Werkdag afronden nu</button>
-        <button type="button" class="btn-secondary" id="openWorkdayBtn">Andere tijd</button>
-      </div>
-  </div>
   <div id="screen-invoer" class="screen active">
     <div class="dayhint" id="dayReminder"></div>
 
     <div class="wizard">
-      <div class="progress-text" id="progressText">Stap 1 van 5</div>
+      <div class="progress-text" id="progressText">Stap 1 van 7</div>
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 
       <div class="step active" data-step="0">
-        <div class="step-title">Kenteken</div>
+        <div class="step-title">Datum</div>
 <div class="version">
-    <strong>App-versie:</strong> v47 SNELLE RITFLOW<br>
-    Kies kenteken en route, controleer hardop en rond de rit bij aankomst af.
+    <strong>App-versie:</strong> v46 WAZE & RIT AFRONDEN<br>
+    Waze vervangt Apple Kaarten. Km-stand na de rit vul je voortaan via Snel wijzigen in; verplichte ontbrekende km-standen worden in het rittenoverzicht gemarkeerd.
   </div>
+
+        <div class="step-sub">Kies de datum van de rit.</div>
+        <label for="date">Datum</label>
+        <input type="date" id="date">
+      </div>
+
+      <div class="step" data-step="1">
+        <div class="step-title">Starttijd rit</div>
+        <div class="step-sub">Hoe laat begint de rit?</div>
+        <label for="timeStart">Starttijd rit</label>
+        <input type="time" id="timeStart">
+      </div>
+
+      <div class="step" data-step="2">
+        <div class="step-title">Kenteken</div>
         <div class="step-sub">Voer het kenteken in of kies een recent kenteken.</div>
         <label for="plate">Kenteken</label>
         <input id="plate" placeholder="Bijv. X-605-VJ" autocomplete="off">
         <div class="suggestions" id="plateSuggestions"></div>
         <div class="quick" id="plateButtons"></div>
         <div class="info" id="rdwInfo"></div>
-        <div class="toolbar" id="shortcutRouteBlock" style="display:none;margin-top:12px;">
-          <button type="button" class="btn-primary" id="shortcutRouteBtn">Spreek route in met Apple Opdrachten</button>
-        </div>
       </div>
 
-      <div class="step" data-step="1">
-        <div class="step-title">Route</div>
-        <div class="step-sub">Vul vertrek, bestemming en eventueel tussenstops in.</div>
-        <div class="field-block">
+      <div class="step" data-step="3">
+        <div class="step-title">Van</div>
+        <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
         <label for="from">Van</label>
         <div class="input-row">
           <input id="from" autocomplete="off">
@@ -184,8 +163,11 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="quick" id="fromButtons"></div>
         <div class="history-title">Eerder gebruikt</div>
         <div class="quick" id="fromHistoryButtons"></div>
-        </div>
-        <div class="field-block">
+      </div>
+
+      <div class="step" data-step="4">
+        <div class="step-title">Naar</div>
+        <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
         <label for="to">Naar</label>
         <div class="input-row">
           <input id="to" autocomplete="off">
@@ -198,8 +180,11 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="toolbar">
           <button type="button" class="btn-secondary" id="swapBtn">Retour</button>
         </div>
-        </div>
-        <div class="field-block">
+      </div>
+
+      <div class="step" data-step="5">
+        <div class="step-title">Tussenstops</div>
+        <div class="step-sub">Optioneel. Meerdere tussenstops scheid je met komma's.</div>
         <label for="stops">Tussenstop(s)</label>
         <div class="input-row">
           <input id="stops" placeholder="Bijv. ABS den Elzen, Perfect Carwrapping" autocomplete="off">
@@ -213,60 +198,33 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <button type="button" class="btn-secondary" id="voiceRouteBtn">🎤 Slimme routezin</button>
         </div>
         <div class="voice-note" id="voiceStatus">Je kunt bijvoorbeeld zeggen: van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen en Perfect Carwrapping.</div>
-        <div class="toolbar">
-          <button type="button" class="btn-secondary" id="clearBtn">Leegmaken</button>
-          <button type="button" class="btn-secondary" id="cancelEditBtn" style="display:none">Bewerken annuleren</button>
-        </div>
-        </div>
       </div>
 
       <input type="hidden" id="odometer" value="">
       <div class="warning" id="odoWarning" style="display:none"></div>
 
-      <div class="step" data-step="2">
-        <div class="step-title">Vertrektijd</div>
-        <div class="step-sub">De actuele tijd wordt voorgesteld. Wijzig deze alleen indien nodig.</div>
-        <label for="date">Ritdatum</label>
-        <input type="date" id="date">
-        <label for="timeStart" style="margin-top:14px">Vertrektijd</label>
-        <input type="time" id="timeStart">
-      </div>
-
-      <div class="step" data-step="3">
+      <div class="step" data-step="6">
         <div class="step-title">Controle</div>
-        <div class="step-sub">Luister, controleer de postbakken en bevestig met JA of NEE.</div>
+        <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
         <div class="review" id="reviewBox"></div>
-        <div class="conditional-block" id="rotterdamEndBlock" style="display:none">
+        <div class="conditional-block" id="rotterdamEndBlock">
           <label for="timeEndRotterdam">Eindtijd rit (optioneel)</label>
           <input type="time" id="timeEndRotterdam">
+          <div class="small">Niet verplicht. Vul deze alleen in als je de eindtijd al weet of later wilt aanvullen.</div>
         </div>
         <div class="postbox-alert" id="postboxAlert">
           <div class="postbox-title">⚠️ Postbak controleren</div>
           <div id="postboxRows"></div>
-          <div class="small">Bevestig de postbakvraag voor de Breeland-vestigingen die later in deze route volgen.</div>
+          <div class="small">Vink iedere vestiging af nadat je de betreffende postbak hebt gecontroleerd.</div>
         </div>
         <div class="toolbar">
-          <button type="button" class="btn-secondary" id="readAloudBtn">🔊 Lees opnieuw voor</button>
-        </div>
-        <div class="tts-status" id="confirmationStatus">Gebruik JA of NEE. Spraakherkenning is een extra mogelijkheid.</div>
-        <div class="confirm-actions">
-          <button type="button" class="btn-primary big-choice" id="saveTripBtn">JA</button>
-          <button type="button" class="btn-delete big-choice" id="confirmNoBtn">NEE</button>
-        </div>
-        <button type="button" id="saveRouteBtn" style="display:none"></button>
-      </div>
-
-      <div class="step" data-step="4">
-        <div class="step-title">Rit opgeslagen</div>
-        <div class="step-sub">De rit en actieve status zijn veilig opgeslagen. Kies navigatie.</div>
-        <div class="info" id="activeSegmentText"></div>
-        <div class="toolbar navigation-actions">
           <button type="button" class="btn-map" id="mapsAppleBtn">Waze</button>
           <button type="button" class="btn-map" id="mapsGoogleBtn">Google Maps</button>
           <button type="button" class="btn-secondary" id="copyFlitsBtn">Kopieer voor Flitsmeister</button>
-        </div>
-        <div class="toolbar" id="arrivedActionBlock" style="display:none">
-          <button type="button" class="btn-primary" id="arrivedBtn">Ik ben aangekomen</button>
+          <button type="button" class="btn-primary" id="saveTripBtn">Opslaan rit</button>
+          <button type="button" class="btn-secondary" id="saveRouteBtn">Route met tussenstops opslaan</button>
+          <button type="button" class="btn-secondary" id="clearBtn">Leegmaken</button>
+          <button type="button" class="btn-secondary" id="cancelEditBtn" style="display:none;">Bewerken annuleren</button>
         </div>
       </div>
 
@@ -434,32 +392,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       </div>
     </div>
   </div>
-  <div class="arrival-overlay" id="arrivalOverlay" role="dialog" aria-modal="true" aria-labelledby="arrivalTitle">
-    <div class="arrival-card">
-      <h2 id="arrivalTitle">Aangekomen?</h2>
-      <p id="arrivalRouteText"></p>
-      <label for="arrivalTime">Aankomsttijd</label>
-      <input type="time" id="arrivalTime">
-      <div id="arrivalOdometerBlock" style="display:none;margin-top:14px">
-        <label for="arrivalOdometer">Eind-km-stand</label>
-        <input type="number" id="arrivalOdometer" inputmode="numeric" placeholder="Bijv. 123456">
-      </div>
-      <div class="toolbar">
-        <button type="button" class="btn-secondary" id="arrivalNotYetBtn">Nog niet</button>
-        <button type="button" class="btn-primary big-choice" id="finishActiveRideBtn">Rit afronden</button>
-      </div>
-    </div>
-  </div>
-  <div class="arrival-overlay" id="segmentPostboxOverlay" role="dialog" aria-modal="true" aria-labelledby="segmentPostboxTitle">
-    <div class="arrival-card">
-      <h2 id="segmentPostboxTitle">Postbak controleren</h2>
-      <p id="segmentPostboxText"></p>
-      <div class="toolbar">
-        <button type="button" class="btn-secondary" id="segmentPostboxNotYetBtn">Nog niet</button>
-        <button type="button" class="btn-primary big-choice" id="confirmSegmentPostboxBtn">JA, gecontroleerd</button>
-      </div>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -469,13 +401,8 @@ const STORAGE_TRIPS = "trips_v31";
 const STORAGE_DAYDATA = "dayData_v31";
 const STORAGE_PLATES = "plates_v31";
 const STORAGE_ADDRESSES = "addresses_v35";
-const SHORTCUT_HANDOFF_KEY = "rittenapp_shortcut_handoff_v47";
-const SHORTCUT_USED_TOKENS_KEY = "rittenapp_shortcut_used_tokens_v47";
-const SHORTCUT_HANDOFF_TTL_MS = 15 * 60 * 1000;
-const SHORTCUT_NAME = "Rittenapp ritinvoer";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
-const POSTBOX_LOCATIONS = ["Breeland Rotterdam","Breeland Dordrecht","Breeland Brielle","Breeland Den Haag"];
 const DEFAULT_ADDRESSES = {
   "Breeland Rotterdam": "Autolettestraat 16, 3063 NP Rotterdam",
   "Breeland Dordrecht": "Mijlweg 25, 3316 BE Dordrecht",
@@ -487,7 +414,7 @@ const DEFAULT_ADDRESSES = {
 };
 let standardAddresses = {...DEFAULT_ADDRESSES};
 let QUICK_LOCATIONS = Object.keys(standardAddresses);
-const ALL_STEPS = [0,1,2,3,4];
+const ALL_STEPS = [0,1,2,3,4,5,6];
 
 let trips = [];
 let dayData = {};
@@ -495,13 +422,6 @@ let plates = [];
 let addressHistory = [];
 let currentDraftSaved = false;
 let postboxChecks = {};
-let appMeta = {};
-let confirmationInProgress = false;
-let confirmationRecognition = null;
-let departureTimeTouched = false;
-let currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
-let activeTransitionInProgress = false;
-let dbSaveQueue = Promise.resolve();
 
 let currentStep = 0;
 let editingTripId = null;
@@ -533,7 +453,6 @@ const timeStartEl = document.getElementById("timeStart");
 const timeEndRotterdamEl = document.getElementById("timeEndRotterdam");
 const plateEl = document.getElementById("plate");
 const rdwInfoEl = document.getElementById("rdwInfo");
-const shortcutRouteBlockEl = document.getElementById("shortcutRouteBlock");
 const odoWarningEl = document.getElementById("odoWarning");
 const odometerEl = document.getElementById("odometer");
 const fromEl = document.getElementById("from");
@@ -556,17 +475,6 @@ const stdAddressValueEl = document.getElementById("stdAddressValue");
 const stdAddressTableEl = document.getElementById("stdAddressTable");
 const stdPlateInputEl = document.getElementById("stdPlateInput");
 const stdPlateTableEl = document.getElementById("stdPlateTable");
-const workdayBannerEl = document.getElementById("workdayBanner");
-const workdayBannerTextEl = document.getElementById("workdayBannerText");
-const confirmationStatusEl = document.getElementById("confirmationStatus");
-const arrivalOverlayEl = document.getElementById("arrivalOverlay");
-const arrivalRouteTextEl = document.getElementById("arrivalRouteText");
-const arrivalTimeEl = document.getElementById("arrivalTime");
-const arrivalOdometerBlockEl = document.getElementById("arrivalOdometerBlock");
-const arrivalOdometerEl = document.getElementById("arrivalOdometer");
-const activeSegmentTextEl = document.getElementById("activeSegmentText");
-const segmentPostboxOverlayEl = document.getElementById("segmentPostboxOverlay");
-const segmentPostboxTextEl = document.getElementById("segmentPostboxText");
 
 function $(id){ return document.getElementById(id); }
 
@@ -724,10 +632,6 @@ async function loadAllFromDB(){
     const dbPlates = await dbGetAll("kentekens");
     const dbAddresses = await dbGetAll("adressen");
     const dbStandardAddresses = await dbGetAll("standaardAdressen");
-    const dbMeta = await dbGetAll("meta");
-
-    appMeta = {};
-    dbMeta.forEach(item=>{ if(item && item.key) appMeta[item.key] = item; });
 
     standardAddresses = {...DEFAULT_ADDRESSES};
     dbStandardAddresses.forEach(a=>{
@@ -752,72 +656,17 @@ async function loadAllFromDB(){
     addressHistory = [];
   }
 }
-function enqueueDBSave(saveOperation){
-  const queued = dbSaveQueue.then(saveOperation,saveOperation);
-  dbSaveQueue = queued.catch(()=>{});
-  return queued;
-}
-function saveAllToDB(){
-  return enqueueDBSave(async()=>{
-    const workdayRows = Object.keys(dayData).map(d=>({date:d, workStart:(dayData[d]||{}).workStart || "", workEnd:(dayData[d]||{}).workEnd || ""}));
-    const plateRows = plates.map(plate=>({plate}));
-    const addressRows = addressHistory.map(label=>({label}));
-    const standardAddressRows = Object.keys(standardAddresses).map(label=>({label, address:standardAddresses[label]}));
-    await dbReplaceAll("ritten", trips);
-    await dbReplaceAll("werkdagen", workdayRows);
-    await dbReplaceAll("kentekens", plateRows);
-    await dbReplaceAll("adressen", addressRows);
-    await dbReplaceAll("standaardAdressen", standardAddressRows);
-    appMeta.lastSave = {key:"lastSave", value:new Date().toISOString(), trips:trips.length, workdays:workdayRows.length};
-    await dbReplaceAll("meta", Object.values(appMeta));
-  });
-}
-function saveCriticalStateToDB(){
-  return enqueueDBSave(async()=>{
-    const workdayRows = Object.keys(dayData).map(d=>({date:d, workStart:(dayData[d]||{}).workStart || "", workEnd:(dayData[d]||{}).workEnd || ""}));
-    const rowsByStore = {
-      ritten:trips,
-      werkdagen:workdayRows,
-      kentekens:plates.map(plate=>({plate})),
-      adressen:addressHistory.map(label=>({label})),
-      standaardAdressen:Object.keys(standardAddresses).map(label=>({label,address:standardAddresses[label]}))
-    };
-    appMeta.lastSave = {key:"lastSave",value:new Date().toISOString(),trips:trips.length,workdays:workdayRows.length};
-    rowsByStore.meta = Object.values(appMeta);
-    const db = await openRittenDB();
-    await new Promise((resolve,reject)=>{
-      const names = Object.keys(rowsByStore);
-      const tx = db.transaction(names,"readwrite");
-      names.forEach(name=>{
-        const store = tx.objectStore(name);
-        store.clear();
-        rowsByStore[name].forEach(item=>store.put(item));
-      });
-      tx.oncomplete = resolve;
-      tx.onerror = ()=>reject(tx.error || new Error("IndexedDB-transactie mislukt"));
-      tx.onabort = ()=>reject(tx.error || new Error("IndexedDB-transactie afgebroken"));
-    });
-  });
-}
-
-function getActiveRide(){
-  const value = appMeta.activeRide;
-  return value && value.status === "active" ? value : null;
-}
-function setActiveRide(value){
-  if(value) appMeta.activeRide = {...value, key:"activeRide", status:"active"};
-  else delete appMeta.activeRide;
-}
-function setLastReachedDestination(value){
-  const location = normalizeLocation(value);
-  if(location) appMeta.lastReachedDestination = {key:"lastReachedDestination", value:location};
-}
-function getLastReachedDestination(){
-  if(getActiveRide()) return "";
-  const saved = appMeta.lastReachedDestination && appMeta.lastReachedDestination.value;
-  if(saved) return normalizeLocation(saved);
-  const completed = trips.filter(t=>t.timeEnd).sort((a,b)=>((b.date||"")+" "+(b.timeEnd||b.timeStart||"")).localeCompare((a.date||"")+" "+(a.timeEnd||a.timeStart||"")))[0];
-  return completed ? normalizeLocation(completed.to) : "";
+async function saveAllToDB(){
+  const workdayRows = Object.keys(dayData).map(d=>({date:d, workStart:(dayData[d]||{}).workStart || "", workEnd:(dayData[d]||{}).workEnd || ""}));
+  const plateRows = plates.map(plate=>({plate}));
+  const addressRows = addressHistory.map(label=>({label}));
+  const standardAddressRows = Object.keys(standardAddresses).map(label=>({label, address:standardAddresses[label]}));
+  await dbReplaceAll("ritten", trips);
+  await dbReplaceAll("werkdagen", workdayRows);
+  await dbReplaceAll("kentekens", plateRows);
+  await dbReplaceAll("adressen", addressRows);
+  await dbReplaceAll("standaardAdressen", standardAddressRows);
+  await dbReplaceAll("meta", [{key:"lastSave", value:new Date().toISOString(), trips:trips.length, workdays:workdayRows.length}]);
 }
 async function migrateLocalStorageIfDatabaseEmpty(){
   if(trips.length || Object.keys(dayData).length) return;
@@ -1041,7 +890,6 @@ function updatePlateStyle(){
   plateEl.value = normalizePlate(plateEl.value);
   plateEl.classList.toggle("filled", !!plateEl.value);
   odoWarningEl.style.display = "none";
-  shortcutRouteBlockEl.style.display = plateEl.value.length >= 6 ? "flex" : "none";
 }
 function cleanVehicleText(v){ return String(v||"").replace(/\s+/g," ").trim(); }
 function extractYearFromDateString(v){
@@ -1091,308 +939,16 @@ async function lookupPlate(){
   updatePlateStyle();
   if(!plateEl.value){
     rdwInfoEl.textContent = "";
-    currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
     updateReview();
     return {vehicleText:"", priceText:""};
   }
-  const requestedPlate = normalizePlate(plateEl.value);
-  const fetchedInfo = await fetchPlateInfo(requestedPlate);
-  if(normalizePlate(plateEl.value) !== requestedPlate) return fetchedInfo;
-  if(fetchedInfo.vehicleText || fetchedInfo.priceText || currentPlateInfo.plate !== requestedPlate){
-    currentPlateInfo = {plate:requestedPlate, vehicleText:fetchedInfo.vehicleText || "", priceText:fetchedInfo.priceText || ""};
-  }
-  const info = {vehicleText:currentPlateInfo.vehicleText, priceText:currentPlateInfo.priceText};
-  let text = requestedPlate;
+  const info = await fetchPlateInfo(plateEl.value);
+  let text = plateEl.value;
   if(info.vehicleText) text += " — " + info.vehicleText;
   if(info.priceText) text += " — Nieuwprijs: " + info.priceText;
   rdwInfoEl.textContent = text;
   updateReview();
   return info;
-}
-
-function createShortcutToken(){
-  if(window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
-  if(!window.crypto || typeof window.crypto.getRandomValues !== "function") throw new Error("Veilige tokenopslag wordt niet ondersteund.");
-  const bytes = new Uint8Array(24);
-  window.crypto.getRandomValues(bytes);
-  return Array.from(bytes, b=>b.toString(16).padStart(2,"0")).join("");
-}
-function isValidShortcutToken(value){
-  return /^(?:[0-9a-f]{32,64}|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(String(value || ""));
-}
-function readShortcutHandoff(){
-  try{
-    const raw = localStorage.getItem(SHORTCUT_HANDOFF_KEY);
-    if(!raw) return null;
-    const value = JSON.parse(raw);
-    if(!value || !isValidShortcutToken(value.token) || !Number.isFinite(value.expiresAt)){
-      localStorage.removeItem(SHORTCUT_HANDOFF_KEY);
-      return null;
-    }
-    return value;
-  }catch(e){
-    localStorage.removeItem(SHORTCUT_HANDOFF_KEY);
-    return null;
-  }
-}
-function clearShortcutHandoff(token){
-  const value = readShortcutHandoff();
-  if(!value || !token || value.token === token) localStorage.removeItem(SHORTCUT_HANDOFF_KEY);
-}
-function readUsedShortcutTokens(){
-  try{
-    const values = JSON.parse(localStorage.getItem(SHORTCUT_USED_TOKENS_KEY) || "[]");
-    const fresh = Array.isArray(values) ? values.filter(item=>item && isValidShortcutToken(item.token) && Number(item.expiresAt) > Date.now()) : [];
-    if(fresh.length) localStorage.setItem(SHORTCUT_USED_TOKENS_KEY, JSON.stringify(fresh));
-    else localStorage.removeItem(SHORTCUT_USED_TOKENS_KEY);
-    return fresh;
-  }catch(e){
-    localStorage.removeItem(SHORTCUT_USED_TOKENS_KEY);
-    return [];
-  }
-}
-function shortcutTokenWasUsed(token){ return readUsedShortcutTokens().some(item=>item.token === token); }
-function markShortcutTokenUsed(token){
-  if(!isValidShortcutToken(token)) return;
-  const values = readUsedShortcutTokens().filter(item=>item.token !== token);
-  values.push({token, expiresAt:Date.now() + SHORTCUT_HANDOFF_TTL_MS});
-  localStorage.setItem(SHORTCUT_USED_TOKENS_KEY, JSON.stringify(values.slice(-20)));
-}
-function cleanShortcutQuery(){
-  if(window.location.search) history.replaceState(null, document.title, window.location.pathname + window.location.hash);
-}
-function shortcutCallbackUrl(status, token, plate, issuedAt){
-  const url = new URL(window.location.href);
-  url.search = "";
-  url.hash = "";
-  url.searchParams.set("shortcut", status);
-  url.searchParams.set("handoff", token);
-  url.searchParams.set("kenteken", plate);
-  url.searchParams.set("issued", String(issuedAt));
-  return url.toString();
-}
-async function startRouteShortcut(){
-  if(getActiveRide()){
-    alert("Rond eerst de actieve rit af voordat je een nieuwe route invoert.");
-    showActiveRideState();
-    return;
-  }
-  const plate = normalizePlate(plateEl.value);
-  if(plate.length < 6){ alert("Vul eerst een geldig kenteken in."); return; }
-  try{
-    const info = await lookupPlate();
-    const token = createShortcutToken();
-    const createdAt = Date.now();
-    const handoff = {token, createdAt, expiresAt:createdAt + SHORTCUT_HANDOFF_TTL_MS, plate, rdwInfo:{vehicleText:info.vehicleText || "", priceText:info.priceText || ""}};
-    localStorage.setItem(SHORTCUT_HANDOFF_KEY, JSON.stringify(handoff));
-    const input = JSON.stringify({token, kenteken:plate, callbackUrl:shortcutCallbackUrl("success", token, plate, createdAt)});
-    const launch = new URL("shortcuts://x-callback-url/run-shortcut");
-    launch.searchParams.set("name", SHORTCUT_NAME);
-    launch.searchParams.set("input", "text");
-    launch.searchParams.set("text", input);
-    launch.searchParams.set("x-success", shortcutCallbackUrl("success", token, plate, createdAt));
-    launch.searchParams.set("x-cancel", shortcutCallbackUrl("cancel", token, plate, createdAt));
-    launch.searchParams.set("x-error", shortcutCallbackUrl("error", token, plate, createdAt));
-    const encodedShortcutName = encodeURIComponent(SHORTCUT_NAME);
-    const launchUrl = launch.toString().replace(
-      "name=" + SHORTCUT_NAME.replace(/ /g, "+"),
-      "name=" + encodedShortcutName
-    );
-    window.location.href = launchUrl;
-  }catch(e){
-    clearShortcutHandoff();
-    alert("Apple Opdrachten kon niet veilig worden gestart: " + e.message);
-  }
-}
-function cleanShortcutText(value, maxLength){
-  const text = String(value == null ? "" : value).replace(/\s+/g," ").trim();
-  if(!text || text.length > maxLength || /[\u0000-\u001f\u007f]/.test(text)) return "";
-  return text;
-}
-function parseShortcutRoute(params){
-  let source = {};
-  const result = params.get("result");
-  if(result){
-    try{ source = JSON.parse(result); }catch(e){ throw new Error("De route-uitvoer van Apple Opdrachten is geen geldige JSON."); }
-    if(!source || typeof source !== "object" || Array.isArray(source)) throw new Error("De route-uitvoer van Apple Opdrachten heeft een ongeldig formaat.");
-    if(source.vertrek != null && typeof source.vertrek !== "string") throw new Error("Vertrek heeft een ongeldig type.");
-    if(source.bestemming != null && typeof source.bestemming !== "string") throw new Error("Bestemming heeft een ongeldig type.");
-    if(source.vertrektijd != null && typeof source.vertrektijd !== "string") throw new Error("Vertrektijd heeft een ongeldig type.");
-    if(source.tussenstops != null && typeof source.tussenstops !== "string" && !Array.isArray(source.tussenstops)) throw new Error("Tussenstops hebben een ongeldig type.");
-    if(Array.isArray(source.tussenstops) && source.tussenstops.some(value=>typeof value !== "string")) throw new Error("Een tussenstop heeft een ongeldig type.");
-    if(source.postbakcontrole != null && typeof source.postbakcontrole !== "boolean" && typeof source.postbakcontrole !== "string" && typeof source.postbakcontrole !== "number") throw new Error("Postbakcontrole heeft een ongeldig type.");
-  }
-  const vertrek = cleanShortcutText(source.vertrek ?? params.get("vertrek"), 250);
-  const bestemming = cleanShortcutText(source.bestemming ?? params.get("bestemming"), 250);
-  let stops = source.tussenstops;
-  if(stops == null){
-    const repeated = params.getAll("tussenstop");
-    stops = repeated.length ? repeated : String(params.get("tussenstops") || "").split("|");
-  }
-  if(typeof stops === "string") stops = stops.split("|");
-  if(!Array.isArray(stops)) stops = [];
-  stops = stops.map(v=>cleanShortcutText(v,250)).filter(Boolean).filter(v=>!/^geen$/i.test(v));
-  if(stops.length > 20) throw new Error("Er zijn te veel tussenstops ontvangen.");
-  const vertrektijdRaw = cleanShortcutText(source.vertrektijd ?? params.get("vertrektijd"), 5);
-  const vertrektijd = vertrektijdRaw || now();
-  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(vertrektijd)) throw new Error("De vertrektijd is ongeldig.");
-  if(!vertrek || !bestemming) throw new Error("Vertrek of bestemming ontbreekt.");
-  const postboxValue = source.postbakcontrole ?? params.get("postbakcontrole");
-  if(postboxValue != null && !/^(?:ja|nee|true|false|1|0)$/i.test(String(postboxValue).trim())) throw new Error("Postbakcontrole heeft een ongeldige waarde.");
-  const postboxConfirmed = postboxValue === true || /^(ja|true|1)$/i.test(String(postboxValue || "").trim());
-  return {vertrek, bestemming, stops, vertrektijd, postboxConfirmed};
-}
-function normalizeShortcutDraft(value, handoff){
-  if(!value || typeof value !== "object") throw new Error("De tijdelijke route-invoer ontbreekt.");
-  const token = String(value.token || "");
-  const issuedAt = Number(value.issuedAt);
-  if(!isValidShortcutToken(token) || !handoff || handoff.token !== token || !Number.isFinite(issuedAt) || handoff.createdAt !== issuedAt){
-    throw new Error("De tijdelijke route-invoer hoort niet bij deze Apple Opdrachten-callback.");
-  }
-  const plate = normalizePlate(value.plate);
-  const vertrek = cleanShortcutText(value.vertrek,250);
-  const bestemming = cleanShortcutText(value.bestemming,250);
-  const stops = Array.isArray(value.stops) ? value.stops.map(v=>cleanShortcutText(v,250)).filter(Boolean) : [];
-  const vertrektijd = cleanShortcutText(value.vertrektijd,5);
-  if(plate.length < 6 || !vertrek || !bestemming || stops.length > 20 || !/^([01]\d|2[0-3]):[0-5]\d$/.test(vertrektijd)){
-    throw new Error("De tijdelijke route-invoer is ongeldig.");
-  }
-  const rdwInfo = value.rdwInfo && typeof value.rdwInfo === "object" ? value.rdwInfo : {};
-  return {
-    token, issuedAt, acceptedAt:Number(value.acceptedAt) || issuedAt, plate, vertrek, bestemming, stops, vertrektijd,
-    postboxConfirmed:value.postboxConfirmed === true,
-    rdwInfo:{vehicleText:cleanVehicleText(rdwInfo.vehicleText),priceText:cleanVehicleText(rdwInfo.priceText)}
-  };
-}
-function classifyActiveRideForShortcut(handoff, callbackIssuedAt){
-  const rawActive = getActiveRide();
-  if(!rawActive) return {rawActive:null,validated:null,stale:false,blocks:false};
-  const validated = validateActiveRide(rawActive);
-  if(!validated) return {rawActive,validated:null,stale:true,blocks:false};
-  const activeCreatedAt = Date.parse(validated.active.createdAt || "");
-  const authoritativeIssuedAt = handoff && isValidShortcutToken(handoff.token)
-    ? Number(handoff.createdAt)
-    : Number(callbackIssuedAt);
-  if(Number.isFinite(activeCreatedAt) && Number.isFinite(authoritativeIssuedAt) && activeCreatedAt < authoritativeIssuedAt){
-    return {rawActive,validated,stale:true,blocks:false};
-  }
-  return {rawActive,validated,stale:false,blocks:true};
-}
-async function removeStaleActiveRideForShortcut(classification){
-  if(!classification || !classification.stale) return;
-  setActiveRide(null);
-  await saveCriticalStateToDB();
-}
-function applyShortcutDraft(draft){
-  plateEl.value = draft.plate;
-  currentPlateInfo = {plate:draft.plate,vehicleText:draft.rdwInfo.vehicleText,priceText:draft.rdwInfo.priceText};
-  rdwInfoEl.textContent = draft.plate + (currentPlateInfo.vehicleText ? " — " + currentPlateInfo.vehicleText : "") + (currentPlateInfo.priceText ? " — Nieuwprijs: " + currentPlateInfo.priceText : "");
-  fromEl.value = draft.vertrek;
-  toEl.value = draft.bestemming;
-  stopsEl.value = draft.stops.join(", ");
-  timeStartEl.value = draft.vertrektijd;
-  timeEndRotterdamEl.value = "";
-  odometerEl.value = "";
-  dateEl.value = today();
-  departureTimeTouched = true;
-  editingTripId = null;
-  $("cancelEditBtn").style.display = "none";
-  postboxChecks = {__routeKey:postboxRouteKey()};
-  const firstPostboxDestinations = getBreelandRouteDestinations();
-  if(draft.postboxConfirmed) firstPostboxDestinations.forEach(location=>{ postboxChecks[location] = true; });
-  clearDraftSavedStatus();
-  currentStep = 3;
-  updatePlateStyle();
-  renderStep();
-}
-async function processShortcutCallback(){
-  const params = new URLSearchParams(window.location.search);
-  const status = params.get("shortcut");
-  if(!status){
-    const pending = readShortcutHandoff();
-    if(pending && pending.callbackDraft){
-      try{
-        const draft = normalizeShortcutDraft(pending.callbackDraft,pending);
-        const activeState = classifyActiveRideForShortcut(pending);
-        if(activeState.blocks){
-          clearShortcutHandoff(pending.token);
-          restoreActiveRideAfterForeground();
-          return true;
-        }
-        await removeStaleActiveRideForShortcut(activeState);
-        applyShortcutDraft(draft);
-        return true;
-      }catch(e){
-        clearShortcutHandoff(pending.token);
-        alert("Tijdelijke route-invoer kon niet worden hersteld: " + e.message);
-      }
-    }else if(pending && Date.now() > pending.expiresAt){
-      clearShortcutHandoff(pending.token);
-    }
-    return false;
-  }
-  const token = params.get("handoff") || "";
-  const issuedAt = Number(params.get("issued"));
-  const handoff = readShortcutHandoff();
-  try{
-    if(!isValidShortcutToken(token)) throw new Error("De tijdelijke beveiligingstoken is ongeldig.");
-    if(!Number.isFinite(issuedAt) || issuedAt > Date.now() + 60000 || Date.now() - issuedAt > SHORTCUT_HANDOFF_TTL_MS){
-      throw new Error("De tijdelijke ritinvoer is verlopen. Start Apple Opdrachten opnieuw.");
-    }
-    if(shortcutTokenWasUsed(token)) throw new Error("Deze eenmalige beveiligingstoken is al gebruikt.");
-    if(handoff && handoff.token === token && Date.now() > handoff.expiresAt){
-      clearShortcutHandoff(token);
-      throw new Error("De tijdelijke ritinvoer is verlopen. Start Apple Opdrachten opnieuw.");
-    }
-    if(status === "cancel" || status === "error"){
-      markShortcutTokenUsed(token);
-      clearShortcutHandoff(token);
-      return true;
-    }
-    if(status !== "success") throw new Error("Onbekende callbackstatus.");
-    if(handoff && handoff.token === token && handoff.createdAt !== issuedAt) throw new Error("De beveiligingstoken hoort niet bij deze callback.");
-    const route = parseShortcutRoute(params);
-    const fallbackPlate = normalizePlate(params.get("kenteken"));
-    const plate = normalizePlate(handoff && handoff.token === token ? handoff.plate : fallbackPlate);
-    if(plate.length < 6) throw new Error("Het kenteken ontbreekt of is ongeldig.");
-    const activeState = classifyActiveRideForShortcut(handoff && handoff.token === token ? handoff : null, issuedAt);
-    if(activeState.blocks){
-      markShortcutTokenUsed(token);
-      clearShortcutHandoff(token);
-      restoreActiveRideAfterForeground();
-      return true;
-    }
-    await removeStaleActiveRideForShortcut(activeState);
-    let rdwInfo;
-    if(handoff && handoff.token === token){
-      const savedInfo = handoff.rdwInfo || {};
-      rdwInfo = {vehicleText:cleanVehicleText(savedInfo.vehicleText),priceText:cleanVehicleText(savedInfo.priceText)};
-    }else{
-      plateEl.value = plate;
-      currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
-      const info = await lookupPlate();
-      rdwInfo = {vehicleText:info.vehicleText || "",priceText:info.priceText || ""};
-    }
-    const acceptedHandoff = handoff && handoff.token === token ? handoff : {
-      token, createdAt:issuedAt, expiresAt:issuedAt + SHORTCUT_HANDOFF_TTL_MS, plate, rdwInfo
-    };
-    acceptedHandoff.callbackDraft = {
-      token, issuedAt, acceptedAt:Date.now(), plate, rdwInfo,
-      vertrek:route.vertrek,bestemming:route.bestemming,stops:route.stops,
-      vertrektijd:route.vertrektijd,postboxConfirmed:route.postboxConfirmed
-    };
-    localStorage.setItem(SHORTCUT_HANDOFF_KEY,JSON.stringify(acceptedHandoff));
-    applyShortcutDraft(normalizeShortcutDraft(acceptedHandoff.callbackDraft,acceptedHandoff));
-    markShortcutTokenUsed(token);
-    return true;
-  }catch(e){
-    if(isValidShortcutToken(token) && handoff && handoff.token === token) markShortcutTokenUsed(token);
-    if(!(handoff && handoff.token === token && handoff.callbackDraft)) clearShortcutHandoff(token);
-    alert("Route uit Apple Opdrachten niet overgenomen: " + e.message);
-    return true;
-  }finally{
-    cleanShortcutQuery();
-  }
 }
 
 function getSpeechRecognitionCtor(){
@@ -1511,75 +1067,9 @@ function fillSmartRouteFromTranscript(transcript){
   setVoiceStatus("Route ingevuld: " + parsed.from + " naar " + parsed.to + stopText + ".");
 }
 
-function buildSpokenReview(){
-  const plate = normalizePlate(plateEl.value).split("").join(" ");
-  const vehicleName = rdwInfoEl.textContent
-    .replace(normalizePlate(plateEl.value), "")
-    .replace(/^\s*[—-]\s*/, "")
-    .split(/\s+—\s+Nieuwprijs:/i)[0]
-    .replace(/\s*\(\d{4}\)\s*$/, "")
-    .trim();
-  const vehicle = vehicleName ? ", " + vehicleName : "";
-  const stops = getStopsList();
-  const routeText = "Van " + (fromEl.value || "onbekend") + (stops.length ? ", via " + stops.join(", vervolgens ") : "") + ", naar " + (toEl.value || "onbekend") + ".";
-  const postboxes = getBreelandRouteDestinations();
-  const postboxQuestion = formatPostboxQuestion(postboxes);
-  const postboxText = postboxQuestion ? " " + postboxQuestion : "";
-  return "Kenteken " + plate + vehicle + ". " + routeText + " Vertrektijd " + (timeStartEl.value || "onbekend") + "." + postboxText + " Kloppen deze gegevens? Zeg ja of nee, of gebruik de knoppen.";
-}
-function readCurrentTripAloud(){
-  stopConfirmationAudio();
-  if(!("speechSynthesis" in window)){
-    confirmationStatusEl.textContent = "Voorlezen wordt niet ondersteund. Controleer visueel en gebruik JA of NEE.";
-    startYesNoRecognition();
-    return;
-  }
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(buildSpokenReview());
-  utterance.lang = "nl-NL";
-  utterance.onstart = ()=>{ confirmationStatusEl.textContent = "Rit wordt voorgelezen…"; };
-  utterance.onend = ()=>{ if(currentStep===3){ confirmationStatusEl.textContent = "Zeg JA of NEE, of gebruik de grote knoppen."; startYesNoRecognition(); } };
-  window.speechSynthesis.speak(utterance);
-}
-function stopConfirmationAudio(){
-  if("speechSynthesis" in window) window.speechSynthesis.cancel();
-  if(confirmationRecognition){
-    try{ confirmationRecognition.abort(); }catch(e){}
-    confirmationRecognition = null;
-  }
-}
-function startYesNoRecognition(){
-  const Ctor = getSpeechRecognitionCtor();
-  if(!Ctor){
-    confirmationStatusEl.textContent = "Spraakherkenning niet beschikbaar. Gebruik de grote knoppen JA of NEE.";
-    return;
-  }
-  if(confirmationRecognition) return;
-  const recognition = new Ctor();
-  confirmationRecognition = recognition;
-  recognition.lang = "nl-NL";
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 3;
-  recognition.onresult = event=>{
-    const words = Array.from(event.results[0]).map(r=>String(r.transcript||"").toLowerCase());
-    if(words.some(v=>/\b(ja|klopt|correct|bevestig|bevestigen)\b/.test(v))){
-      confirmationRecognition = null;
-      confirmCurrentTrip("spraak-JA");
-    }else if(words.some(v=>/\b(nee|neen|niet goed|aanpassen)\b/.test(v))){
-      confirmationRecognition = null;
-      $("confirmNoBtn").click();
-    }else{
-      confirmationStatusEl.textContent = "Geen duidelijke JA of NEE herkend. Gebruik de knoppen.";
-    }
-  };
-  recognition.onerror = ()=>{ confirmationStatusEl.textContent = "Spraakherkenning niet beschikbaar. Gebruik JA of NEE."; };
-  recognition.onend = ()=>{ if(confirmationRecognition===recognition) confirmationRecognition = null; };
-  try{ recognition.start(); }catch(e){ confirmationRecognition = null; }
-}
-
 function updateDayReminder(){
   const d = dateEl.value || today();
-  if(isToday(d) && currentHour() >= 18 && !(dayData[d] && dayData[d].workEnd)){
+  if(isToday(d) && currentHour() >= 17 && !(dayData[d] && dayData[d].workEnd)){
     dayReminderEl.style.display = "block";
     dayReminderEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
     editStatusEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
@@ -1587,38 +1077,22 @@ function updateDayReminder(){
     dayReminderEl.style.display = "none";
     if(!editingTripId) editStatusEl.textContent = "";
   }
-  updateWorkdayBanner();
-}
-function updateWorkdayBanner(){
-  if(!workdayBannerEl) return;
-  const item = dayData[today()] || {};
-  const missingStart = !item.workStart;
-  const missingEnd = !!item.workStart && !item.workEnd && currentHour() >= 18;
-  workdayBannerEl.classList.toggle("active", missingStart || missingEnd);
-  workdayBannerEl.classList.toggle("reminder", missingEnd);
-  $("startWorkdayNowBtn").style.display = missingStart ? "inline-block" : "none";
-  $("finishWorkdayNowBtn").style.display = missingEnd ? "inline-block" : "none";
-  workdayBannerTextEl.innerHTML = missingStart
-    ? "<strong>Werkdag nog niet gestart.</strong> Start eenvoudig met de huidige tijd."
-    : missingEnd
-      ? "<strong>⚠ Werkdag nog niet afgerond.</strong> Vul je eindtijd in."
-      : "";
 }
 function buildReviewHtml(){
   const d = dateEl.value || today();
   const wd = dayData[d] || {};
   const stopsList = stopsEl.value.trim() ? stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).join(", ") : "-";
   return `
-    <div><strong>Werkdag:</strong> ${escapeHtml(wd.workStart || "-")} → ${escapeHtml(wd.workEnd || "-")}</div>
-    <div><strong>Datum:</strong> ${escapeHtml(d || "-")}</div>
-    <div><strong>Starttijd rit:</strong> ${escapeHtml(timeStartEl.value || "-")}</div>
-    <div><strong>Eindtijd rit:</strong> ${escapeHtml(timeEndRotterdamEl.value || "-")}</div>
-    <div><strong>Kenteken:</strong> ${escapeHtml(plateEl.value || "-")}</div>
-    <div><strong>Auto:</strong> ${escapeHtml(rdwInfoEl.textContent || "-")}</div>
-    <div><strong>Km-stand:</strong> ${escapeHtml(odometerEl.value || "-")}</div>
-    <div><strong>Van:</strong> ${escapeHtml(fromEl.value || "-")}</div>
-    <div><strong>Naar:</strong> ${escapeHtml(toEl.value || "-")}</div>
-    <div><strong>Tussenstops:</strong> ${escapeHtml(stopsList)}</div>
+    <div><strong>Werkdag:</strong> ${wd.workStart || "-"} → ${wd.workEnd || "-"}</div>
+    <div><strong>Datum:</strong> ${d || "-"}</div>
+    <div><strong>Starttijd rit:</strong> ${timeStartEl.value || "-"}</div>
+    <div><strong>Eindtijd rit:</strong> ${timeEndRotterdamEl.value || "-"}</div>
+    <div><strong>Kenteken:</strong> ${plateEl.value || "-"}</div>
+    <div><strong>Auto:</strong> ${rdwInfoEl.textContent || "-"}</div>
+    <div><strong>Km-stand:</strong> ${odometerEl.value || "-"}</div>
+    <div><strong>Van:</strong> ${fromEl.value || "-"}</div>
+    <div><strong>Naar:</strong> ${toEl.value || "-"}</div>
+    <div><strong>Tussenstops:</strong> ${stopsList}</div>
   `;
 }
 function getAllKnownAddresses(){
@@ -1676,35 +1150,14 @@ function updateAddressSuggestions(el, container, isStops=false){
     updateReview();
   });
 }
-function isAutomaticPostboxDestination(location){ return POSTBOX_LOCATIONS.includes(normalizeLocation(location)); }
-function uniquePostboxDestinationsInRouteOrder(points,currentLocation){
-  const current = normalizeLocation(currentLocation);
-  const result = [];
-  points.map(normalizeLocation).forEach(location=>{
-    if(location !== current && isAutomaticPostboxDestination(location) && !result.includes(location)) result.push(location);
-  });
-  return result;
-}
 function getBreelandRouteDestinations(){
-  return uniquePostboxDestinationsInRouteOrder([...getStopsList(),toEl.value],fromEl.value);
-}
-function getActivePostboxDestinations(validated){
-  if(!validated || validated.legacy) return [];
-  return uniquePostboxDestinationsInRouteOrder(validated.active.routePoints.slice(validated.index+1),validated.currentTrip.from);
-}
-function joinDutchLocations(locations){
-  const names = locations.map(location=>normalizeLocation(location).replace(/^Breeland\s+/i,""));
-  if(names.length < 2) return names[0] || "";
-  return names.slice(0,-1).join(", ") + " en " + names[names.length-1];
-}
-function formatPostboxQuestion(destinations){
-  if(!destinations.length) return "";
-  return destinations.length === 1
-    ? "Heb je de postbak voor " + joinDutchLocations(destinations) + " gecontroleerd?"
-    : "Heb je de postbakken voor " + joinDutchLocations(destinations) + " gecontroleerd?";
+  const routeTargets = [toEl.value, ...getStopsList()];
+  return [...new Set(routeTargets.map(normalizeLocation).filter(v=>
+    ["Breeland Rotterdam","Breeland Brielle","Breeland Dordrecht","Breeland Den Haag"].includes(v)
+  ))];
 }
 function postboxRouteKey(){
-  return getBreelandRouteDestinations().join("|");
+  return getBreelandRouteDestinations().sort().join("|");
 }
 function resetPostboxChecksForChangedRoute(){
   const key = postboxRouteKey();
@@ -1724,41 +1177,43 @@ function renderPostboxReminder(){
     postboxAlertEl.className = "postbox-alert";
     return;
   }
-  const row = document.createElement("div");
-  row.className = "postbox-row";
-  const label = document.createElement("label");
-  label.className = "postbox-check-label";
-  const checkbox = document.createElement("input");
-  checkbox.type = "checkbox";
-  checkbox.checked = allPostboxesAcknowledged();
-  checkbox.addEventListener("change", ()=>{
-    destinations.forEach(location=>{ postboxChecks[location] = checkbox.checked; });
-    renderPostboxReminder();
+  destinations.forEach(location=>{
+    const row = document.createElement("div");
+    row.className = "postbox-row";
+    const label = document.createElement("label");
+    label.className = "postbox-check-label";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = !!postboxChecks[location];
+    checkbox.addEventListener("change", ()=>{
+      postboxChecks[location] = checkbox.checked;
+      renderPostboxReminder();
+    });
+    const text = document.createElement("span");
+    text.textContent = location + " — postbak gecontroleerd";
+    label.append(checkbox, text);
+    row.appendChild(label);
+    postboxRowsEl.appendChild(row);
   });
-  const text = document.createElement("span");
-  text.textContent = formatPostboxQuestion(destinations);
-  label.append(checkbox, text);
-  row.appendChild(label);
-  postboxRowsEl.appendChild(row);
   const done = allPostboxesAcknowledged();
   postboxAlertEl.className = "postbox-alert active" + (done ? " acknowledged" : "");
 }
 function ensurePostboxesAcknowledged(){
   if(allPostboxesAcknowledged()) return true;
-  alert("Bevestig eerst de postbakvraag voor de resterende Breeland-vestigingen.");
+  alert("Bevestig eerst de postbakcontrole voor iedere Breeland-vestiging op deze route.");
   return false;
 }
 function updateReview(){
   reviewBoxEl.innerHTML = buildReviewHtml();
-  const activeNavigation = validateActiveRide(getActiveRide());
-  const showActiveSegment = !!(activeNavigation && !activeNavigation.legacy && ["ready_to_navigate","en_route"].includes(activeNavigation.active.phase));
-  const showMaps = showActiveSegment || !!(fromEl.value.trim() && toEl.value.trim());
+  const showMaps = !!(fromEl.value.trim() && toEl.value.trim());
   const hasStops = !!stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).length;
   renderPostboxReminder();
   $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
-  $("mapsGoogleBtn").style.display = showMaps ? "inline-flex" : "none";
+  $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "none";
   $("copyFlitsBtn").style.display = showMaps ? "inline-block" : "none";
-  $("rotterdamEndBlock").style.display = "none";
+  $("rotterdamEndBlock").style.display = "block";
+  $("saveTripBtn").style.display = hasStops ? "none" : "inline-block";
+  $("saveRouteBtn").style.display = hasStops ? "inline-block" : "none";
   updateDayReminder();
 }
 function renderStep(){
@@ -1770,30 +1225,9 @@ function renderStep(){
   progressFillEl.style.width = (((currentStep + 1)/ALL_STEPS.length) * 100) + "%";
   prevBtnEl.disabled = currentStep === 0;
   nextBtnEl.textContent = currentStep === ALL_STEPS.length - 1 ? "Klaar" : "Volgende";
-  if(currentStep === 2 && !departureTimeTouched) timeStartEl.value = now();
-  if(currentStep === 3){
-    readCurrentTripAloud();
-  }else{
-    stopConfirmationAudio();
-  }
-  if(currentStep === 4){
-    const activeNavigation = validateActiveRide(getActiveRide());
-    updateActiveNavigationView(activeNavigation);
-    $("arrivedActionBlock").style.display = activeNavigation && !activeNavigation.legacy && activeNavigation.active.phase === "en_route" ? "flex" : "none";
-  }
   updateReview();
 }
 function nextStep(){
-  if(currentStep === 0 && !normalizePlate(plateEl.value)){
-    alert("Vul eerst een kenteken in."); return;
-  }
-  if(currentStep === 1 && (!fromEl.value.trim() || !toEl.value.trim())){
-    alert("Vul eerst Van en Naar in."); return;
-  }
-  if(currentStep === 3){
-    confirmCurrentTrip("Volgende-knop");
-    return;
-  }
   if(currentStep < ALL_STEPS.length - 1){
     currentStep += 1;
     renderStep();
@@ -1853,144 +1287,93 @@ function clearDraftSavedStatus(){
   editStatusEl.classList.remove("saved-ok");
   if(!editingTripId) editStatusEl.textContent = "";
 }
-function buildRouteSegments(info){
-  let points = [normalizeLocation(fromEl.value), ...getStopsList(), normalizeLocation(toEl.value)];
-  points = points.filter((point,index)=>index===0 || point!==points[index-1]);
-  const segments = [];
-  for(let i=0;i<points.length-1;i++){
-    segments.push(buildTripObject(null, info.vehicleText, info.priceText, points[i], points[i+1]));
-  }
-  return {points, segments, tripIds:segments.map(t=>t.id), finalTripId:segments.length ? segments[segments.length-1].id : ""};
-}
-
-async function confirmCurrentTrip(source){
-  if(confirmationInProgress || currentDraftSaved) return;
-  if(!editingTripId && getActiveRide()){
-    alert("Rond eerst de actieve rit af voordat je een nieuwe rit opslaat.");
-    showActiveRideState();
+$("saveTripBtn").addEventListener("click", async ()=>{
+  if(!ensurePostboxesAcknowledged()) return;
+  const info = await lookupPlate();
+  const existing = editingTripId ? trips.find(t=>t.id===editingTripId) : null;
+  const trip = buildTripObject(existing ? existing.id : null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
+  if(!validateTrip(trip)){
+    alert("Vul datum, starttijd, van, naar en kenteken in.");
     return;
   }
-  if(!ensurePostboxesAcknowledged()) return;
-  const base = buildTripObject(editingTripId, "", "", fromEl.value, toEl.value);
-  if(!validateTrip(base)){
-    alert("Vul datum, vertrektijd, van, naar en kenteken in."); return;
-  }
-  confirmationInProgress = true;
-  const previousTrips = trips.map(t=>({...t}));
-  const previousPlates = [...plates];
-  const previousAddresses = [...addressHistory];
-  const previousMeta = JSON.parse(JSON.stringify(appMeta));
-  $("saveTripBtn").disabled = true;
-  confirmationStatusEl.textContent = "Rit veilig opslaan…";
-  stopConfirmationAudio();
-  try{
-    const info = await lookupPlate();
-    if(editingTripId){
-      const editIndex = trips.findIndex(t=>t.id===editingTripId);
-      if(editIndex === -1) throw new Error("De te bewerken rit is niet meer gevonden.");
-      const old = trips[editIndex];
-      trips[editIndex] = buildTripObject(old.id, info.vehicleText || old.vehicle, info.priceText || old.priceText, fromEl.value, toEl.value);
-      const active = getActiveRide();
-      if(active && active.finalTripId===old.id){
-        active.finalDestination = trips[editIndex].to;
-        active.plate = trips[editIndex].plate;
-        appMeta.activeRide = active;
-      }
-      editingTripId = null;
-      sortTrips();
-      await saveCriticalStateToDB();
-      renderTrips();
-      markDraftSaved("Bestaande rit bijgewerkt.");
-      confirmationStatusEl.textContent = "Bestaande rit bijgewerkt zonder een nieuwe rit aan te maken.";
-      setScreen("ritten");
+  savePlateToList(trip.plate);
+  saveCurrentAddressesToHistory();
+  if(editingTripId){
+    const editIndex = trips.findIndex(t => t.id === editingTripId);
+    if(editIndex === -1){
+      alert("De te bewerken rit is niet meer gevonden. Er is niets opgeslagen om een dubbele rit te voorkomen.");
       return;
     }
-    const route = buildRouteSegments(info);
-    if(!route.segments.length) throw new Error("Te weinig routepunten.");
-    trips = [...route.segments, ...trips];
-    plates = plates.filter(x=>normalizePlate(x)!==base.plate);
-    plates.unshift(base.plate);
-    plates = plates.slice(0,500);
-    saveAddressToHistory(fromEl.value);
-    saveAddressToHistory(toEl.value);
-    getStopsList().forEach(saveAddressToHistory);
-    const firstDeparture = route.points[0];
-    const firstDestinations = uniquePostboxDestinationsInRouteOrder(route.points.slice(1),firstDeparture);
-    const firstPostboxChecks = {};
-    if(firstDestinations.length && firstDestinations.every(location=>postboxChecks[location])){
-      firstPostboxChecks["0"] = {destinations:firstDestinations, confirmedAt:new Date().toISOString()};
-    }
-    setActiveRide({
-      flowVersion:2,
-      tripIds:route.tripIds,
-      finalTripId:route.finalTripId,
-      routePoints:route.points,
-      currentSegmentIndex:0,
-      phase:"ready_to_navigate",
-      currentLocation:firstDeparture,
-      nextDestination:route.points[1],
-      finalDestination:route.points[route.points.length-1],
-      departurePostboxChecks:firstPostboxChecks,
-      segmentArrivals:{},
-      plate:base.plate,
-      startedDate:base.date,
-      startedTime:base.timeStart,
-      createdAt:new Date().toISOString()
-    });
-    sortTrips();
-    await saveCriticalStateToDB();
-    clearShortcutHandoff();
-    renderPlateButtons();
-    renderAddressHistoryButtons();
-    renderManagementTables();
-    renderTrips();
-    markDraftSaved("Rit opgeslagen. Navigatie is nu beschikbaar.");
-    confirmationStatusEl.textContent = "Rit en actieve status opgeslagen via " + source + ".";
-    closeArrivalPrompt();
-    currentStep = 4;
-    renderStep();
-  }catch(e){
-    trips = previousTrips;
-    plates = previousPlates;
-    addressHistory = previousAddresses;
-    appMeta = previousMeta;
-    renderTrips();
-    confirmationStatusEl.textContent = "Opslaan mislukt. Er is geen navigatie gestart.";
-    alert("Opslaan mislukt: " + e.message);
-  }finally{
-    confirmationInProgress = false;
-    if(!currentDraftSaved) $("saveTripBtn").disabled = false;
+    trips[editIndex] = trip;
+    editingTripId = null;
+    $("cancelEditBtn").style.display = "none";
+  } else {
+    trips.push(trip);
   }
-}
-$("saveTripBtn").addEventListener("click", ()=>confirmCurrentTrip("JA-knop"));
-$("confirmNoBtn").addEventListener("click", ()=>{
-  stopConfirmationAudio();
-  confirmationStatusEl.textContent = "Gegevens behouden. Pas aan wat niet klopt.";
-  currentStep = 1;
-  renderStep();
+  sortTrips();
+  await saveAllToDB();
+  renderTrips();
+  markDraftSaved("Rit bijgewerkt en opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
+});
+$("saveRouteBtn").addEventListener("click", async ()=>{
+  if(!ensurePostboxesAcknowledged()) return;
+  const p = normalizePlate(plateEl.value);
+  if(!dateEl.value || !timeStartEl.value || !fromEl.value || !toEl.value || !p){
+    alert("Vul datum, starttijd, van, naar en kenteken in.");
+    return;
+  }
+  const info = await lookupPlate();
+  let points = [normalizeLocation(fromEl.value), ...stopsEl.value.split(",").map(s=>normalizeLocation(s.trim())).filter(Boolean), normalizeLocation(toEl.value)];
+  points = points.filter((p,i)=>i===0 || p!==points[i-1]);
+  if(points.length < 2){
+    alert("Te weinig routepunten.");
+    return;
+  }
+  if(editingTripId){
+    if(!confirm("Je staat in bewerkmodus. Route met tussenstops opslaan maakt meerdere nieuwe ritten. Doorgaan?")) return;
+    editingTripId = null;
+  }
+  savePlateToList(p);
+  saveCurrentAddressesToHistory();
+  const optionalEndTime = String(timeEndRotterdamEl.value || "").trim();
+  const newTrips = [];
+  for(let i=0;i<points.length-1;i++){
+    newTrips.push({
+      id: createTripId(),
+      date: dateEl.value || today(),
+      timeStart: timeStartEl.value,
+      timeEnd: (optionalEndTime && i === points.length - 2) ? optionalEndTime : "",
+      from: points[i],
+      to: points[i+1],
+      plate: p,
+      vehicle: info.vehicleText || "",
+      priceText: info.priceText || "",
+      odometer: String(odometerEl.value || "").trim()
+    });
+  }
+  trips = [...newTrips, ...trips];
+  sortTrips();
+  saveAll();
+  renderTrips();
+  markDraftSaved("Route met tussenstops opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
 });
 
 function clearForm(){
-  clearShortcutHandoff();
-  const activeRide = getActiveRide();
-  const activeRideDeparture = activeRide ? fromEl.value : "";
   clearDraftSavedStatus();
   dateEl.value = dateEl.value || today();
   timeStartEl.value = now();
   timeEndRotterdamEl.value = "";
   plateEl.value = "";
   odometerEl.value = "";
-  fromEl.value = activeRide ? activeRideDeparture : getLastReachedDestination();
+  fromEl.value = "";
   toEl.value = "";
   stopsEl.value = "";
   rdwInfoEl.textContent = "";
-  currentPlateInfo = {plate:"", vehicleText:"", priceText:""};
   editingTripId = null;
   postboxChecks = {};
   $("cancelEditBtn").style.display = "none";
   updatePlateStyle();
   currentStep = 0;
-  departureTimeTouched = false;
   renderStep();
 }
 $("cancelEditBtn").addEventListener("click", clearForm);
@@ -2017,21 +1400,6 @@ $("saveWorkdayBtn").addEventListener("click", ()=>{
   saveWorkdayFromForm();
   alert("Werkdag opgeslagen.");
 });
-$("startWorkdayNowBtn").addEventListener("click", async ()=>{
-  const d = today();
-  const existing = dayData[d] || {};
-  dayData[d] = {workStart:existing.workStart || now(), workEnd:existing.workEnd || ""};
-  await saveAllToDB();
-  loadWorkdayForm(d); renderWorkdays(); updateWorkdayBanner(); updateReview();
-});
-$("finishWorkdayNowBtn").addEventListener("click", async ()=>{
-  const d = today();
-  const existing = dayData[d] || {};
-  dayData[d] = {workStart:existing.workStart || "", workEnd:now()};
-  await saveAllToDB();
-  loadWorkdayForm(d); renderWorkdays(); updateWorkdayBanner(); updateReview();
-});
-$("openWorkdayBtn").addEventListener("click", ()=>{ loadWorkdayForm(today()); setScreen("werkdag"); });
 $("clearWorkdayBtn").addEventListener("click", ()=>{
   workStartEl.value = "";
   workEndEl.value = "";
@@ -2050,11 +1418,6 @@ const quickEditEndEl = document.getElementById("quickEditEnd");
 const quickEditOdometerEl = document.getElementById("quickEditOdometer");
 
 function openQuickTripEdit(id){
-  const active = getActiveRide();
-  if(active && active.flowVersion === 2 && active.tripIds.includes(id)){
-    alert("Rond de actieve opdracht eerst af voordat je een gekoppeld segment snel wijzigt.");
-    return;
-  }
   const t = trips.find(x=>x.id===id);
   if(!t){
     alert("De gekozen rit kon niet worden gevonden.");
@@ -2073,189 +1436,6 @@ function openQuickTripEdit(id){
 function closeQuickTripEdit(){
   quickEditOverlayEl.classList.remove("active");
   quickEditTripId = null;
-}
-
-function validateActiveRide(active){
-  if(!active || !Array.isArray(active.tripIds) || !active.tripIds.length || !active.finalTripId) return null;
-  const linked = active.tripIds.map(id=>trips.find(t=>t.id===id)).filter(Boolean);
-  const finalTrip = trips.find(t=>t.id===active.finalTripId);
-  if(!finalTrip || linked.length!==active.tripIds.length) return null;
-  if(active.flowVersion !== 2) return {active, linked, finalTrip, legacy:true};
-  const index = Number(active.currentSegmentIndex);
-  if(!Number.isInteger(index) || index < 0 || index >= linked.length) return null;
-  if(!Array.isArray(active.routePoints) || active.routePoints.length !== linked.length + 1) return null;
-  const currentTrip = linked[index];
-  if(normalizeLocation(currentTrip.from) !== normalizeLocation(active.routePoints[index]) || normalizeLocation(currentTrip.to) !== normalizeLocation(active.routePoints[index+1])) return null;
-  return {active, linked, finalTrip, currentTrip, index, legacy:false, isFinal:index===linked.length-1};
-}
-function closeSegmentPostboxPrompt(){ segmentPostboxOverlayEl.classList.remove("active"); }
-function showSegmentPostboxPrompt(validated){
-  if(!validated || validated.legacy || validated.active.phase !== "awaiting_departure_postbox") return;
-  const destinations = getActivePostboxDestinations(validated);
-  if(!destinations.length) return;
-  segmentPostboxTextEl.textContent = formatPostboxQuestion(destinations);
-  segmentPostboxOverlayEl.classList.add("active");
-}
-function updateActiveNavigationView(validated){
-  if(!activeSegmentTextEl) return;
-  if(!validated || validated.legacy){ activeSegmentTextEl.textContent = ""; return; }
-  activeSegmentTextEl.textContent = "Volgende etappe: " + validated.currentTrip.from + " → " + validated.currentTrip.to;
-}
-function showActiveNavigationScreen(validated){
-  closeArrivalPrompt();
-  closeSegmentPostboxPrompt();
-  updateActiveNavigationView(validated);
-  $("arrivedActionBlock").style.display = validated.active.phase === "en_route" ? "flex" : "none";
-  currentStep = 4;
-  setScreen("invoer");
-  renderStep();
-}
-function showActiveRideState(){
-  const rawActive = getActiveRide();
-  const validated = validateActiveRide(rawActive);
-  $("arrivedActionBlock").style.display = "none";
-  if(!validated){
-    if(rawActive && rawActive.flowVersion === 2){
-      alert("De actieve opdracht is niet volledig terug te vinden. Er zijn geen ritten of voortgang gewijzigd.");
-      return;
-    }
-    if(rawActive){
-      setActiveRide(null);
-      saveAllToDB().catch(e=>console.error("Ongeldige actieve rit opruimen mislukt",e));
-    }
-    return;
-  }
-  if(validated.legacy && validated.finalTrip.timeEnd){
-    setLastReachedDestination(validated.finalTrip.to);
-    setActiveRide(null);
-    saveAllToDB().catch(e=>console.error("Actieve rit afsluiten mislukt",e));
-    return;
-  }
-  if(!validated.legacy && validated.active.phase === "awaiting_departure_postbox"){
-    closeArrivalPrompt();
-    showSegmentPostboxPrompt(validated);
-    return;
-  }
-  if(!validated.legacy && ["ready_to_navigate","en_route"].includes(validated.active.phase)){
-    showActiveNavigationScreen(validated);
-    return;
-  }
-  if(!validated.legacy) return;
-  showArrivalPrompt();
-}
-function showArrivalPrompt(){
-  const validated = validateActiveRide(getActiveRide());
-  if(!validated || (!validated.legacy && validated.active.phase !== "en_route")) return;
-  closeSegmentPostboxPrompt();
-  arrivalRouteTextEl.textContent = validated.legacy
-    ? "Uiteindelijke bestemming: " + (validated.active.finalDestination || validated.finalTrip.to || "-")
-    : "Etappe: " + validated.currentTrip.from + " → " + validated.currentTrip.to;
-  arrivalTimeEl.value = now();
-  arrivalOdometerEl.value = validated.finalTrip.odometer || "";
-  const showOdometer = mandatoryOdoPlates.includes(normalizePlate(validated.active.plate)) && (validated.legacy || validated.isFinal);
-  arrivalOdometerBlockEl.style.display = showOdometer ? "block" : "none";
-  $("finishActiveRideBtn").textContent = !validated.legacy && !validated.isFinal ? "Etappe afronden" : "Opdracht afronden";
-  arrivalOverlayEl.classList.add("active");
-}
-function closeArrivalPrompt(){ arrivalOverlayEl.classList.remove("active"); }
-function restoreActiveRideAfterForeground(){
-  const validated = validateActiveRide(getActiveRide());
-  if(validated && !validated.legacy) closeArrivalPrompt();
-  showActiveRideState();
-}
-async function confirmSegmentPostbox(){
-  if(activeTransitionInProgress) return;
-  const validated = validateActiveRide(getActiveRide());
-  if(!validated || validated.legacy || validated.active.phase !== "awaiting_departure_postbox") return;
-  const destinations = getActivePostboxDestinations(validated);
-  if(!destinations.length) return;
-  activeTransitionInProgress = true;
-  $("confirmSegmentPostboxBtn").disabled = true;
-  const previousMeta = JSON.parse(JSON.stringify(appMeta));
-  const previousStart = validated.currentTrip.timeStart;
-  try{
-    const checks = {...(validated.active.departurePostboxChecks || {})};
-    checks[String(validated.index)] = {destinations,confirmedAt:new Date().toISOString()};
-    validated.active.departurePostboxChecks = checks;
-    validated.active.phase = "ready_to_navigate";
-    validated.currentTrip.timeStart = now();
-    appMeta.activeRide = validated.active;
-    await saveCriticalStateToDB();
-    closeSegmentPostboxPrompt();
-    updateActiveNavigationView(validateActiveRide(getActiveRide()));
-    currentStep = 4;
-    setScreen("invoer");
-    renderStep();
-  }catch(e){
-    validated.currentTrip.timeStart = previousStart;
-    appMeta = previousMeta;
-    alert("Postbakbevestiging kon niet worden opgeslagen: " + e.message);
-  }finally{
-    activeTransitionInProgress = false;
-    $("confirmSegmentPostboxBtn").disabled = false;
-  }
-}
-async function finishActiveRide(){
-  if(activeTransitionInProgress) return;
-  const validated = validateActiveRide(getActiveRide());
-  if(!validated){ closeArrivalPrompt(); alert("De actieve rit kon niet veilig worden gevonden."); return; }
-  const endTime = String(arrivalTimeEl.value||"").trim();
-  const mandatory = mandatoryOdoPlates.includes(normalizePlate(validated.active.plate));
-  const odometer = String(arrivalOdometerEl.value||"").replace(/[^0-9]/g,"");
-  if(!/^\d{2}:\d{2}$/.test(endTime)){ alert("Vul een geldige aankomsttijd in."); return; }
-  if(mandatory && (validated.legacy || validated.isFinal) && (!odometer || Number(odometer)<=0 || odometer.length>8)){
-    alert("Vul een geldige eind-km-stand in, alleen cijfers."); return;
-  }
-  activeTransitionInProgress = true;
-  $("finishActiveRideBtn").disabled = true;
-  const previousTrips = trips.map(t=>({...t}));
-  const previousMeta = JSON.parse(JSON.stringify(appMeta));
-  try{
-    if(validated.legacy){
-      validated.finalTrip.timeEnd = endTime;
-      if(mandatory) validated.linked.forEach(t=>{ t.odometer = odometer; });
-      setLastReachedDestination(validated.active.finalDestination || validated.finalTrip.to);
-      setActiveRide(null);
-    }else{
-      validated.currentTrip.timeEnd = endTime;
-      const arrivals = {...(validated.active.segmentArrivals || {})};
-      arrivals[String(validated.index)] = {location:validated.currentTrip.to, arrivedAt:endTime, confirmedAt:new Date().toISOString()};
-      validated.active.segmentArrivals = arrivals;
-      if(validated.isFinal){
-        if(mandatory) validated.linked.forEach(t=>{ t.odometer = odometer; });
-        setLastReachedDestination(validated.currentTrip.to);
-        setActiveRide(null);
-      }else{
-        const nextIndex = validated.index + 1;
-        const nextTrip = validated.linked[nextIndex];
-        validated.active.currentSegmentIndex = nextIndex;
-        validated.active.currentLocation = nextTrip.from;
-        validated.active.nextDestination = nextTrip.to;
-        const futurePostboxes = uniquePostboxDestinationsInRouteOrder(validated.active.routePoints.slice(nextIndex+1),nextTrip.from);
-        validated.active.phase = futurePostboxes.length ? "awaiting_departure_postbox" : "ready_to_navigate";
-        if(validated.active.phase === "ready_to_navigate") nextTrip.timeStart = now();
-        appMeta.activeRide = validated.active;
-      }
-    }
-    await saveCriticalStateToDB();
-    renderTrips();
-    closeArrivalPrompt();
-    if(getActiveRide()){
-      showActiveRideState();
-    }else{
-      clearForm();
-      setScreen("invoer");
-      editStatusEl.classList.add("saved-ok");
-      editStatusEl.textContent = "Rit afgerond. De volgende rit vertrekt standaard vanaf " + fromEl.value + ".";
-    }
-  }catch(e){
-    trips = previousTrips;
-    appMeta = previousMeta;
-    alert("Afronden mislukt: " + e.message);
-  }finally{
-    activeTransitionInProgress = false;
-    $("finishActiveRideBtn").disabled = false;
-  }
 }
 
 async function saveQuickTripEdit(){
@@ -2277,11 +1457,6 @@ async function saveQuickTripEdit(){
   }
   t.timeEnd = endTime;
   t.odometer = odometer;
-  const active = getActiveRide();
-  if(active && active.flowVersion !== 2 && active.finalTripId===t.id && endTime){
-    setLastReachedDestination(t.to);
-    setActiveRide(null);
-  }
   try{
     await saveAllToDB();
     renderTrips();
@@ -2362,11 +1537,6 @@ tripTableEl.addEventListener("click", e=>{
   const id = btn.dataset.id;
   // Snel wijzigen wordt rechtstreeks aan de knop gekoppeld in renderTrips().
   if(btn.dataset.action === "edit"){
-    const active = getActiveRide();
-    if(active && active.flowVersion === 2 && active.tripIds.includes(id)){
-      alert("Rond de actieve opdracht eerst af voordat je een gekoppeld segment bewerkt.");
-      return;
-    }
     const t = trips.find(x=>x.id===id);
     if(!t) return;
     dateEl.value = t.date || today();
@@ -2379,7 +1549,6 @@ tripTableEl.addEventListener("click", e=>{
     stopsEl.value = "";
     rdwInfoEl.textContent = (t.plate || "") + (t.vehicle ? " — " + t.vehicle : "") + (t.priceText ? " — Nieuwprijs: " + t.priceText : "");
     editingTripId = t.id;
-    departureTimeTouched = true;
     postboxChecks = {};
     $("cancelEditBtn").style.display = "inline-block";
     editStatusEl.textContent = "Je bewerkt nu een bestaande rit.";
@@ -2391,8 +1560,6 @@ tripTableEl.addEventListener("click", e=>{
   }
   if(btn.dataset.action === "delete"){
     if(!confirm("Deze rit verwijderen?")) return;
-    const active = getActiveRide();
-    if(active && active.tripIds.includes(id)) setActiveRide(null);
     trips = trips.filter(x=>x.id !== id);
     saveAll();
     renderTrips();
@@ -2672,10 +1839,7 @@ plateEl.addEventListener("input", ()=>{
 fromEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(fromEl, fromSuggestionsEl); updateReview(); });
 toEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(toEl, toSuggestionsEl); updateReview(); });
 stopsEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(stopsEl, stopsSuggestionsEl, true); updateReview(); });
-[timeStartEl, timeEndRotterdamEl, odometerEl].forEach(el=>el.addEventListener("input", ()=>{
-  if(el===timeStartEl) departureTimeTouched = true;
-  clearDraftSavedStatus(); updateReview();
-}));
+[timeStartEl, timeEndRotterdamEl, odometerEl].forEach(el=>el.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateReview(); }));
 [plateEl, fromEl, toEl, stopsEl].forEach(el=>el.addEventListener("blur", ()=>setTimeout(()=>{
   plateSuggestionsEl.classList.remove("visible"); fromSuggestionsEl.classList.remove("visible");
   toSuggestionsEl.classList.remove("visible"); stopsSuggestionsEl.classList.remove("visible");
@@ -2693,31 +1857,28 @@ stdPlateTableEl.addEventListener("click", e=>{
   if(btn && btn.dataset.plateDelete) deleteStandardPlate(btn.dataset.plateDelete);
 });
 
-function getNavigationRoute(){
-  const validated = validateActiveRide(getActiveRide());
-  if(validated && !validated.legacy){
-    return {from:resolveMapAddress(validated.currentTrip.from),to:resolveMapAddress(validated.currentTrip.to),stops:[],validated};
+$("mapsAppleBtn").addEventListener("click", ()=>{
+  const { from, to, stops } = getRoutePointsForMaps();
+  if(!from || !to){
+    alert("Vul eerst Van en Naar in.");
+    return;
   }
-  return {...getRoutePointsForMaps(),validated};
-}
-async function prepareSegmentNavigation(validated){
-  if(!validated || validated.legacy) return true;
-  if(validated.active.phase === "en_route") return true;
-  if(activeTransitionInProgress || validated.active.phase !== "ready_to_navigate") return false;
-  activeTransitionInProgress = true;
-  const previousMeta = JSON.parse(JSON.stringify(appMeta));
-  try{
-    validated.active.phase = "en_route";
-    appMeta.activeRide = validated.active;
-    await saveCriticalStateToDB();
-    return true;
-  }catch(e){
-    appMeta = previousMeta;
-    alert("Navigatie kan niet starten omdat de actieve etappe niet kon worden opgeslagen: " + e.message);
-    return false;
-  }finally{ activeTransitionInProgress = false; }
-}
-function buildGoogleMapsHttpsUrl(from, to, stops){
+  if(stops.length){
+    alert("Waze kan vanuit deze app geen volledige route met meerdere tussenstops ontvangen. Gebruik voor routes met tussenstops Google Maps, of open Waze voor de eerstvolgende bestemming.");
+    return;
+  }
+  const wazeUrl =
+    "https://waze.com/ul?q=" + encodeURIComponent(to) +
+    "&navigate=yes&utm_source=rittenapp";
+
+  window.location.href = wazeUrl;
+});
+$("mapsGoogleBtn").addEventListener("click", ()=>{
+  const { from, to, stops } = getRoutePointsForMaps();
+  if(!from || !to){
+    alert("Vul eerst Van en Naar in.");
+    return;
+  }
   let googleUrl =
     "https://www.google.com/maps/dir/?api=1" +
     "&origin=" + encodeURIComponent(from) +
@@ -2727,57 +1888,10 @@ function buildGoogleMapsHttpsUrl(from, to, stops){
   if(stops.length){
     googleUrl += "&waypoints=" + encodeURIComponent(stops.join("|"));
   }
-  return googleUrl;
-}
-function isIOSDevice(){
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-}
-function buildGoogleMapsLaunchUrl(from, to, stops){
-  if(!isIOSDevice()) return buildGoogleMapsHttpsUrl(from, to, stops);
-  return "comgooglemaps://?saddr=" + encodeURIComponent(from) +
-    "&daddr=" + encodeURIComponent(to) +
-    "&directionsmode=driving";
-}
-$("mapsAppleBtn").addEventListener("click", async ()=>{
-  const { from, to, stops, validated } = getNavigationRoute();
-  if(!from || !to){
-    alert("Vul eerst Van en Naar in.");
-    return;
-  }
-  if(stops.length){
-    alert("Waze kan vanuit deze app geen volledige route met meerdere tussenstops ontvangen. Gebruik voor routes met tussenstops Google Maps, of open Waze voor de eerstvolgende bestemming.");
-    return;
-  }
-  if(!(await prepareSegmentNavigation(validated))) return;
-  const wazeUrl =
-    "https://waze.com/ul?q=" + encodeURIComponent(to) +
-    "&navigate=yes&utm_source=rittenapp";
-
-  window.location.href = wazeUrl;
-});
-$("mapsGoogleBtn").addEventListener("click", ()=>{
-  const { from, to, stops, validated } = getNavigationRoute();
-  if(!from || !to){
-    alert("Vul eerst Van en Naar in.");
-    return;
-  }
-  if(validated && !validated.legacy && (activeTransitionInProgress || !["ready_to_navigate","en_route"].includes(validated.active.phase))){
-    return;
-  }
-  const googleUrl = buildGoogleMapsLaunchUrl(from, to, stops);
-  const phaseChanged = !!(validated && !validated.legacy && validated.active.phase === "ready_to_navigate");
-  if(phaseChanged){
-    validated.active.phase = "en_route";
-    appMeta.activeRide = validated.active;
-  }
   window.location.href = googleUrl;
-  if(phaseChanged){
-    saveCriticalStateToDB().catch(e=>console.error("Navigatiefase opslaan mislukt",e));
-  }
 });
 $("copyFlitsBtn").addEventListener("click", async ()=>{
-  const { to } = getNavigationRoute();
+  const { to } = getRoutePointsForMaps();
   if(!to){
     alert("Geen bestemming gevonden.");
     return;
@@ -2794,19 +1908,6 @@ $("voiceFromBtn").addEventListener("click", ()=>startRecognition(t => applySpeec
 $("voiceToBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(toEl, t)));
 $("voiceStopsBtn").addEventListener("click", ()=>startRecognition(t => applySpeechToField(stopsEl, t, true)));
 $("voiceRouteBtn").addEventListener("click", ()=>startRecognition(fillSmartRouteFromTranscript));
-$("shortcutRouteBtn").addEventListener("click", startRouteShortcut);
-$("readAloudBtn").addEventListener("click", readCurrentTripAloud);
-$("arrivalNotYetBtn").addEventListener("click", closeArrivalPrompt);
-$("arrivedBtn").addEventListener("click", showArrivalPrompt);
-$("finishActiveRideBtn").addEventListener("click", finishActiveRide);
-$("segmentPostboxNotYetBtn").addEventListener("click", closeSegmentPostboxPrompt);
-$("confirmSegmentPostboxBtn").addEventListener("click", confirmSegmentPostbox);
-document.addEventListener("visibilitychange", ()=>{
-  if(document.visibilityState === "visible"){
-    updateDayReminder();
-    restoreActiveRideAfterForeground();
-  }
-});
 
 async function bootApp(){
   dateEl.value = today();
@@ -2821,8 +1922,6 @@ async function bootApp(){
   sortTrips();
   await saveAllToDB();
 
-  const shortcutHandled = await processShortcutCallback();
-
   loadWorkdayForm(today());
   updatePlateStyle();
   updateReview();
@@ -2832,9 +1931,7 @@ async function bootApp(){
   renderManagementTables();
   renderTrips();
   renderWorkdays();
-  if(!shortcutHandled) renderStep();
-  updateWorkdayBanner();
-  if(getActiveRide()) setTimeout(restoreActiveRideAfterForeground, 100);
+  renderStep();
   setInterval(updateDayReminder, 60000);
 }
 bootApp().catch(err=>{
