@@ -1627,14 +1627,11 @@ function combineTripsForExport(currentTrips){
 
   (currentTrips||[]).forEach(trip=>{
     const id = String(trip?.id||"").trim();
-    if(id){
-      if(seenIds.has(id)) return;
-      seenIds.add(id);
-    }else{
-      const key = exportFallbackKey(trip||{});
-      if(seenFallback.has(key)) return;
-    }
-    seenFallback.add(exportFallbackKey(trip||{}));
+    const key = exportFallbackKey(trip||{});
+    if(id && seenIds.has(id)) return;
+    if(seenFallback.has(key)) return;
+    if(id) seenIds.add(id);
+    seenFallback.add(key);
     combined.push({...trip,distanceKm:exportDistance(trip||{})});
   });
 
