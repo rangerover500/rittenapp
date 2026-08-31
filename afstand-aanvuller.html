@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Afstand-aanvuller voor Rittenapp</title>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root{color-scheme:light;--ink:#172033;--muted:#60708a;--line:#dce3ee;--accent:#1769e0;--ok:#137333;--warn:#9a6700;--bad:#b3261e;--panel:#fff;--bg:#f4f7fb}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    main{width:min(1040px,calc(100% - 28px));margin:28px auto 56px}.hero,.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px rgba(35,55,90,.07)}
+    .hero{padding:24px}.panel{margin-top:18px;padding:22px}h1{margin:0 0 8px;font-size:clamp(1.55rem,4vw,2.25rem)}h2{margin:0 0 14px;font-size:1.2rem}p{margin:8px 0}.privacy{margin-top:18px;padding:13px 15px;border-left:5px solid var(--accent);background:#edf5ff;font-weight:700}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.field{display:flex;flex-direction:column;gap:7px}label{font-weight:700}input{width:100%;padding:11px 12px;border:1px solid #aebbd0;border-radius:9px;font:inherit;background:#fff}button{border:0;border-radius:9px;padding:11px 16px;background:var(--accent);color:#fff;font:700 15px/1.2 inherit;cursor:pointer}button.secondary{background:#34445f}button:disabled{cursor:not-allowed;opacity:.52}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:17px}
+    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}.metric{padding:12px;border-radius:10px;background:#f1f4f9}.metric strong{display:block;font-size:1.35rem}.muted{color:var(--muted)}.message{margin-top:14px;padding:11px 13px;border-radius:9px;background:#f1f4f9}.message.ok{background:#e9f7ee;color:var(--ok)}.message.error{background:#fcebea;color:var(--bad)}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:700px}th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{position:sticky;top:0;background:#edf2f8}tr:last-child td{border-bottom:0}.status-ok{color:var(--ok);font-weight:700}.status-wait{color:var(--warn);font-weight:700}.status-error{color:var(--bad);font-weight:700}@media(max-width:680px){.grid,.summary{grid-template-columns:1fr}.hero,.panel{padding:17px}main{margin-top:14px}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <h1>Afstand-aanvuller</h1>
+    <p>Vul uitsluitend ontbrekende rijafstanden in een Rittenapp-export aan. Het oorspronkelijke bestand blijft behouden; bij opslaan wordt een nieuw Excelbestand gemaakt.</p>
+    <p class="privacy">De Google API-key wordt niet opgeslagen. De key wordt alleen in deze geopende sessie gebruikt en komt niet in het Excelbestand terecht.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="invoer-kop">
+    <h2 id="invoer-kop">1. Bestand en API-key</h2>
+    <div class="grid">
+      <div class="field">
+        <label for="excelFile">Rittenapp-export (.xlsx)</label>
+        <input id="excelFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+      </div>
+      <div class="field">
+        <label for="apiKey">Google Maps JavaScript API-key</label>
+        <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Alleen nodig voor nog onbekende routes">
+      </div>
+    </div>
+    <div class="actions">
+      <button id="calculateButton" type="button" disabled>Ontbrekende afstanden aanvullen</button>
+      <button id="saveButton" class="secondary" type="button" disabled>Nieuw Excelbestand opslaan</button>
+    </div>
+    <div id="message" class="message" role="status" aria-live="polite">Kies eerst een Excelbestand.</div>
+    <div id="summary" class="summary" hidden></div>
+  </section>
+
+  <section class="panel" aria-labelledby="resultaten-kop">
+    <h2 id="resultaten-kop">2. Ontbrekende ritafstanden</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Datum</th><th>Van</th><th>Naar</th><th>Afstand</th><th>Status</th></tr></thead>
+        <tbody id="results"><tr><td colspan="5" class="muted">Nog geen bestand ingelezen.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const SHEET_NAME = "Ritten";
+  const REQUIRED_HEADERS = ["Datum", "Van", "Naar", "Afstand (km)"];
+  const excelFile = document.getElementById("excelFile");
+  const apiKey = document.getElementById("apiKey");
+  const calculateButton = document.getElementById("calculateButton");
+  const saveButton = document.getElementById("saveButton");
+  const message = document.getElementById("message");
+  const summary = document.getElementById("summary");
+  const results = document.getElementById("results");
+
+  let workbook = null;
+  let worksheet = null;
+  let sheetData = [];
+  let analysis = null;
+  let missingTrips = [];
+  let sourceFileName = "rittenapp-export.xlsx";
+  let googleLoader = null;
+
+  function normalize(value) {
+    return String(value == null ? "" : value).trim().toLowerCase();
+  }
+
+  function isBlank(value) {
+    return value == null || String(value).trim() === "";
+  }
+
+  function numericDistance(value) {
+    if (isBlank(value)) return null;
+    const number = typeof value === "number" ? value : Number(String(value).replace(",", "."));
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function routeKey(from, to) {
+    return `${normalize(from)}\u0000${normalize(to)}`;
+  }
+
+  function findHeaderRow(rows) {
+    return rows.findIndex(row => REQUIRED_HEADERS.every(header => row.some(cell => normalize(cell) === normalize(header))));
+  }
+
+  function analyzeRows(rows) {
+    const headerRowIndex = findHeaderRow(rows);
+    if (headerRowIndex < 0) throw new Error(`De kolommen ${REQUIRED_HEADERS.join(", ")} zijn niet allemaal gevonden.`);
+    const headers = rows[headerRowIndex];
+    const columns = Object.fromEntries(REQUIRED_HEADERS.map(header => [header, headers.findIndex(cell => normalize(cell) === normalize(header))]));
+    const trips = [];
+    const knownRoutes = new Map();
+
+    rows.slice(headerRowIndex + 1).forEach((row, offset) => {
+      const rowIndex = headerRowIndex + 1 + offset;
+      const date = row[columns["Datum"]];
+      const from = row[columns["Van"]];
+      const to = row[columns["Naar"]];
+      if (isBlank(date) || isBlank(from) || isBlank(to)) return;
+      const distance = row[columns["Afstand (km)"]];
+      const trip = { rowIndex, date, from, to, distance, initiallyBlank: isBlank(distance) };
+      trips.push(trip);
+      const number = numericDistance(distance);
+      if (number !== null && !knownRoutes.has(routeKey(from, to))) knownRoutes.set(routeKey(from, to), number);
+    });
+
+    return { headerRowIndex, columns, trips, knownRoutes };
+  }
+
+  function mayRequestGoogle(key) {
+    return String(key || "").trim().length > 0;
+  }
+
+  function roundKilometres(value) {
+    return Math.round((Number(value) + Number.EPSILON) * 10) / 10;
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[character]));
+  }
+
+  function showMessage(text, kind = "") {
+    message.textContent = text;
+    message.className = `message ${kind}`.trim();
+  }
+
+  function setDistance(trip, value) {
+    const column = analysis.columns["Afstand (km)"];
+    if (!trip.initiallyBlank || !isBlank(sheetData[trip.rowIndex][column])) return false;
+    const rounded = roundKilometres(value);
+    const address = XLSX.utils.encode_cell({ r: trip.rowIndex, c: column });
+    const previous = worksheet[address] || {};
+    worksheet[address] = { ...previous, t: "n", v: rounded };
+    delete worksheet[address].f;
+    delete worksheet[address].w;
+    sheetData[trip.rowIndex][column] = rounded;
+    trip.distance = rounded;
+    return true;
+  }
+
+  function renderResults() {
+    if (!missingTrips.length) {
+      results.innerHTML = '<tr><td colspan="5" class="status-ok">Alle echte ritten hebben al een afstand.</td></tr>';
+      return;
+    }
+    results.innerHTML = missingTrips.map(trip => `
+      <tr>
+        <td>${escapeHtml(trip.date)}</td>
+        <td>${escapeHtml(trip.from)}</td>
+        <td>${escapeHtml(trip.to)}</td>
+        <td>${trip.distance == null ? "—" : `${escapeHtml(trip.distance.toFixed(1))} km`}</td>
+        <td class="status-${trip.statusKind}">${escapeHtml(trip.status)}</td>
+      </tr>`).join("");
+  }
+
+  function renderSummary() {
+    const unresolved = missingTrips.filter(trip => trip.distance == null).length;
+    const filled = missingTrips.length - unresolved;
+    summary.hidden = false;
+    summary.innerHTML = `
+      <div class="metric"><span class="muted">Echte ritten</span><strong>${analysis.trips.length}</strong></div>
+      <div class="metric"><span class="muted">Ontbrak bij inlezen</span><strong>${missingTrips.length}</strong></div>
+      <div class="metric"><span class="muted">Ingevuld / nog leeg</span><strong>${filled} / ${unresolved}</strong></div>`;
+  }
+
+  function fillKnownRoutes() {
+    for (const trip of missingTrips) {
+      const known = analysis.knownRoutes.get(routeKey(trip.from, trip.to));
+      if (known == null) continue;
+      if (setDistance(trip, known)) {
+        trip.status = "Ingevuld uit bestaande gerichte route";
+        trip.statusKind = "ok";
+      }
+    }
+  }
+
+  function loadGoogleMaps(key) {
+    if (window.google?.maps?.DirectionsService) return Promise.resolve();
+    if (googleLoader) return googleLoader;
+    googleLoader = new Promise((resolve, reject) => {
+      const callbackName = `__afstandAanvullerGoogleReady_${Date.now()}`;
+      const script = document.createElement("script");
+      window[callbackName] = () => {
+        delete window[callbackName];
+        script.remove();
+        resolve();
+      };
+      script.async = true;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=${encodeURIComponent(callbackName)}`;
+      script.onerror = () => {
+        delete window[callbackName];
+        script.remove();
+        googleLoader = null;
+        reject(new Error("Google Maps JavaScript API kon niet worden geladen."));
+      };
+      document.head.appendChild(script);
+    });
+    return googleLoader;
+  }
+
+  function requestDrivingDistance(service, from, to) {
+    return new Promise((resolve, reject) => {
+      service.route({ origin: String(from), destination: String(to), travelMode: google.maps.TravelMode.DRIVING }, (response, status) => {
+        const metres = response?.routes?.[0]?.legs?.[0]?.distance?.value;
+        if (status === google.maps.DirectionsStatus.OK && Number.isFinite(metres)) resolve(metres / 1000);
+        else reject(new Error(`Google-status: ${status || "onbekend"}`));
+      });
+    });
+  }
+
+  function updateExistingTotal() {
+    const totalRowIndex = sheetData.findIndex((row, index) => index > analysis.headerRowIndex && row.some(cell => normalize(cell) === "totaal"));
+    if (totalRowIndex < 0) return false;
+    const distanceColumn = analysis.columns["Afstand (km)"];
+    const total = roundKilometres(analysis.trips.reduce((sum, trip) => sum + (numericDistance(sheetData[trip.rowIndex][distanceColumn]) || 0), 0));
+    const address = XLSX.utils.encode_cell({ r: totalRowIndex, c: distanceColumn });
+    const previous = worksheet[address] || {};
+    worksheet[address] = { ...previous, t: "n", v: total };
+    delete worksheet[address].w;
+    const firstTripRow = Math.min(...analysis.trips.map(trip => trip.rowIndex)) + 1;
+    const lastTripRow = Math.max(...analysis.trips.map(trip => trip.rowIndex)) + 1;
+    worksheet[address].f = `SUM(${XLSX.utils.encode_col(distanceColumn)}${firstTripRow}:${XLSX.utils.encode_col(distanceColumn)}${lastTripRow})`;
+    sheetData[totalRowIndex][distanceColumn] = total;
+    return true;
+  }
+
+  excelFile.addEventListener("change", async () => {
+    const file = excelFile.files?.[0];
+    workbook = worksheet = analysis = null;
+    sheetData = [];
+    missingTrips = [];
+    calculateButton.disabled = true;
+    saveButton.disabled = true;
+    summary.hidden = true;
+    if (!file) return showMessage("Kies eerst een Excelbestand.");
+    try {
+      const bytes = await file.arrayBuffer();
+      workbook = XLSX.read(bytes, { type: "array", cellStyles: true, cellFormula: true, cellDates: true });
+      if (!workbook.SheetNames.includes(SHEET_NAME)) throw new Error(`Werkblad “${SHEET_NAME}” ontbreekt.`);
+      worksheet = workbook.Sheets[SHEET_NAME];
+      sheetData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: true });
+      analysis = analyzeRows(sheetData);
+      sourceFileName = file.name;
+      missingTrips = analysis.trips.filter(trip => trip.initiallyBlank).map(trip => ({ ...trip, distance: null, status: "Google nodig", statusKind: "wait" }));
+      fillKnownRoutes();
+      renderResults();
+      renderSummary();
+      calculateButton.disabled = !missingTrips.some(trip => trip.distance == null);
+      saveButton.disabled = false;
+      showMessage(`${analysis.trips.length} echte ritten gevonden; ${missingTrips.length} ritafstanden waren leeg.`, "ok");
+    } catch (error) {
+      workbook = worksheet = analysis = null;
+      results.innerHTML = '<tr><td colspan="5" class="muted">Bestand kon niet worden ingelezen.</td></tr>';
+      showMessage(error.message || "Bestand kon niet worden ingelezen.", "error");
+    }
+  });
+
+  calculateButton.addEventListener("click", async () => {
+    const unresolved = missingTrips.filter(trip => trip.distance == null);
+    if (!unresolved.length) return showMessage("Er zijn geen onbekende routes meer.", "ok");
+    const key = apiKey.value.trim();
+    if (!mayRequestGoogle(key)) return showMessage("Vul eerst een Google Maps JavaScript API-key in. Er is geen Google-request gedaan.", "error");
+    calculateButton.disabled = true;
+    saveButton.disabled = true;
+    try {
+      await loadGoogleMaps(key);
+      const service = new google.maps.DirectionsService();
+      for (const trip of unresolved) {
+        trip.status = "Wordt berekend…";
+        trip.statusKind = "wait";
+        renderResults();
+        try {
+          const kilometres = await requestDrivingDistance(service, trip.from, trip.to);
+          setDistance(trip, kilometres);
+          trip.status = "Berekend met Google";
+          trip.statusKind = "ok";
+        } catch (error) {
+          trip.status = error.message || "Google kon deze route niet berekenen";
+          trip.statusKind = "error";
+        }
+        renderResults();
+        renderSummary();
+      }
+      showMessage("Berekening afgerond. Mislukte routes zijn leeg gebleven; het bestand kan nu worden opgeslagen.", "ok");
+    } catch (error) {
+      showMessage(error.message || "Google Maps kon niet worden gestart.", "error");
+    } finally {
+      calculateButton.disabled = !missingTrips.some(trip => trip.distance == null);
+      saveButton.disabled = false;
+    }
+  });
+
+  saveButton.addEventListener("click", () => {
+    if (!workbook || !worksheet || !analysis) return;
+    updateExistingTotal();
+    const base = sourceFileName.replace(/\.xlsx$/i, "");
+    XLSX.writeFile(workbook, `${base}_afstanden_aangevuld.xlsx`, { compression: true });
+    showMessage("Het nieuwe Excelbestand is gemaakt. Het ingelezen bestand is niet gewijzigd.", "ok");
+  });
+
+  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, routeKey, findHeaderRow, analyzeRows, mayRequestGoogle, roundKilometres };
+})();
+</script>
+</body>
+</html>
