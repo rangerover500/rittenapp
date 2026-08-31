@@ -39,6 +39,7 @@ button{cursor:pointer}
 .btn-primary{background:#000;color:#fff}
 .btn-secondary{background:#eceff5;color:#111;border:1px solid #d7dce8}
 .btn-secondary:disabled{opacity:.45}
+.btn-link{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 .btn-map{background:#1a73e8;color:#fff}
 .btn-edit{background:#fff3cd;color:#222;border:1px solid #e0c36c}
 .btn-delete{background:#f8d7da;color:#222;border:1px solid #d9a3aa}
@@ -359,8 +360,10 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     <div class="fileblock">
       <div class="toolbar">
         <button type="button" class="btn-primary" id="exportBtn">Export Excel</button>
+        <a class="btn-secondary btn-link" href="./afstand-aanvuller.html">Afstanden aanvullen</a>
         <button type="button" class="btn-secondary" id="wipeBtn">Alles wissen</button>
       </div>
+      <div class="small">Vul later ontbrekende kilometers in</div>
 
       <label style="margin-top:12px;">Kies bestaand totaalbestand (optioneel)</label>
       <input type="file" id="masterFile" accept=".xlsx,.xls">
