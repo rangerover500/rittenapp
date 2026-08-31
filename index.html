@@ -1626,6 +1626,8 @@ function combineTripsForExport(currentTrips){
   const seenFallback = new Set(combined.map(exportFallbackKey));
 
   (currentTrips||[]).forEach(trip=>{
+    const date = String(trip?.date||"").trim();
+    if(!date || date <= "2026-08-27") return;
     const id = String(trip?.id||"").trim();
     const key = exportFallbackKey(trip||{});
     if(id && seenIds.has(id)) return;
