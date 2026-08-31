@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Rittenapp">
+<title>Ritten Breeland v48 kandidaat</title>
+<style>
+  html,body{margin:0;width:100%;height:100%;background:#f4f6fb;font-family:Arial,sans-serif}
+  #legacyApp{display:block;width:100%;height:100dvh;border:0;background:#f4f6fb}
+  #bootOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#f4f6fb;z-index:99999;padding:24px;text-align:center;color:#222}
+  #bootOverlay.error{color:#8b0000;background:#fff0f0}
+  #bootText{max-width:520px;line-height:1.5}
+</style>
+</head>
+<body>
+<div id="bootOverlay"><div id="bootText">Rittenapp wordt voorbereid…</div></div>
+<iframe id="legacyApp" src="./index.html" title="Rittenapp v46 basis"></iframe>
+
+<script>
+"use strict";
+
+/*
+  RITTENAPP v48 KANDIDAAT - AUDIO-OPNAME + TRANSCRIPTIE BOVENOP ONGEWIJZIGDE v46
+  --------------------------------------------------------------
+  Doel:
+  - v46 blijft de opslag-/beheer-/exportbasis.
+  - Nieuwe invoer: kenteken + één routezin + algemene postbakvraag.
+  - Alleen Google Maps vanuit de nieuwe flow.
+  - Geen wijziging aan DB schema of stores.
+  - Nieuwe flow navigeert pas nadat de bestaande v46 database-write klaar is.
+*/
+
+const VERSION = "v48 KANDIDAAT · AUDIO-TRANSCRIPTIE";
+const TRANSCRIBE_URL = "https://rittenapp-transcribe.rittenapp-v48-pakket.workers.dev";
+const WORKER_KEY_STORAGE = "rittenapp_v48_worker_key";
+const frame = document.getElementById("legacyApp");
+const bootOverlay = document.getElementById("bootOverlay");
+const bootText = document.getElementById("bootText");
+
+let childWin = null;
+let childDoc = null;
+let currentParsed = null;
+let routeRecognition = null;
+let answerRecognition = null;
+let busy = false;
+let speechSaveInProgress = false;
+let plateTouched = false;
+let plateButtonsObserver = null;
+
+const REQUIRED_IDS = [
+  "screen-invoer","date","timeStart","plate","plateButtons","rdwInfo",
+  "from","to","stops","saveTripBtn","saveRouteBtn","postboxRows",
+  "editStatus","mapsAppleBtn","mapsGoogleBtn","copyFlitsBtn","cancelEditBtn"
+];
+const REQUIRED_FUNCTIONS = [
+  "normalizeLocation","updateReview","lookupPlate","saveAllToDB",
+  "getRoutePointsForMaps","clearDraftSavedStatus","clearForm","now","today"
+];
+
+function failBoot(message){
+  bootOverlay.classList.add("error");
+  bootText.innerHTML = "<strong>Veilig gestopt.</strong><br>" + escapeHtml(message) +
+    "<br><br>De bestaande v46 is niet gewijzigd.";
+}
+
+function escapeHtml(value){
+  return String(value ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/\"/g,"&quot;")
+    .replace(/'/g,"&#39;");
+}
+
+function pad2(n){ return String(n).padStart(2,"0"); }
+function currentTime(){
+  const d = new Date();
+  return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+}
+
+function normalizeKnownLocation(value){
+  const original = String(value || "").trim();
+  const t = original.toLowerCase().replace(/\s+/g," ");
+
+  const hasBreeland = /\b(breeland|bree ?land|brie ?land)\b/.test(t);
+  if(hasBreeland && t.includes("rotterdam")) return "Breeland Rotterdam";
+  if(hasBreeland && t.includes("dordrecht")) return "Breeland Dordrecht";
+  if(hasBreeland && /den\s*haag/.test(t)) return "Breeland Den Haag";
+  if(hasBreeland && t.includes("brielle")) return "Breeland Brielle";
+
+  if(t.includes("carwash") || t.includes("wasstraat") || (t.includes("capelle") && !hasBreeland)) return "Carwash Capelle";
+  if(t.includes("perfect") || t.includes("carwrapping") || t.includes("car wrapping")) return "Perfect Carwrapping";
+  if(/\babs\b/.test(t) || t.includes("den elzen") || t.includes("de elzen")) return "ABS den Elzen";
+
+  // Als v46 de locatie al kent, krijgt v46 het laatste woord.
+  try{
+    if(childWin && typeof childWin.normalizeLocation === "function"){
+      return childWin.normalizeLocation(original);
+    }
+  }catch(_){ }
+  return original;
+}
+
+function cleanSpeech(value){
+  return String(value || "")
+    .replace(/[!?;]+/g," ")
+    .replace(/\.(?=\s|$)/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function normalizeSpokenTime(value){
+  let s = String(value || "").toLowerCase().trim();
+  s = s.replace(/\buur\b/g," ").replace(/\s+/g," ").trim();
+  s = s.replace(/\./g,":");
+
+  let m = s.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+  if(!m) return "";
+  const h = Number(m[1]);
+  const min = Number(m[2] || 0);
+  if(!Number.isInteger(h) || !Number.isInteger(min) || h < 0 || h > 23 || min < 0 || min > 59) return "";
+  return pad2(h) + ":" + pad2(min);
+}
+
+function extractDeparture(text){
+  let clean = cleanSpeech(text);
+
+  const nowPatterns = [
+    /\bvertrek(?:tijd)?\s*(?:is\s*)?nu\b/i,
+    /\bik\s+vertrek\s+nu\b/i,
+    /\bwe\s+vertrekken\s+nu\b/i
+  ];
+  for(const pattern of nowPatterns){
+    const m = clean.match(pattern);
+    if(m){
+      return {
+        time: currentTime(),
+        remaining: clean.replace(m[0]," ").replace(/\s+/g," ").trim()
+      };
+    }
+  }
+
+  const clockPatterns = [
+    /\bvertrek(?:tijd)?\s*(?:is\s*|om\s*)?(\d{1,2}(?:[:.]\d{1,2})?)\s*(?:uur)?\b/i,
+    /\bik\s+vertrek\s+om\s+(\d{1,2}(?:[:.]\d{1,2})?)\s*(?:uur)?\b/i,
+    /\bwe\s+vertrekken\s+om\s+(\d{1,2}(?:[:.]\d{1,2})?)\s*(?:uur)?\b/i
+  ];
+  for(const pattern of clockPatterns){
+    const m = clean.match(pattern);
+    if(m){
+      const time = normalizeSpokenTime(m[1]);
+      return {
+        time,
+        remaining: clean.replace(m[0]," ").replace(/\s+/g," ").trim()
+      };
+    }
+  }
+
+  return {time:"", remaining:clean};
+}
+
+function splitStops(value){
+  const clean = cleanSpeech(value)
+    .replace(/^\s*(?:via|met\s+als\s+tussenstops?|met\s+een\s+tussenstop|tussenstops?)\s+/i,"")
+    .trim();
+  if(!clean) return [];
+
+  return clean
+    .split(/\s*(?:,|\ben\s+daarna\b|\bdaarna\b|\bvervolgens\b|\bdan\b|\ben\b)\s*/i)
+    .map(v => normalizeKnownLocation(v.trim()))
+    .filter(Boolean);
+}
+
+function parseRouteTranscript(transcript){
+  const raw = cleanSpeech(transcript);
+  const departure = extractDeparture(raw);
+
+  let route = departure.remaining
+    .replace(/^\s*(?:ik\s+ga|we\s+gaan|ik\s+rij|we\s+rijden|rij)\s+/i,"")
+    .trim();
+
+  const routeMatch = route.match(/^van\s+(.+?)\s+naar\s+(.+)$/i);
+  if(!routeMatch){
+    return {ok:false, transcript:raw, from:"", to:"", stops:[], departure:departure.time,
+      error:'Ik vind niet duidelijk "van … naar …" in de zin.'};
+  }
+
+  const fromPart = routeMatch[1].trim();
+  const afterTo = routeMatch[2].trim();
+  let toPart = afterTo;
+  let stopsPart = "";
+
+  const marker = afterTo.match(/\s+(?:met\s+als\s+tussenstops?|met\s+een\s+tussenstop|via|tussenstops?)\s+/i);
+  if(marker && Number.isInteger(marker.index)){
+    toPart = afterTo.slice(0,marker.index).trim();
+    stopsPart = afterTo.slice(marker.index + marker[0].length).trim();
+  }
+
+  const from = normalizeKnownLocation(fromPart);
+  const to = normalizeKnownLocation(toPart);
+  const stops = stopsPart ? splitStops(stopsPart) : [];
+
+  if(!from || !to){
+    return {ok:false, transcript:raw, from, to, stops, departure:departure.time,
+      error:"Van of Naar is niet betrouwbaar herkend."};
+  }
+  if(!departure.time){
+    return {ok:false, transcript:raw, from, to, stops, departure:"",
+      error:'De route is herkend, maar de vertrektijd niet. Zeg bijvoorbeeld "Vertrek is nu".'};
+  }
+
+  return {ok:true, transcript:raw, from, to, stops, departure:departure.time, error:""};
+}
+
+function classifyYesNo(transcript){
+  const t = cleanSpeech(transcript).toLowerCase();
+  // Negatief eerst, zodat "nee, nog niet" nooit per ongeluk positief wordt.
+  if(/\b(nee|neen|niet|nog niet)\b/.test(t)) return "no";
+  if(/\b(ja|jazeker|zeker|klopt|gedaan)\b/.test(t)) return "yes";
+  return "unknown";
+}
+
+function getSupportedAudioMimeType(){
+  const candidates = [
+    "audio/mp4",
+    "audio/webm;codecs=opus",
+    "audio/webm"
+  ];
+  return candidates.find(t => window.MediaRecorder?.isTypeSupported?.(t)) || "";
+}
+
+async function recordClip(button,label,maxMs=20000){
+  if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder){
+    throw new Error("Audio-opname wordt door deze browser niet ondersteund.");
+  }
+  let stream;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({audio:true});
+  }catch(error){
+    throw new Error("Microfoontoegang geweigerd of niet beschikbaar: " + (error?.name || error?.message || error));
+  }
+
+  const mimeType = getSupportedAudioMimeType();
+  const options = mimeType ? {mimeType} : undefined;
+  const recorder = new MediaRecorder(stream,options);
+  const chunks = [];
+  let timer;
+
+  const result = new Promise((resolve,reject)=>{
+    recorder.ondataavailable = e=>{ if(e.data?.size) chunks.push(e.data); };
+    recorder.onerror = e=>reject(new Error("Audio-opname mislukt: " + (e.error?.message || "onbekende fout")));
+    recorder.onstop = ()=>{
+      clearTimeout(timer);
+      stream.getTracks().forEach(t=>t.stop());
+      const type = recorder.mimeType || mimeType || "audio/mp4";
+      const blob = new Blob(chunks,{type});
+      if(!blob.size) reject(new Error("De opname bevat geen geluid."));
+      else resolve(blob);
+    };
+  });
+
+  button.disabled = false;
+  button.dataset.recording = "1";
+  button.textContent = "⏹ Stop opname";
+  setStatus(label + " Luisteren… tik Stop als je klaar bent.");
+  button.onclick = ()=>{ if(recorder.state === "recording") recorder.stop(); };
+  recorder.start(250);
+  timer = setTimeout(()=>{ if(recorder.state === "recording") recorder.stop(); },maxMs);
+
+  try{ return await result; }
+  finally{
+    button.dataset.recording = "0";
+    button.onclick = null;
+    button.disabled = false;
+  }
+}
+
+function getWorkerKey(){
+  let key = "";
+  try{ key = localStorage.getItem(WORKER_KEY_STORAGE) || ""; }catch(_){ }
+  if(!key){
+    key = String(prompt("Voer eenmalig de spraakcode in:") || "").trim();
+    if(key){ try{ localStorage.setItem(WORKER_KEY_STORAGE,key); }catch(_){ } }
+  }
+  return key;
+}
+
+async function transcribeAudio(blob){
+  if(!TRANSCRIBE_URL || TRANSCRIBE_URL.includes("__TRANSCRIBE_URL__")){
+    throw new Error("Transcriptiedienst is nog niet geconfigureerd.");
+  }
+  const ext = blob.type.includes("mp4") ? "m4a" : blob.type.includes("webm") ? "webm" : "wav";
+  const fd = new FormData();
+  fd.append("file",blob,"rit." + ext);
+  const workerKey = getWorkerKey();
+  if(!workerKey) throw new Error("Geen spraakcode ingevoerd.");
+  const response = await fetch(TRANSCRIBE_URL,{method:"POST",body:fd,credentials:"omit",headers:{"X-Rittenapp-Key":workerKey}});
+  let data = null;
+  try{ data = await response.json(); }catch(_){ }
+  if(!response.ok){
+    throw new Error(data?.error || ("Transcriptie mislukt (HTTP " + response.status + ")."));
+  }
+  const text = String(data?.text || "").trim();
+  if(!text) throw new Error("De transcriptiedienst gaf geen tekst terug.");
+  return text;
+}
+
+function setBusy(value){
+  busy = !!value;
+  ["speechRouteBtn","speechYesBtn","speechNoBtn","speechAnswerBtn"].forEach(id=>{
+    const el = childDoc?.getElementById(id);
+    if(el && el.dataset.recording !== "1") el.disabled = busy;
+  });
+}
+
+function setStatus(message,type=""){
+  const el = childDoc?.getElementById("speechFlowStatus");
+  if(!el) return;
+  el.textContent = message;
+  el.className = "speech-flow-status" + (type ? " " + type : "");
+}
+
+function say(text){
+  try{
+    const synth = childWin?.speechSynthesis || window.speechSynthesis;
+    const Utterance = childWin?.SpeechSynthesisUtterance || window.SpeechSynthesisUtterance;
+    if(!synth || !Utterance) return;
+    synth.cancel();
+    const utterance = new Utterance(text);
+    utterance.lang = "nl-NL";
+    synth.speak(utterance);
+  }catch(_){ }
+}
+
+function renderParsed(parsed){
+  const box = childDoc.getElementById("speechParsedBox");
+  childDoc.getElementById("speechTranscript").textContent = parsed?.transcript || "-";
+  childDoc.getElementById("speechFrom").textContent = parsed?.from || "-";
+  childDoc.getElementById("speechTo").textContent = parsed?.to || "-";
+  childDoc.getElementById("speechStops").textContent = parsed?.stops?.length ? parsed.stops.join(", ") : "Geen";
+  childDoc.getElementById("speechDeparture").textContent = parsed?.departure || "-";
+  box.style.display = "block";
+}
+
+function hideConfirmation(){ childDoc?.getElementById("speechPostboxConfirm") && (childDoc.getElementById("speechPostboxConfirm").style.display="none"); }
+function showConfirmation(){
+  childDoc.getElementById("speechPostboxConfirm").style.display = "block";
+  setStatus("Route is herkend. Beantwoord nu de postbakvraag.","ok");
+  say("Postbakken gecontroleerd?");
+}
+
+function syncPlateFromCompact(){
+  const compact = childDoc.getElementById("speechPlate");
+  const legacy = childDoc.getElementById("plate");
+  const value = String(compact?.value || "").toUpperCase().replace(/[^A-Z0-9]/g,"").trim();
+  legacy.value = value; compact.value = value;
+  try{ childWin.updatePlateStyle?.(); }catch(_){ }
+  return value;
+}
+function selectRecentPlate(value){ plateTouched=true; const c=childDoc.getElementById("speechPlate"); c.value=String(value||"").toUpperCase().replace(/[^A-Z0-9]/g,""); syncPlateFromCompact(); renderRecentPlates(); }
+function getRecentPlateLabels(){ return [...new Set([...childDoc.querySelectorAll("#plateButtons button")].map(b=>String(b.textContent||"").trim()).filter(Boolean))].slice(0,8); }
+function renderRecentPlates(){
+  const host=childDoc.getElementById("speechPlateChoices"), current=String(childDoc.getElementById("speechPlate")?.value||""); host.innerHTML="";
+  for(const plate of getRecentPlateLabels()){ const btn=childDoc.createElement("button"); btn.type="button"; btn.className="speech-plate-choice"+(plate.replace(/[^A-Z0-9]/g,"")===current?" selected":""); btn.textContent=plate; btn.addEventListener("click",()=>selectRecentPlate(plate)); host.appendChild(btn); }
+}
+function prefillPlate(){ const c=childDoc.getElementById("speechPlate"), l=childDoc.getElementById("plate"); let v=String(l.value||"").trim(); if(!v){const r=getRecentPlateLabels(); if(r.length)v=r[0];} c.value=v.replace(/[^A-Z0-9]/gi,"").toUpperCase(); syncPlateFromCompact(); renderRecentPlates(); }
+function observeRecentPlates(){
+  const source=childDoc.getElementById("plateButtons"); if(!source||!childWin.MutationObserver)return; try{plateButtonsObserver?.disconnect?.();}catch(_){}
+  plateButtonsObserver=new childWin.MutationObserver(()=>{const recent=getRecentPlateLabels(), c=childDoc.getElementById("speechPlate"); if(!plateTouched&&recent.length&&c){c.value=recent[0].replace(/[^A-Z0-9]/gi,"").toUpperCase();syncPlateFromCompact();} renderRecentPlates();});
+  plateButtonsObserver.observe(source,{childList:true,subtree:true,characterData:true});
+}
+function resetLegacyForSpeech(plate){ childWin.clearForm(); const l=childDoc.getElementById("plate"); l.value=String(plate||"").toUpperCase().replace(/[^A-Z0-9]/g,""); try{childWin.updatePlateStyle?.();}catch(_){} }
+function applyParsedToLegacy(parsed){ childDoc.getElementById("date").value=childWin.today(); childDoc.getElementById("timeStart").value=parsed.departure; childDoc.getElementById("from").value=parsed.from; childDoc.getElementById("to").value=parsed.to; childDoc.getElementById("stops").value=parsed.stops.join(", "); childDoc.getElementById("odometer")&&(childDoc.getElementById("odometer").value=""); try{childWin.clearDraftSavedStatus();}catch(_){} try{childWin.updateReview();}catch(_){} }
+function checkAllLegacyPostboxes(){ childWin.updateReview(); const checks=[...childDoc.querySelectorAll("#postboxRows input[type='checkbox']")]; checks.forEach(cb=>{if(!cb.checked){cb.checked=true;cb.dispatchEvent(new childWin.Event("change",{bubbles:true}));}}); return checks.length; }
+function buildGoogleUrl(){ const route=childWin.getRoutePointsForMaps(); if(!route?.from||!route?.to)throw new Error("Google Maps-route mist Van of Naar."); let url="https://www.google.com/maps/dir/?api=1&origin="+encodeURIComponent(route.from)+"&destination="+encodeURIComponent(route.to)+"&travelmode=driving&dir_action=navigate"; if(Array.isArray(route.stops)&&route.stops.length)url+="&waypoints="+encodeURIComponent(route.stops.join("|")); return url; }
+function waitForSaved(timeoutMs=20000,getAlertText=null){ const start=Date.now(); return new Promise((resolve,reject)=>{const timer=setInterval(()=>{const alertText=typeof getAlertText==="function"?String(getAlertText()||""):""; if(alertText){clearInterval(timer);reject(new Error(alertText));return;} const status=String(childDoc.getElementById("editStatus")?.textContent||"").toLowerCase(); const tripDisabled=!!childDoc.getElementById("saveTripBtn")?.disabled, routeDisabled=!!childDoc.getElementById("saveRouteBtn")?.disabled; if((tripDisabled&&routeDisabled)||status.includes("opgeslagen")){clearInterval(timer);resolve();} else if(Date.now()-start>timeoutMs){clearInterval(timer);reject(new Error("Opslaan gaf niet tijdig een bevestiging."));}},80);}); }
+
+async function saveAndOpenGoogle(){
+  if(busy||!currentParsed?.ok)return; const plate=syncPlateFromCompact(); if(!plate){setStatus("Kies of vul eerst een kenteken in.","error");return;}
+  setBusy(true); speechSaveInProgress=true; setStatus("Rit wordt gecontroleerd en opgeslagen…"); applyParsedToLegacy(currentParsed); checkAllLegacyPostboxes();
+  let legacyAlert="", lastDbPromise=null; const originalAlert=childWin.alert, originalSaveAllToDB=childWin.saveAllToDB; childWin.alert=m=>{legacyAlert=String(m||"");};
+  childWin.saveAllToDB=function(...args){const promise=Promise.resolve(originalSaveAllToDB.apply(childWin,args));lastDbPromise=promise;return promise;};
+  try{const hasStops=currentParsed.stops.length>0, saveBtn=childDoc.getElementById(hasStops?"saveRouteBtn":"saveTripBtn"); if(!saveBtn)throw new Error("De bestaande opslagknop van v46 ontbreekt."); saveBtn.disabled=false; saveBtn.click(); await waitForSaved(20000,()=>legacyAlert); if(lastDbPromise)await lastDbPromise; else await originalSaveAllToDB.call(childWin); if(legacyAlert)throw new Error(legacyAlert); const googleUrl=buildGoogleUrl(); setStatus("Rit is opgeslagen. Google Maps wordt geopend.","ok"); childWin.alert=originalAlert; childWin.saveAllToDB=originalSaveAllToDB; speechSaveInProgress=false; setBusy(false); window.location.href=googleUrl;}
+  catch(error){childWin.alert=originalAlert;childWin.saveAllToDB=originalSaveAllToDB;speechSaveInProgress=false;setStatus("Niet gestart: "+(error?.message||String(error)),"error");setBusy(false);}
+}
+function cancelCurrentRoute(){ if(busy)return; hideConfirmation(); const plate=String(childDoc.getElementById("speechPlate")?.value||""); resetLegacyForSpeech(plate); currentParsed=null; setStatus("Nee ontvangen. Er is niets opgeslagen en geen navigatie gestart.","neutral"); say("Rit niet gestart."); }
+
+async function startAnswerRecognition(){
+  if(busy)return; const btn=childDoc.getElementById("speechAnswerBtn"); setBusy(true);
+  try{ const blob=await recordClip(btn,"Spreek alleen ja of nee in.",8000); btn.textContent="⏳ Antwoord verwerken…"; const transcript=await transcribeAudio(blob); childDoc.getElementById("speechAnswerText").textContent="Gehoord: “"+transcript+"”"; const answer=classifyYesNo(transcript); if(answer==="yes"){setBusy(false);await saveAndOpenGoogle();return;} if(answer==="no"){setBusy(false);cancelCurrentRoute();return;} setStatus('Ik hoorde geen duidelijk ja of nee. Gebruik de knoppen of spreek alleen “ja” of “nee” in.',"error"); }
+  catch(error){setStatus(error?.message||String(error),"error");}
+  finally{btn.textContent="🎤 Ja/nee inspreken";setBusy(false);}
+}
+
+async function startRouteRecognition(){
+  if(busy)return; const plate=syncPlateFromCompact(); if(!plate){setStatus("Kies of vul eerst een kenteken in.","error");return;} resetLegacyForSpeech(plate); currentParsed=null; hideConfirmation();
+  const btn=childDoc.getElementById("speechRouteBtn"); setBusy(true);
+  try{ const blob=await recordClip(btn,"Spreek de hele rit in.",20000); btn.textContent="⏳ Spraak verwerken…"; setStatus("Opname ontvangen. Spraak wordt omgezet naar tekst…"); const transcript=await transcribeAudio(blob); const parsed=parseRouteTranscript(transcript); currentParsed=parsed; renderParsed(parsed); if(parsed.ok){applyParsedToLegacy(parsed);showConfirmation();} else setStatus(parsed.error||"De routezin is niet duidelijk genoeg herkend.","error"); }
+  catch(error){setStatus(error?.message||String(error),"error");}
+  finally{btn.textContent="🎤 Spreek rit in";setBusy(false);}
+}
+
+function installStyles(){
+  const style = childDoc.createElement("style");
+  style.id = "speechFlowStyles";
+  style.textContent = `
+    #speechFlowCard{border:1px solid #d9deea;border-radius:14px;background:#fafbff;padding:16px;margin-bottom:16px}
+    #speechFlowCard h2{margin:0 0 5px;font-size:24px}
+    .speech-version{font-size:12px;color:#666;margin-bottom:14px}
+    .speech-plate-row{display:flex;gap:8px;align-items:stretch}
+    #speechPlate{flex:1;background:linear-gradient(to right,#003399 0,#003399 42px,rgb(248,171,4) 42px,rgb(248,171,4) 100%);padding-left:44px;letter-spacing:2px;text-align:center;border:2px solid #caa64f;font-weight:bold}
+    #speechPlateChoices{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 14px}
+    .speech-plate-choice{border:1px solid #d9deea;background:#f1f3f8;border-radius:8px;padding:9px 11px;font-size:13px}
+    .speech-plate-choice.selected{background:#000;color:#fff}
+    #speechRouteBtn{width:100%;min-height:66px;border:0;border-radius:12px;background:#000;color:#fff;font-size:20px;font-weight:bold}
+    #speechRouteBtn:disabled,.speech-confirm-buttons button:disabled{opacity:.5}
+    .speech-flow-status{margin-top:10px;padding:10px 12px;border:1px solid #d9deea;border-radius:9px;background:#fff;color:#333;line-height:1.4}
+    .speech-flow-status.ok{background:#e9f7e9;border-color:#8ac48a;color:#176b17}
+    .speech-flow-status.error{background:#fff0f0;border-color:#dfa6ae;color:#8b0000}
+    #speechParsedBox{display:none;margin-top:12px;background:#fff;border:1px solid #ddd;border-radius:10px;padding:11px;line-height:1.55}
+    .speech-parsed-line{display:grid;grid-template-columns:110px 1fr;gap:8px;border-bottom:1px solid #eee;padding:5px 0}
+    .speech-parsed-line:last-child{border-bottom:0}
+    .speech-parsed-label{font-weight:bold;color:#555}
+    #speechTranscript{font-weight:normal}
+    #speechPostboxConfirm{display:none;margin-top:14px;padding:14px;border:3px solid #c40000;border-radius:12px;background:#fff0f0}
+    #speechPostboxConfirm h3{margin:0 0 10px;color:#8b0000;font-size:21px}
+    .speech-confirm-buttons{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}
+    .speech-confirm-buttons button{min-height:54px;border:0;border-radius:10px;font-size:18px;font-weight:bold}
+    #speechYesBtn{background:#176b17;color:#fff}
+    #speechNoBtn{background:#b00020;color:#fff}
+    #speechAnswerBtn{width:100%;margin-top:9px;min-height:48px;border:1px solid #d7dce8;border-radius:10px;background:#fff;font-size:16px}
+    #speechAnswerText{font-size:13px;color:#555;margin-top:7px}
+    #legacyManual{margin-top:14px;border-top:1px solid #ddd;padding-top:12px}
+    #legacyManual summary{cursor:pointer;font-size:13px;color:#555;padding:7px 0}
+    #manualPostboxConfirm{margin:14px 0;padding:13px;border:2px solid #c40000;border-radius:10px;background:#fff0f0}
+    .manual-postbox-label{display:flex;align-items:center;gap:9px;margin:0;font-weight:bold}
+    .manual-postbox-label input{width:24px;min-height:24px;height:24px;flex:0 0 24px;accent-color:#278327}
+    #mapsAppleBtn,#copyFlitsBtn{display:none !important}
+    #postboxAlert{display:none !important}
+    .version strong{font-weight:bold}
+    @media(max-width:520px){
+      body{padding:10px}
+      .container{padding:12px;border-radius:10px}
+      .speech-parsed-line{grid-template-columns:95px 1fr}
+    }
+  `;
+  childDoc.head.appendChild(style);
+}
+
+function buildCompactUi(){
+  const screen = childDoc.getElementById("screen-invoer");
+  const wizard = screen.querySelector(".wizard");
+  if(!screen || !wizard) throw new Error("Invoerscherm/wizard van v46 niet gevonden.");
+
+  const card = childDoc.createElement("div");
+  card.id = "speechFlowCard";
+  card.innerHTML = `
+    <h2>Rit inspreken</h2>
+    <div class="speech-version">${VERSION}</div>
+
+    <label for="speechPlate">Kenteken</label>
+    <div class="speech-plate-row"><input id="speechPlate" autocomplete="off" inputmode="text" maxlength="10"></div>
+    <div id="speechPlateChoices"></div>
+
+    <button type="button" id="speechRouteBtn">🎤 Spreek rit in</button>
+    <div class="speech-flow-status" id="speechFlowStatus">Zeg bijvoorbeeld: “Ik ga van Breeland Rotterdam naar Breeland Den Haag met als tussenstop ABS den Elzen. Vertrek is nu.”</div>
+
+    <div id="speechParsedBox">
+      <div class="speech-parsed-line"><div class="speech-parsed-label">Gehoord</div><div id="speechTranscript">-</div></div>
+      <div class="speech-parsed-line"><div class="speech-parsed-label">Van</div><div id="speechFrom">-</div></div>
+      <div class="speech-parsed-line"><div class="speech-parsed-label">Naar</div><div id="speechTo">-</div></div>
+      <div class="speech-parsed-line"><div class="speech-parsed-label">Tussenstop(s)</div><div id="speechStops">-</div></div>
+      <div class="speech-parsed-line"><div class="speech-parsed-label">Vertrektijd</div><div id="speechDeparture">-</div></div>
+    </div>
+
+    <div id="speechPostboxConfirm">
+      <h3>Postbakken gecontroleerd?</h3>
+      <div class="speech-confirm-buttons">
+        <button type="button" id="speechYesBtn">Ja</button>
+        <button type="button" id="speechNoBtn">Nee</button>
+      </div>
+      <button type="button" id="speechAnswerBtn">🎤 Ja/nee inspreken</button>
+      <div id="speechAnswerText"></div>
+    </div>
+  `;
+
+  screen.insertBefore(card,wizard);
+
+  const details = childDoc.createElement("details");
+  details.id = "legacyManual";
+  const summary = childDoc.createElement("summary");
+  summary.textContent = "Handmatig invoeren / bestaande rit bewerken";
+  details.appendChild(summary);
+  wizard.parentNode.insertBefore(details,wizard);
+  details.appendChild(wizard);
+
+  // Ook de handmatige/bewerkflow gebruikt nog maar één algemene postbakbevestiging.
+  const oldPostbox = childDoc.getElementById("postboxAlert");
+  const manualPostbox = childDoc.createElement("div");
+  manualPostbox.id = "manualPostboxConfirm";
+  manualPostbox.innerHTML = '<label class="manual-postbox-label"><input type="checkbox" id="manualPostboxCheck"> <span>Postbakken gecontroleerd?</span></label>';
+  oldPostbox.parentNode.insertBefore(manualPostbox,oldPostbox);
+
+  ["saveTripBtn","saveRouteBtn"].forEach(id=>{
+    childDoc.getElementById(id).addEventListener("click",event=>{
+      if(speechSaveInProgress){
+        checkAllLegacyPostboxes();
+        return;
+      }
+      const checked = !!childDoc.getElementById("manualPostboxCheck")?.checked;
+      if(!checked){
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        childWin.alert("Postbakken gecontroleerd? Vink dit eerst aan.");
+        return;
+      }
+      checkAllLegacyPostboxes();
+    },true);
+  });
+
+  childDoc.getElementById("speechRouteBtn").addEventListener("click",startRouteRecognition);
+  childDoc.getElementById("speechYesBtn").addEventListener("click",saveAndOpenGoogle);
+  childDoc.getElementById("speechNoBtn").addEventListener("click",cancelCurrentRoute);
+  childDoc.getElementById("speechAnswerBtn").addEventListener("click",startAnswerRecognition);
+  childDoc.getElementById("speechPlate").addEventListener("input",()=>{
+    plateTouched = true;
+    syncPlateFromCompact();
+    renderRecentPlates();
+  });
+
+  // Bij bewerken blijft de bewezen v46-bewerkflow beschikbaar en klapt automatisch open.
+  childDoc.addEventListener("click",event=>{
+    const btn = event.target.closest?.('button[data-action="edit"]');
+    if(btn){
+      setTimeout(()=>{
+        details.open = true;
+        details.scrollIntoView({behavior:"smooth",block:"start"});
+      },50);
+    }
+  },true);
+}
+
+function verifyLegacy(){
+  const missingIds = REQUIRED_IDS.filter(id=>!childDoc.getElementById(id));
+  const missingFns = REQUIRED_FUNCTIONS.filter(name=>typeof childWin[name] !== "function");
+  if(missingIds.length || missingFns.length){
+    const parts = [];
+    if(missingIds.length) parts.push("elementen: " + missingIds.join(", "));
+    if(missingFns.length) parts.push("functies: " + missingFns.join(", "));
+    throw new Error("Deze kandidaat past niet veilig op de geladen v46 (" + parts.join("; ") + ").");
+  }
+}
+
+async function waitForLegacyReady(timeoutMs=12000){
+  const start = Date.now();
+  while(Date.now() - start < timeoutMs){
+    try{
+      childWin = frame.contentWindow;
+      childDoc = frame.contentDocument;
+      if(childDoc && childDoc.readyState === "complete" &&
+         childDoc.getElementById("screen-invoer") &&
+         typeof childWin.saveAllToDB === "function"){
+        // bootApp() is async; wacht tot datum is gezet als extra signaal.
+        if(childDoc.getElementById("date")?.value) return;
+      }
+    }catch(error){
+      throw new Error("v46 kan niet via dezelfde herkomst worden benaderd: " + error.message);
+    }
+    await new Promise(r=>setTimeout(r,100));
+  }
+  throw new Error("v46 werd niet volledig startklaar.");
+}
+
+async function install(){
+  await waitForLegacyReady();
+  verifyLegacy();
+  if(childDoc.getElementById("speechFlowCard")) return;
+
+  installStyles();
+  buildCompactUi();
+  prefillPlate();
+  observeRecentPlates();
+
+  const editStatus = childDoc.getElementById("editStatus");
+  if(editStatus && childWin.MutationObserver){
+    new childWin.MutationObserver(()=>{
+      if(editStatus.textContent.includes("Waze, Google Maps of Flitsmeister")){
+        editStatus.textContent = editStatus.textContent.replace("Waze, Google Maps of Flitsmeister","Google Maps");
+      }
+    }).observe(editStatus,{childList:true,subtree:true,characterData:true});
+  }
+
+  // Alleen Google Maps zichtbaar in de kandidaat; v46-functies zelf blijven onaangeroerd.
+  const versionBoxes = [...childDoc.querySelectorAll(".version")];
+  if(versionBoxes[0]){
+    const marker = childDoc.createElement("div");
+    marker.style.marginTop = "6px";
+    marker.innerHTML = "<strong>Kandidaat:</strong> " + VERSION + " (v46 opslagbasis ongewijzigd)";
+    versionBoxes[0].appendChild(marker);
+  }
+
+  bootOverlay.style.display = "none";
+}
+
+frame.addEventListener("load",()=>{
+  install().catch(error=>failBoot(error?.message || String(error)));
+});
+
+// Exporteer alleen voor geautomatiseerde tests. Heeft geen invloed op de app.
+window.__RITTENAPP_V48_TEST__ = {
+  cleanSpeech, normalizeSpokenTime, extractDeparture, splitStops,
+  parseRouteTranscript, classifyYesNo
+};
+</script>
+</body>
+</html>
