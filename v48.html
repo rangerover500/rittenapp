@@ -287,19 +287,35 @@ function getWorkerKey(){
   return key;
 }
 
+function clearWorkerKey(){
+  try{ localStorage.removeItem(WORKER_KEY_STORAGE); }catch(_){ }
+}
+
 async function transcribeAudio(blob){
   if(!TRANSCRIBE_URL || TRANSCRIBE_URL.includes("__TRANSCRIBE_URL__")){
     throw new Error("Transcriptiedienst is nog niet geconfigureerd.");
   }
   const ext = blob.type.includes("mp4") ? "m4a" : blob.type.includes("webm") ? "webm" : "wav";
-  const fd = new FormData();
-  fd.append("file",blob,"rit." + ext);
-  const workerKey = getWorkerKey();
+  const offer = async workerKey => {
+    const fd = new FormData();
+    fd.append("file",blob,"rit." + ext);
+    const response = await fetch(TRANSCRIBE_URL,{method:"POST",body:fd,credentials:"omit",headers:{"X-Rittenapp-Key":workerKey}});
+    let data = null;
+    try{ data = await response.json(); }catch(_){ }
+    return {response,data};
+  };
+
+  let workerKey = getWorkerKey();
   if(!workerKey) throw new Error("Geen spraakcode ingevoerd.");
-  const response = await fetch(TRANSCRIBE_URL,{method:"POST",body:fd,credentials:"omit",headers:{"X-Rittenapp-Key":workerKey}});
-  let data = null;
-  try{ data = await response.json(); }catch(_){ }
+  let {response,data} = await offer(workerKey);
+  if(response.status === 401){
+    clearWorkerKey();
+    workerKey = getWorkerKey();
+    if(!workerKey) throw new Error(data?.error || "Onjuiste spraakcode.");
+    ({response,data} = await offer(workerKey));
+  }
   if(!response.ok){
+    if(response.status === 401) clearWorkerKey();
     throw new Error(data?.error || ("Transcriptie mislukt (HTTP " + response.status + ")."));
   }
   const text = String(data?.text || "").trim();
@@ -611,7 +627,7 @@ frame.addEventListener("load",()=>{
 // Exporteer alleen voor geautomatiseerde tests. Heeft geen invloed op de app.
 window.__RITTENAPP_V48_TEST__ = {
   cleanSpeech, normalizeSpokenTime, extractDeparture, splitStops,
-  parseRouteTranscript, classifyYesNo
+  parseRouteTranscript, classifyYesNo, transcribeAudio
 };
 </script>
 </body>
