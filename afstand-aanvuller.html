@@ -239,6 +239,13 @@
     return true;
   }
 
+  function removeTemporaryDistanceCheckSheet(targetWorkbook) {
+    if (!targetWorkbook.SheetNames.includes("Afstand controle")) return false;
+    delete targetWorkbook.Sheets["Afstand controle"];
+    targetWorkbook.SheetNames = targetWorkbook.SheetNames.filter(name => name !== "Afstand controle");
+    return true;
+  }
+
   excelFile.addEventListener("change", async () => {
     const file = excelFile.files?.[0];
     workbook = worksheet = analysis = null;
@@ -308,12 +315,13 @@
   saveButton.addEventListener("click", () => {
     if (!workbook || !worksheet || !analysis) return;
     updateExistingTotal();
+    removeTemporaryDistanceCheckSheet(workbook);
     const base = sourceFileName.replace(/\.xlsx$/i, "");
     XLSX.writeFile(workbook, `${base}_afstanden_aangevuld.xlsx`, { compression: true });
     showMessage("Het nieuwe Excelbestand is gemaakt. Het ingelezen bestand is niet gewijzigd.", "ok");
   });
 
-  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, routeKey, findHeaderRow, analyzeRows, mayRequestGoogle, roundKilometres };
+  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, routeKey, findHeaderRow, analyzeRows, mayRequestGoogle, roundKilometres, removeTemporaryDistanceCheckSheet };
 })();
 </script>
 </body>
