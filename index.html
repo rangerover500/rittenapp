@@ -1623,13 +1623,24 @@ function exportDistance(trip){
   const number = Number(value);
   return Number.isFinite(number) ? number : "";
 }
+function normalizeExportDate(value){
+  const text = String(value||"").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if(!match) return "";
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year,month-1,day));
+  if(date.getUTCFullYear()!==year || date.getUTCMonth()!==month-1 || date.getUTCDate()!==day) return "";
+  return text;
+}
 function combineTripsForExport(currentTrips){
   const combined = HISTORICAL_EXPORT_TRIPS.map(trip=>({...trip}));
   const seenIds = new Set(combined.map(trip=>String(trip.id||"").trim()).filter(Boolean));
   const seenFallback = new Set(combined.map(exportFallbackKey));
 
   (currentTrips||[]).forEach(trip=>{
-    const date = String(trip?.date||"").trim();
+    const date = normalizeExportDate(trip?.date);
     if(!date || date <= "2026-08-27") return;
     const id = String(trip?.id||"").trim();
     const key = exportFallbackKey(trip||{});
@@ -1729,23 +1740,25 @@ function tripExistsInList(list, trip){
     return true;
   });
 }
-function getTimestampedFilename(){
-  const d = new Date();
-  return "ritten_werkdagen_" + d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+"_"+pad(d.getHours())+"-"+pad(d.getMinutes())+".xlsx";
+function getTimestampedFilename(dateValue){
+  const d = dateValue instanceof Date ? dateValue : new Date();
+  const months = ["januari","februari","maart","april","mei","juni","juli","augustus","september","oktober","november","december"];
+  return "Rittenoverzicht_" + d.getDate()+"_"+months[d.getMonth()]+"_"+d.getFullYear()+"_"+pad(d.getHours())+"-"+pad(d.getMinutes())+".xlsx";
 }
 $("exportBtn").addEventListener("click", async ()=>{
   const possibleDraft = !editingTripId && [fromEl.value,toEl.value,plateEl.value].some(v=>String(v||"").trim());
   if(possibleDraft && !ensurePostboxesAcknowledged()) return;
 
-  let currentTrips;
-  try{ currentTrips = await dbGetAll("ritten"); }
+  let dbTrips;
+  try{ dbTrips = await dbGetAll("ritten"); }
   catch(_){ alert("De actuele ritten konden niet uit de database worden gelezen."); return; }
 
+  const currentTrips = [...trips,...dbTrips];
   const draft = await buildCurrentDraftTripForExport();
   if(draft) currentTrips.push(draft);
   const exportTrips = combineTripsForExport(currentTrips);
   const wb = buildWorkbookFromData(exportTrips,dayData);
-  XLSX.writeFile(wb,"Rittenoverzicht_definitief_2026.xlsx");
+  XLSX.writeFile(wb,getTimestampedFilename());
 });
 
 async function buildCurrentDraftTripForExport(){
