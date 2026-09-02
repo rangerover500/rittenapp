@@ -431,6 +431,7 @@ let plates = [];
 let addressHistory = [];
 let currentDraftSaved = false;
 let postboxAnswer = null;
+let editingWorkdayDate = null;
 
 let currentStep = 0;
 let editingTripId = null;
@@ -653,7 +654,7 @@ async function loadAllFromDB(){
     trips = dbTrips.map(t=>normalizeTripFromAny(t, t.sourceKey || "indexedDB"));
     dayData = {};
     dbWorkdays.forEach(w=>{
-      if(w && w.date && (w.workStart || w.workEnd)) dayData[w.date] = {workStart:w.workStart || "", workEnd:w.workEnd || ""};
+      if(w && w.date) dayData[w.date] = {workStart:w.workStart || "", workEnd:w.workEnd || ""};
     });
     plates = dbPlates.map(p=>normalizePlate(p.plate || p)).filter(Boolean);
     addressHistory = dbAddresses.map(a=>normalizeLocation(a.label || a)).filter(Boolean);
@@ -1368,25 +1369,39 @@ function loadWorkdayForm(dateStr){
   workEndEl.value = item.workEnd || "";
   updateHoursInfo();
 }
-function saveWorkdayFromForm(){
+function editWorkday(dateStr){
+  editingWorkdayDate = dateStr;
+  loadWorkdayForm(dateStr);
+  setScreen("werkdag");
+}
+async function saveWorkdayFromForm(){
   const d = workdayDateEl.value || today();
+  if(editingWorkdayDate && editingWorkdayDate !== d && Object.prototype.hasOwnProperty.call(dayData, d)){
+    alert("Er bestaat al een werkdag voor " + d + ". Kies een andere datum.");
+    return false;
+  }
+  if(editingWorkdayDate && editingWorkdayDate !== d) delete dayData[editingWorkdayDate];
   if(workStartEl.value || workEndEl.value) dayData[d] = {workStart: workStartEl.value || "", workEnd: workEndEl.value || ""};
   else delete dayData[d];
-  saveAll();
+  editingWorkdayDate = null;
+  await saveAllToDB();
   renderWorkdays();
   updateDayReminder();
   updateReview();
+  return true;
 }
-$("saveWorkdayBtn").addEventListener("click", ()=>{
-  saveWorkdayFromForm();
-  alert("Werkdag opgeslagen.");
+$("saveWorkdayBtn").addEventListener("click", async ()=>{
+  if(await saveWorkdayFromForm()) alert("Werkdag opgeslagen.");
 });
 $("clearWorkdayBtn").addEventListener("click", ()=>{
+  editingWorkdayDate = null;
   workStartEl.value = "";
   workEndEl.value = "";
   updateHoursInfo();
 });
-workdayDateEl.addEventListener("input", ()=>loadWorkdayForm(workdayDateEl.value));
+workdayDateEl.addEventListener("input", ()=>{
+  if(!editingWorkdayDate) loadWorkdayForm(workdayDateEl.value);
+});
 workStartEl.addEventListener("input", updateHoursInfo);
 workEndEl.addEventListener("input", updateHoursInfo);
 
@@ -1493,10 +1508,7 @@ function renderTrips(){
 }
 function renderWorkdays(){
   workdayTableEl.innerHTML = "";
-  Object.keys(dayData).filter(d=>{
-    const item = dayData[d] || {};
-    return (item.workStart||"").trim() || (item.workEnd||"").trim();
-  }).sort((a,b)=>b.localeCompare(a)).forEach(d=>{
+  Object.keys(dayData).sort((a,b)=>b.localeCompare(a)).forEach(d=>{
     const item = dayData[d] || {};
     const row = document.createElement("tr");
     row.innerHTML = `
@@ -1505,8 +1517,8 @@ function renderWorkdays(){
       <td>${escapeHtml(item.workEnd||"")}</td>
       <td>${escapeHtml(formatMinutesDutch(timeDiffMinutes(item.workStart||"", item.workEnd||"")))}</td>
       <td>
-        <button type="button" class="btn-edit" data-work-open="${escapeHtml(d)}">Open</button>
-        <button type="button" class="btn-delete" data-work-delete="${escapeHtml(d)}">Verwijder</button>
+        <button type="button" class="btn-edit" data-work-edit="${escapeHtml(d)}">Bewerken</button>
+        <button type="button" class="btn-delete" data-work-delete="${escapeHtml(d)}">Verwijderen</button>
       </td>
     `;
     workdayTableEl.appendChild(row);
@@ -1546,18 +1558,18 @@ tripTableEl.addEventListener("click", e=>{
     renderTrips();
   }
 });
-workdayTableEl.addEventListener("click", e=>{
+workdayTableEl.addEventListener("click", async e=>{
   const btn = e.target.closest("button");
   if(!btn) return;
-  if(btn.dataset.workOpen){
-    loadWorkdayForm(btn.dataset.workOpen);
-    setScreen("werkdag");
+  if(btn.dataset.workEdit){
+    editWorkday(btn.dataset.workEdit);
   }
   if(btn.dataset.workDelete){
     const d = btn.dataset.workDelete;
     if(!confirm("Werkdag van " + d + " verwijderen?")) return;
     delete dayData[d];
-    saveAll();
+    if(editingWorkdayDate === d) editingWorkdayDate = null;
+    await saveAllToDB();
     renderWorkdays();
     updateDayReminder();
     updateReview();
