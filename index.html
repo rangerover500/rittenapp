@@ -9,6 +9,13 @@
 <title>Ritten Breeland</title>
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <style>
+@font-face{
+  font-family:"Jaguar Exuberant";
+  src:url("./fonts/JaguarExuberantW05-Regular.ttf");
+  font-style:normal;
+  font-weight:400;
+  font-display:swap;
+}
 :root{
   --bg:#f4f6fb;
   --card:#ffffff;
@@ -21,7 +28,8 @@
   --danger:#b00020;
 }
 *{box-sizing:border-box}
-body{margin:0;padding:16px;font-family:Arial,sans-serif;background:var(--bg);color:var(--text)}
+body{margin:0;padding:16px;font-family:"Jaguar Exuberant",Arial,sans-serif;background:var(--bg);color:var(--text)}
+button,input,select,textarea,table,dialog{font-family:inherit}
 .container{max-width:1000px;margin:0 auto;background:var(--card);border-radius:14px;padding:18px}
 h1,h2,h3{margin-top:0}
 .topnav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
@@ -39,6 +47,8 @@ button{cursor:pointer}
 .btn-primary{background:#000;color:#fff}
 .btn-secondary{background:#eceff5;color:#111;border:1px solid #d7dce8}
 .btn-secondary:disabled{opacity:.45}
+#saveTripBtn,#saveRouteBtn{background:#F4C7A1;color:#111;border:1px solid #D8A77D}
+#saveTripBtn:disabled,#saveRouteBtn:disabled{opacity:.45;cursor:not-allowed}
 .btn-link{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 .btn-map{background:#1a73e8;color:#fff}
 .btn-edit{background:#fff3cd;color:#222;border:1px solid #e0c36c}
