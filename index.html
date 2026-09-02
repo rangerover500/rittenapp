@@ -86,23 +86,16 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .input-row input{flex:1;margin:0}
 .btn-voice{min-width:54px;min-height:56px;border:1px solid #d7dce8;border-radius:10px;background:#eef1f7;font-size:22px;line-height:1}
 .voice-note{margin-top:8px;font-size:13px;color:var(--muted)}
-#screen-invoer .step[data-step="5"] .voice-note{font-size:12px;line-height:1.35}
+#screen-invoer .step[data-step="6"] .voice-note{font-size:12px;line-height:1.35}
 .conditional-block{margin-top:12px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fff}
 .history-title{margin-top:10px;font-size:13px;color:var(--muted);font-weight:bold}
 .suggestions{display:none;margin-top:6px;border:1px solid var(--line);border-radius:10px;background:#fff;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.08);position:relative;z-index:20}
 .suggestions.visible{display:block}
 .suggestions button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid #eee;background:#fff;padding:12px;font-size:15px}
 .suggestions button:last-child{border-bottom:0}
-.postbox-alert{display:none;margin:14px 0;padding:14px;border:3px solid #c40000;border-radius:12px;background:#fff0f0;color:#8b0000}
-.postbox-alert.active{display:block;animation:postboxBlink 1.1s step-end infinite}
-.postbox-alert.acknowledged{animation:none;background:#eef9ee;border-color:#278327;color:#155e15}
-.postbox-title{font-size:19px;font-weight:bold;margin-bottom:8px}
-.postbox-row{padding:10px 0;border-top:1px solid rgba(120,0,0,.18)}
-.postbox-row:first-of-type{border-top:0}
-.postbox-check-label{display:flex;align-items:center;gap:10px;margin:0;font-weight:bold;cursor:pointer}
-.postbox-check-label input{width:24px;min-height:24px;height:24px;flex:0 0 24px;accent-color:#278327}
-.postbox-check-label span{line-height:1.3}
-@keyframes postboxBlink{50%{box-shadow:0 0 0 5px rgba(196,0,0,.22);background:#ffdede}}
+.postbox-choice{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}
+.postbox-choice button{min-height:58px;border:2px solid var(--line);border-radius:12px;background:#eef1f7;color:#111;font-size:18px;font-weight:bold}
+.postbox-choice button.active{background:#000;color:#fff;border-color:#000}
 
 .trip-missing-required{background:#fff0f0 !important;}
 .trip-missing-note{display:block;margin-top:4px;color:#b00000;font-weight:bold;font-size:12px;}
@@ -130,7 +123,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     <div class="dayhint" id="dayReminder"></div>
 
     <div class="wizard">
-      <div class="progress-text" id="progressText">Stap 1 van 7</div>
+      <div class="progress-text" id="progressText">Stap 1 van 8</div>
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 
       <div class="step active" data-step="0">
@@ -153,6 +146,14 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       </div>
 
       <div class="step" data-step="2">
+        <div class="step-title">Postbakken gecontroleerd?</div>
+        <div class="postbox-choice" role="group" aria-label="Postbakken gecontroleerd?">
+          <button type="button" id="postboxYesBtn" aria-pressed="false">Ja</button>
+          <button type="button" id="postboxNoBtn" aria-pressed="false">Nee</button>
+        </div>
+      </div>
+
+      <div class="step" data-step="3">
         <div class="step-title">Kenteken</div>
         <div class="step-sub">Voer het kenteken in of kies een recent kenteken.</div>
         <label for="plate">Kenteken</label>
@@ -162,7 +163,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="info" id="rdwInfo"></div>
       </div>
 
-      <div class="step" data-step="3">
+      <div class="step" data-step="4">
         <div class="step-title">Van</div>
         <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
         <label for="from">Van</label>
@@ -176,7 +177,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="quick" id="fromHistoryButtons"></div>
       </div>
 
-      <div class="step" data-step="4">
+      <div class="step" data-step="5">
         <div class="step-title">Naar</div>
         <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
         <label for="to">Naar</label>
@@ -193,7 +194,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         </div>
       </div>
 
-      <div class="step" data-step="5">
+      <div class="step" data-step="6">
         <div class="step-title">Tussenstops</div>
         <div class="step-sub">Optioneel. Meerdere tussenstops scheid je met komma's.</div>
         <label for="stops">Tussenstop(s)</label>
@@ -214,7 +215,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <input type="hidden" id="odometer" value="">
       <div class="warning" id="odoWarning" style="display:none"></div>
 
-      <div class="step" data-step="6">
+      <div class="step" data-step="7">
         <div class="step-title">Controle</div>
         <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
         <div class="review" id="reviewBox"></div>
@@ -222,11 +223,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <label for="timeEndRotterdam">Eindtijd rit (optioneel)</label>
           <input type="time" id="timeEndRotterdam">
           <div class="small">Niet verplicht. Vul deze alleen in als je de eindtijd al weet of later wilt aanvullen.</div>
-        </div>
-        <div class="postbox-alert" id="postboxAlert">
-          <div class="postbox-title">⚠️ Postbak controleren</div>
-          <div id="postboxRows"></div>
-          <div class="small">Vink iedere vestiging af nadat je de betreffende postbak hebt gecontroleerd.</div>
         </div>
         <div class="toolbar">
           <button type="button" class="btn-map" id="mapsAppleBtn">Waze</button>
@@ -427,14 +423,14 @@ const DEFAULT_ADDRESSES = {
 };
 let standardAddresses = {...DEFAULT_ADDRESSES};
 let QUICK_LOCATIONS = Object.keys(standardAddresses);
-const ALL_STEPS = [0,1,2,3,4,5,6];
+const ALL_STEPS = [0,1,2,3,4,5,6,7];
 
 let trips = [];
 let dayData = {};
 let plates = [];
 let addressHistory = [];
 let currentDraftSaved = false;
-let postboxChecks = {};
+let postboxAnswer = null;
 
 let currentStep = 0;
 let editingTripId = null;
@@ -472,8 +468,8 @@ const fromEl = document.getElementById("from");
 const toEl = document.getElementById("to");
 const stopsEl = document.getElementById("stops");
 const voiceStatusEl = document.getElementById("voiceStatus");
-const postboxAlertEl = document.getElementById("postboxAlert");
-const postboxRowsEl = document.getElementById("postboxRows");
+const postboxYesBtn = document.getElementById("postboxYesBtn");
+const postboxNoBtn = document.getElementById("postboxNoBtn");
 const plateSuggestionsEl = document.getElementById("plateSuggestions");
 const fromSuggestionsEl = document.getElementById("fromSuggestions");
 const toSuggestionsEl = document.getElementById("toSuggestions");
@@ -1163,64 +1159,33 @@ function updateAddressSuggestions(el, container, isStops=false){
     updateReview();
   });
 }
-function getBreelandRouteDestinations(){
-  const routeTargets = [toEl.value, ...getStopsList()];
-  return [...new Set(routeTargets.map(normalizeLocation).filter(v=>
-    ["Breeland Rotterdam","Breeland Brielle","Breeland Dordrecht","Breeland Den Haag"].includes(v)
-  ))];
+function renderPostboxChoice(){
+  postboxYesBtn.classList.toggle("active", postboxAnswer === true);
+  postboxNoBtn.classList.toggle("active", postboxAnswer === false);
+  postboxYesBtn.setAttribute("aria-pressed", String(postboxAnswer === true));
+  postboxNoBtn.setAttribute("aria-pressed", String(postboxAnswer === false));
 }
-function postboxRouteKey(){
-  return getBreelandRouteDestinations().sort().join("|");
+function setPostboxAnswer(answer){
+  postboxAnswer = answer;
+  renderPostboxChoice();
 }
-function resetPostboxChecksForChangedRoute(){
-  const key = postboxRouteKey();
-  if(postboxChecks.__routeKey !== key){
-    postboxChecks = {__routeKey:key};
-  }
-}
-function allPostboxesAcknowledged(){
-  const destinations = getBreelandRouteDestinations();
-  return destinations.every(location=>postboxChecks[location]);
-}
-function renderPostboxReminder(){
-  resetPostboxChecksForChangedRoute();
-  const destinations = getBreelandRouteDestinations();
-  postboxRowsEl.innerHTML = "";
-  if(!destinations.length){
-    postboxAlertEl.className = "postbox-alert";
-    return;
-  }
-  destinations.forEach(location=>{
-    const row = document.createElement("div");
-    row.className = "postbox-row";
-    const label = document.createElement("label");
-    label.className = "postbox-check-label";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = !!postboxChecks[location];
-    checkbox.addEventListener("change", ()=>{
-      postboxChecks[location] = checkbox.checked;
-      renderPostboxReminder();
-    });
-    const text = document.createElement("span");
-    text.textContent = location + " — postbak gecontroleerd";
-    label.append(checkbox, text);
-    row.appendChild(label);
-    postboxRowsEl.appendChild(row);
-  });
-  const done = allPostboxesAcknowledged();
-  postboxAlertEl.className = "postbox-alert active" + (done ? " acknowledged" : "");
+function resetPostboxAnswer(){
+  postboxAnswer = null;
+  renderPostboxChoice();
 }
 function ensurePostboxesAcknowledged(){
-  if(allPostboxesAcknowledged()) return true;
-  alert("Bevestig eerst de postbakcontrole voor iedere Breeland-vestiging op deze route.");
+  if(postboxAnswer === true) return true;
+  currentStep = 2;
+  renderStep();
+  alert("Controleer eerst de postbakken.");
   return false;
 }
+postboxYesBtn.addEventListener("click", ()=>setPostboxAnswer(true));
+postboxNoBtn.addEventListener("click", ()=>setPostboxAnswer(false));
 function updateReview(){
   reviewBoxEl.innerHTML = buildReviewHtml();
   const showMaps = !!(fromEl.value.trim() && toEl.value.trim());
   const hasStops = !!stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).length;
-  renderPostboxReminder();
   $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
   $("mapsGoogleBtn").style.display = showMaps ? "inline-block" : "none";
   $("copyFlitsBtn").style.display = showMaps ? "inline-block" : "none";
@@ -1239,6 +1204,7 @@ function renderStep(){
   prevBtnEl.disabled = currentStep === 0;
   nextBtnEl.textContent = currentStep === ALL_STEPS.length - 1 ? "Klaar" : "Volgende";
   nextBtnEl.hidden = currentStep === ALL_STEPS.length - 1;
+  renderPostboxChoice();
   updateReview();
 }
 function nextStep(){
@@ -1287,6 +1253,7 @@ function savePlateToList(p){
   renderManagementTables();
 }
 function markDraftSaved(message){
+  resetPostboxAnswer();
   currentDraftSaved = true;
   editStatusEl.classList.add("saved-ok");
   editStatusEl.textContent = message || "Rit opgeslagen. Je kunt nu de route openen.";
@@ -1302,7 +1269,7 @@ function clearDraftSavedStatus(){
   if(!editingTripId) editStatusEl.textContent = "";
 }
 $("saveTripBtn").addEventListener("click", async ()=>{
-  if(!ensurePostboxesAcknowledged()) return;
+  if(!editingTripId && !ensurePostboxesAcknowledged()) return;
   const info = await lookupPlate();
   const existing = editingTripId ? trips.find(t=>t.id===editingTripId) : null;
   const trip = buildTripObject(existing ? existing.id : null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
@@ -1384,7 +1351,7 @@ function clearForm(){
   stopsEl.value = "";
   rdwInfoEl.textContent = "";
   editingTripId = null;
-  postboxChecks = {};
+  resetPostboxAnswer();
   $("cancelEditBtn").style.display = "none";
   updatePlateStyle();
   currentStep = 0;
@@ -1563,7 +1530,7 @@ tripTableEl.addEventListener("click", e=>{
     stopsEl.value = "";
     rdwInfoEl.textContent = (t.plate || "") + (t.vehicle ? " — " + t.vehicle : "") + (t.priceText ? " — Nieuwprijs: " + t.priceText : "");
     editingTripId = t.id;
-    postboxChecks = {};
+    resetPostboxAnswer();
     $("cancelEditBtn").style.display = "inline-block";
     editStatusEl.textContent = "Je bewerkt nu een bestaande rit.";
     updatePlateStyle();
@@ -1756,9 +1723,6 @@ function getTimestampedFilename(dateValue){
   return "Ritten_"+pad(d.getDate())+pad(d.getMonth()+1)+String(d.getFullYear()).slice(-2)+"_"+pad(d.getHours())+pad(d.getMinutes())+".xlsx";
 }
 $("exportBtn").addEventListener("click", async ()=>{
-  const possibleDraft = !editingTripId && [fromEl.value,toEl.value,plateEl.value].some(v=>String(v||"").trim());
-  if(possibleDraft && !ensurePostboxesAcknowledged()) return;
-
   let dbTrips;
   try{ dbTrips = await dbGetAll("ritten"); }
   catch(_){ alert("De actuele ritten konden niet uit de database worden gelezen."); return; }
