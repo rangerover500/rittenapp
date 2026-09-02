@@ -1238,6 +1238,7 @@ function renderStep(){
   progressFillEl.style.width = (((currentStep + 1)/ALL_STEPS.length) * 100) + "%";
   prevBtnEl.disabled = currentStep === 0;
   nextBtnEl.textContent = currentStep === ALL_STEPS.length - 1 ? "Klaar" : "Volgende";
+  nextBtnEl.hidden = currentStep === ALL_STEPS.length - 1;
   updateReview();
 }
 function nextStep(){
