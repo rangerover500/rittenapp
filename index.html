@@ -96,6 +96,14 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .postbox-choice{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}
 .postbox-choice button{min-height:58px;border:2px solid var(--line);border-radius:12px;background:#eef1f7;color:#111;font-size:18px;font-weight:bold}
 .postbox-choice button.active{background:#000;color:#fff;border-color:#000}
+.recent-workdays{margin-top:18px}
+.recent-workdays h3{margin:0 0 10px}
+.recent-workday-list{display:grid;gap:8px}
+.recent-workday-card{border:1px solid #dfe4ef;border-radius:10px;background:#fff;padding:10px 12px}
+.recent-workday-date{font-weight:bold;font-size:16px}
+.recent-workday-times{margin-top:3px;color:#444;font-size:14px}
+.recent-workday-actions{display:flex;gap:8px;margin-top:8px}
+.recent-workday-actions button{min-height:44px;padding:8px 12px;flex:1}
 
 .trip-missing-required{background:#fff0f0 !important;}
 .trip-missing-note{display:block;margin-top:4px;color:#b00000;font-weight:bold;font-size:12px;}
@@ -263,6 +271,10 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <button type="button" class="btn-secondary" id="clearWorkdayBtn">Leegmaken</button>
       </div>
     </div>
+    <section class="recent-workdays" aria-labelledby="recentWorkdaysTitle">
+      <h3 id="recentWorkdaysTitle">Recente werkdagen</h3>
+      <div class="recent-workday-list" id="recentWorkdayList"></div>
+    </section>
   </div>
 
 
@@ -458,6 +470,7 @@ const workdayDateEl = document.getElementById("workdayDate");
 const workStartEl = document.getElementById("workStart");
 const workEndEl = document.getElementById("workEnd");
 const dayHoursInfoEl = document.getElementById("dayHoursInfo");
+const recentWorkdayListEl = document.getElementById("recentWorkdayList");
 const dateEl = document.getElementById("date");
 const timeStartEl = document.getElementById("timeStart");
 const timeEndRotterdamEl = document.getElementById("timeEndRotterdam");
@@ -1506,6 +1519,38 @@ function renderTrips(){
     }
   });
 }
+function formatWorkdayDate(dateStr){
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr||""));
+  return match ? match[3] + "-" + match[2] + "-" + match[1] : String(dateStr||"");
+}
+function formatRecentWorkdayTimes(item){
+  const start = String(item.workStart||"").trim();
+  const end = String(item.workEnd||"").trim();
+  if(start && end){
+    const minutes = timeDiffMinutes(start, end);
+    return start + " – " + end + " · " + Math.floor(minutes/60) + "u" + pad(minutes%60);
+  }
+  if(start) return start + " – geen eindtijd";
+  if(end) return "Geen starttijd – " + end;
+  return "Geen tijden ingevuld";
+}
+function renderRecentWorkdays(){
+  recentWorkdayListEl.innerHTML = "";
+  Object.keys(dayData).sort((a,b)=>b.localeCompare(a)).slice(0,15).forEach(d=>{
+    const item = dayData[d] || {};
+    const card = document.createElement("article");
+    card.className = "recent-workday-card";
+    card.innerHTML = `
+      <div class="recent-workday-date">${escapeHtml(formatWorkdayDate(d))}</div>
+      <div class="recent-workday-times">${escapeHtml(formatRecentWorkdayTimes(item))}</div>
+      <div class="recent-workday-actions">
+        <button type="button" class="btn-edit" data-work-edit="${escapeHtml(d)}">Bewerken</button>
+        <button type="button" class="btn-delete" data-work-delete="${escapeHtml(d)}">Verwijderen</button>
+      </div>
+    `;
+    recentWorkdayListEl.appendChild(card);
+  });
+}
 function renderWorkdays(){
   workdayTableEl.innerHTML = "";
   Object.keys(dayData).sort((a,b)=>b.localeCompare(a)).forEach(d=>{
@@ -1523,6 +1568,7 @@ function renderWorkdays(){
     `;
     workdayTableEl.appendChild(row);
   });
+  renderRecentWorkdays();
 }
 tripTableEl.addEventListener("click", e=>{
   const btn = e.target.closest("button");
@@ -1558,23 +1604,28 @@ tripTableEl.addEventListener("click", e=>{
     renderTrips();
   }
 });
-workdayTableEl.addEventListener("click", async e=>{
+async function deleteWorkday(dateStr){
+  if(!confirm("Werkdag van " + dateStr + " verwijderen?")) return false;
+  delete dayData[dateStr];
+  if(editingWorkdayDate === dateStr) editingWorkdayDate = null;
+  await saveAllToDB();
+  renderWorkdays();
+  updateDayReminder();
+  updateReview();
+  return true;
+}
+async function handleWorkdayAction(e){
   const btn = e.target.closest("button");
   if(!btn) return;
   if(btn.dataset.workEdit){
     editWorkday(btn.dataset.workEdit);
   }
   if(btn.dataset.workDelete){
-    const d = btn.dataset.workDelete;
-    if(!confirm("Werkdag van " + d + " verwijderen?")) return;
-    delete dayData[d];
-    if(editingWorkdayDate === d) editingWorkdayDate = null;
-    await saveAllToDB();
-    renderWorkdays();
-    updateDayReminder();
-    updateReview();
+    await deleteWorkday(btn.dataset.workDelete);
   }
-});
+}
+workdayTableEl.addEventListener("click", handleWorkdayAction);
+recentWorkdayListEl.addEventListener("click", handleWorkdayAction);
 function escapeHtml(v){
   return String(v||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
