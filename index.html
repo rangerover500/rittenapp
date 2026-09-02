@@ -1742,8 +1742,7 @@ function tripExistsInList(list, trip){
 }
 function getTimestampedFilename(dateValue){
   const d = dateValue instanceof Date ? dateValue : new Date();
-  const months = ["januari","februari","maart","april","mei","juni","juli","augustus","september","oktober","november","december"];
-  return "Rittenoverzicht_" + d.getDate()+"_"+months[d.getMonth()]+"_"+d.getFullYear()+"_"+pad(d.getHours())+"-"+pad(d.getMinutes())+".xlsx";
+  return "Ritten_"+pad(d.getDate())+pad(d.getMonth()+1)+String(d.getFullYear()).slice(-2)+"_"+pad(d.getHours())+pad(d.getMinutes())+".xlsx";
 }
 $("exportBtn").addEventListener("click", async ()=>{
   const possibleDraft = !editingTripId && [fromEl.value,toEl.value,plateEl.value].some(v=>String(v||"").trim());

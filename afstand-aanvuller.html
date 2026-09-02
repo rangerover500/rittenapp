@@ -10,7 +10,7 @@
     *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
     main{width:min(1040px,calc(100% - 28px));margin:28px auto 56px}.hero,.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px rgba(35,55,90,.07)}
     .hero{padding:24px}.panel{margin-top:18px;padding:22px}h1{margin:0 0 8px;font-size:clamp(1.55rem,4vw,2.25rem)}h2{margin:0 0 14px;font-size:1.2rem}p{margin:8px 0}.privacy{margin-top:18px;padding:13px 15px;border-left:5px solid var(--accent);background:#edf5ff;font-weight:700}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.field{display:flex;flex-direction:column;gap:7px}label{font-weight:700}input{width:100%;padding:11px 12px;border:1px solid #aebbd0;border-radius:9px;font:inherit;background:#fff}button{border:0;border-radius:9px;padding:11px 16px;background:var(--accent);color:#fff;font:700 15px/1.2 inherit;cursor:pointer}button.secondary{background:#34445f}button:disabled{cursor:not-allowed;opacity:.52}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:17px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.field{display:flex;flex-direction:column;gap:7px}label{font-weight:700}input{width:100%;padding:11px 12px;border:1px solid #aebbd0;border-radius:9px;font:inherit;background:#fff}button{border:0;border-radius:9px;padding:11px 16px;background:var(--accent);color:#fff;font:700 15px/1.2 inherit;cursor:pointer}button.secondary{background:#34445f}button:disabled{cursor:not-allowed;opacity:.52}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:17px}.remember-key{display:flex;align-items:center;flex-wrap:wrap;gap:10px}.remember-key label{display:flex;align-items:center;gap:8px;margin:0;font-weight:600}.remember-key input{width:22px;height:22px;margin:0;padding:0;flex:0 0 22px}.key-forget{padding:8px 11px;background:#e6eaf1;color:var(--ink);font-size:13px}
     .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}.metric{padding:12px;border-radius:10px;background:#f1f4f9}.metric strong{display:block;font-size:1.35rem}.muted{color:var(--muted)}.message{margin-top:14px;padding:11px 13px;border-radius:9px;background:#f1f4f9}.message.ok{background:#e9f7ee;color:var(--ok)}.message.error{background:#fcebea;color:var(--bad)}
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:700px}th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{position:sticky;top:0;background:#edf2f8}tr:last-child td{border-bottom:0}.status-ok{color:var(--ok);font-weight:700}.status-wait{color:var(--warn);font-weight:700}.status-error{color:var(--bad);font-weight:700}@media(max-width:680px){.grid,.summary{grid-template-columns:1fr}.hero,.panel{padding:17px}main{margin-top:14px}}
   </style>
@@ -20,7 +20,7 @@
   <section class="hero">
     <h1>Afstand-aanvuller</h1>
     <p>Vul uitsluitend ontbrekende rijafstanden in een Rittenapp-export aan. Het oorspronkelijke bestand blijft behouden; bij opslaan wordt een nieuw Excelbestand gemaakt.</p>
-    <p class="privacy">De Google API-key wordt niet opgeslagen. De key wordt alleen in deze geopende sessie gebruikt en komt niet in het Excelbestand terecht.</p>
+    <p class="privacy">De Google API-key wordt alleen op dit apparaat opgeslagen als je daarvoor kiest. De key komt nooit in het Excelbestand terecht.</p>
   </section>
 
   <section class="panel" aria-labelledby="invoer-kop">
@@ -33,6 +33,11 @@
       <div class="field">
         <label for="apiKey">Google Maps JavaScript API-key</label>
         <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Alleen nodig voor nog onbekende routes">
+        <div class="remember-key">
+          <label for="rememberApiKey"><input id="rememberApiKey" type="checkbox"> API-key onthouden op dit apparaat</label>
+          <button id="forgetApiKey" class="key-forget" type="button">API-key vergeten</button>
+        </div>
+        <div class="muted">Bij onthouden wordt de API-key alleen op dit apparaat in de browser opgeslagen.</div>
       </div>
     </div>
     <div class="actions">
@@ -59,9 +64,12 @@
   "use strict";
 
   const SHEET_NAME = "Ritten";
+  const API_KEY_STORAGE = "rittenapp_google_maps_api_key";
   const REQUIRED_HEADERS = ["Datum", "Van", "Naar", "Afstand (km)"];
   const excelFile = document.getElementById("excelFile");
   const apiKey = document.getElementById("apiKey");
+  const rememberApiKey = document.getElementById("rememberApiKey");
+  const forgetApiKey = document.getElementById("forgetApiKey");
   const calculateButton = document.getElementById("calculateButton");
   const saveButton = document.getElementById("saveButton");
   const message = document.getElementById("message");
@@ -128,6 +136,28 @@
 
   function roundKilometres(value) {
     return Math.round((Number(value) + Number.EPSILON) * 10) / 10;
+  }
+
+  function loadRememberedApiKey() {
+    try {
+      const stored = localStorage.getItem(API_KEY_STORAGE);
+      if (!stored) return;
+      apiKey.value = stored;
+      rememberApiKey.checked = true;
+    } catch (_) {}
+  }
+
+  function updateRememberedApiKey() {
+    try {
+      if (rememberApiKey.checked && apiKey.value) localStorage.setItem(API_KEY_STORAGE, apiKey.value);
+      else localStorage.removeItem(API_KEY_STORAGE);
+    } catch (_) {}
+  }
+
+  function forgetRememberedApiKey() {
+    try { localStorage.removeItem(API_KEY_STORAGE); } catch (_) {}
+    apiKey.value = "";
+    rememberApiKey.checked = false;
   }
 
   function escapeHtml(value) {
@@ -277,6 +307,10 @@
     }
   });
 
+  rememberApiKey.addEventListener("change", updateRememberedApiKey);
+  apiKey.addEventListener("input", updateRememberedApiKey);
+  forgetApiKey.addEventListener("click", forgetRememberedApiKey);
+
   calculateButton.addEventListener("click", async () => {
     const unresolved = missingTrips.filter(trip => trip.distance == null);
     if (!unresolved.length) return showMessage("Er zijn geen onbekende routes meer.", "ok");
@@ -321,7 +355,9 @@
     showMessage("Het nieuwe Excelbestand is gemaakt. Het ingelezen bestand is niet gewijzigd.", "ok");
   });
 
-  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, routeKey, findHeaderRow, analyzeRows, mayRequestGoogle, roundKilometres, removeTemporaryDistanceCheckSheet };
+  loadRememberedApiKey();
+
+  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, routeKey, findHeaderRow, analyzeRows, mayRequestGoogle, roundKilometres, removeTemporaryDistanceCheckSheet, loadRememberedApiKey, updateRememberedApiKey, forgetRememberedApiKey, API_KEY_STORAGE };
 })();
 </script>
 </body>
