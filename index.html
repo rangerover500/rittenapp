@@ -100,7 +100,9 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .recent-workdays h3{margin:0 0 10px}
 .recent-workday-list{display:grid;gap:8px}
 .recent-workday-card{border:1px solid #dfe4ef;border-radius:10px;background:#fff;padding:10px 12px}
+.recent-workday-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .recent-workday-date{font-weight:bold;font-size:16px}
+.recent-workday-week{font-size:14px;color:#444;white-space:nowrap}
 .recent-workday-times{margin-top:3px;color:#444;font-size:14px}
 .recent-workday-actions{display:flex;gap:8px;margin-top:8px}
 .recent-workday-actions button{min-height:44px;padding:8px 12px;flex:1}
@@ -1523,6 +1525,17 @@ function formatWorkdayDate(dateStr){
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr||""));
   return match ? match[3] + "-" + match[2] + "-" + match[1] : String(dateStr||"");
 }
+function getIsoWeek(dateStr){
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr||""));
+  if(!match) return null;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2])-1, Number(match[3])));
+  if(date.getUTCFullYear() !== Number(match[1]) || date.getUTCMonth() !== Number(match[2])-1 || date.getUTCDate() !== Number(match[3])) return null;
+  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+  const weekYear = date.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(weekYear, 0, 1));
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return {week, year:weekYear};
+}
 function formatRecentWorkdayTimes(item){
   const start = String(item.workStart||"").trim();
   const end = String(item.workEnd||"").trim();
@@ -1538,10 +1551,14 @@ function renderRecentWorkdays(){
   recentWorkdayListEl.innerHTML = "";
   Object.keys(dayData).sort((a,b)=>b.localeCompare(a)).slice(0,15).forEach(d=>{
     const item = dayData[d] || {};
+    const isoWeek = getIsoWeek(d);
     const card = document.createElement("article");
     card.className = "recent-workday-card";
     card.innerHTML = `
-      <div class="recent-workday-date">${escapeHtml(formatWorkdayDate(d))}</div>
+      <div class="recent-workday-heading">
+        <div class="recent-workday-date">${escapeHtml(formatWorkdayDate(d))}</div>
+        ${isoWeek ? `<div class="recent-workday-week">Week ${isoWeek.week}, ${isoWeek.year}</div>` : ""}
+      </div>
       <div class="recent-workday-times">${escapeHtml(formatRecentWorkdayTimes(item))}</div>
       <div class="recent-workday-actions">
         <button type="button" class="btn-edit" data-work-edit="${escapeHtml(d)}">Bewerken</button>
