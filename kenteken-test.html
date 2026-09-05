@@ -22,8 +22,8 @@
     .camera.active{display:block}
     .viewport{position:relative;overflow:hidden;border-radius:14px;background:#111;aspect-ratio:4/3}
     video{display:block;width:100%;height:100%;object-fit:cover}
-    .plate-frame{position:absolute;left:9%;right:9%;top:37%;height:26%;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.32);pointer-events:none}
-    .plate-frame::after{content:"Plaats het kenteken binnen dit kader";position:absolute;left:0;right:0;bottom:calc(100% + 8px);color:#fff;text-align:center;font-weight:bold;text-shadow:0 1px 3px #000}
+    .plate-frame{position:absolute;left:5%;right:5%;top:15%;height:70%;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.22);pointer-events:none}
+    .plate-frame::after{content:"Richt de camera op het kenteken";position:absolute;left:0;right:0;top:10px;color:#fff;text-align:center;font-weight:bold;text-shadow:0 1px 3px #000}
     .status{min-height:24px;margin:14px 0 0;font-weight:bold}
     .status.error{color:#a00018}
     .raw{display:none;margin-top:12px;padding:10px;border-radius:8px;background:#fff;border:1px solid #dbe0e9;overflow-wrap:anywhere}
@@ -177,7 +177,7 @@ async function startCamera(){
   video.srcObject = stream;
   await video.play();
   cameraSection.classList.add("active");
-  if(!statusEl.textContent) setStatus("Plaats het kenteken in het kader en tik op ‘Lees kenteken’.");
+  if(!statusEl.textContent) setStatus("Richt de camera op het kenteken en tik op ‘Lees kenteken’.");
 }
 function normalizeOcrText(text){
   return String(text||"").toUpperCase().replace(/[^A-Z0-9\s-]/g," ").replace(/[\s-]+/g," ").trim();
@@ -185,14 +185,37 @@ function normalizeOcrText(text){
 function isPlausibleDutchPlate(value){
   return DUTCH_PATTERNS.some(pattern=>pattern.test(value));
 }
-function extractCandidates(text){
-  const compact = normalizeOcrText(text).replace(/[\s-]/g,"");
-  const candidates = new Set();
-  for(let index=0;index<=compact.length-6;index++){
-    const value = compact.slice(index,index+6);
-    if(isPlausibleDutchPlate(value)) candidates.add(value);
+function collectOcrSequences(text){
+  const cleaned = normalizeOcrText(text).replace(/\b(?:NL|EU)\b/g," ").replace(/\s+/g," ").trim();
+  const groups = cleaned ? cleaned.split(" ") : [];
+  const sequences = new Map();
+  const add = (value,score)=>{
+    const compact = value.replace(/[^A-Z0-9]/g,"");
+    if(compact.length === 6) sequences.set(compact,Math.max(score,sequences.get(compact)||0));
+  };
+  groups.forEach(group=>{
+    if(group.length === 6) add(group,100);
+    if(group.length > 6){
+      for(let index=0;index<=group.length-6;index++) add(group.slice(index,index+6),45);
+    }
+  });
+  for(let start=0;start<groups.length;start++){
+    let value = "";
+    for(let end=start;end<Math.min(groups.length,start+4);end++){
+      if(groups[end].length > 4) break;
+      value += groups[end];
+      if(value.length === 6) add(value,95-(end-start)*5);
+      if(value.length >= 6) break;
+    }
   }
-  return [...candidates];
+  return [...sequences].map(([value,score])=>({value,score}));
+}
+function extractCandidates(text){
+  return collectOcrSequences(text)
+    .filter(item=>isPlausibleDutchPlate(item.value))
+    .map(item=>({...item,score:item.score+(KNOWN_PLATES.includes(item.value)?8:0)}))
+    .sort((a,b)=>b.score-a.score || a.value.localeCompare(b.value))
+    .map(item=>item.value);
 }
 function ambiguityDistance(value, known){
   if(value.length !== known.length) return Infinity;
@@ -205,16 +228,14 @@ function ambiguityDistance(value, known){
   return differences;
 }
 function findKnownSuggestion(text){
-  const compact = normalizeOcrText(text).replace(/[\s-]/g,"");
   const possibilities = [];
-  for(let index=0;index<=compact.length-6;index++){
-    const value = compact.slice(index,index+6);
+  collectOcrSequences(text).forEach(sequence=>{
     KNOWN_PLATES.forEach(known=>{
-      const distance = ambiguityDistance(value,known);
-      if(distance > 0 && distance < Infinity) possibilities.push({known,distance});
+      const distance = ambiguityDistance(sequence.value,known);
+      if(distance > 0 && distance < Infinity) possibilities.push({known,distance,score:sequence.score});
     });
-  }
-  possibilities.sort((a,b)=>a.distance-b.distance);
+  });
+  possibilities.sort((a,b)=>a.distance-b.distance || b.score-a.score);
   if(!possibilities.length) return "";
   if(possibilities.length > 1 && possibilities[0].distance === possibilities[1].distance && possibilities[0].known !== possibilities[1].known) return "";
   return possibilities[0].known;
@@ -224,10 +245,10 @@ function getFrameCrop(sourceWidth,sourceHeight,displayWidth,displayHeight){
   const hiddenX = Math.max(0,(sourceWidth*scale-displayWidth)/2);
   const hiddenY = Math.max(0,(sourceHeight*scale-displayHeight)/2);
   return {
-    x:Math.max(0,Math.round((hiddenX+displayWidth*.09)/scale)),
-    y:Math.max(0,Math.round((hiddenY+displayHeight*.37)/scale)),
-    width:Math.min(sourceWidth,Math.round(displayWidth*.82/scale)),
-    height:Math.min(sourceHeight,Math.round(displayHeight*.26/scale))
+    x:Math.max(0,Math.round((hiddenX+displayWidth*.05)/scale)),
+    y:Math.max(0,Math.round((hiddenY+displayHeight*.15)/scale)),
+    width:Math.min(sourceWidth,Math.round(displayWidth*.90/scale)),
+    height:Math.min(sourceHeight,Math.round(displayHeight*.70/scale))
   };
 }
 function showCandidate(candidate, suggestion=""){
@@ -289,19 +310,18 @@ async function readPlate(){
     return;
   }
   const candidates = extractCandidates(normalized);
-  if(candidates.length > 1){
-    setStatus("Meerdere mogelijke kentekens gevonden: " + candidates.join(", ") + ". Scan opnieuw en plaats één kenteken in het kader.", true);
-    return;
-  }
-  if(candidates.length === 1){
+  if(candidates.length){
     const suggestion = findKnownSuggestion(normalized);
     showCandidate(candidates[0], suggestion && suggestion !== candidates[0] ? suggestion : "");
-    setStatus("Controleer het herkende kenteken voordat je het gebruikt.");
+    setStatus(candidates.length > 1
+      ? "Meerdere mogelijke kentekens gevonden. Sterkste eerst: " + candidates.join(", ") + ". Controleer de keuze."
+      : "Controleer het herkende kenteken voordat je het gebruikt.");
     return;
   }
   const suggestion = findKnownSuggestion(normalized);
   if(suggestion){
-    showCandidate(normalized.replace(/[\s-]/g,"").slice(0,6), suggestion);
+    const uncertain = collectOcrSequences(normalized).sort((a,b)=>b.score-a.score)[0];
+    showCandidate(uncertain ? uncertain.value : normalized.replace(/[\s-]/g,"").slice(0,6), suggestion);
     setStatus("Geen zeker kentekenpatroon gevonden; er is alleen een waarschijnlijk voorstel.", true);
     return;
   }
