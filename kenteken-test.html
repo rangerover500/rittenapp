@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>Kentekenherkenning testen</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f6fb;color:#111;font-family:Arial,sans-serif}
+    main{width:min(560px,100%);min-height:100vh;margin:auto;padding:calc(18px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
+    h1{font-size:26px;margin:0 0 8px}
+    p{line-height:1.45}
+    .privacy{margin:0 0 16px;padding:12px;border:1px solid #bdd7c5;border-radius:10px;background:#effaf2;color:#174d26}
+    button{min-height:50px;border:0;border-radius:10px;padding:11px 15px;font:700 16px Arial,sans-serif;touch-action:manipulation}
+    .primary{width:100%;background:#111;color:#fff}
+    .secondary{background:#e8ebf2;color:#111;border:1px solid #cfd5e1}
+    .danger{background:#f7d9dc;color:#711923;border:1px solid #e1aeb4}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .toolbar button{flex:1 1 145px}
+    .camera{display:none;margin-top:16px}
+    .camera.active{display:block}
+    .viewport{position:relative;overflow:hidden;border-radius:14px;background:#111;aspect-ratio:4/3}
+    video{display:block;width:100%;height:100%;object-fit:cover}
+    .plate-frame{position:absolute;left:9%;right:9%;top:37%;height:26%;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.32);pointer-events:none}
+    .plate-frame::after{content:"Plaats het kenteken binnen dit kader";position:absolute;left:0;right:0;bottom:calc(100% + 8px);color:#fff;text-align:center;font-weight:bold;text-shadow:0 1px 3px #000}
+    .status{min-height:24px;margin:14px 0 0;font-weight:bold}
+    .status.error{color:#a00018}
+    .raw{display:none;margin-top:12px;padding:10px;border-radius:8px;background:#fff;border:1px solid #dbe0e9;overflow-wrap:anywhere}
+    .raw.visible{display:block}
+    .result{display:none;margin-top:16px;padding:18px;border:2px solid #111;border-radius:14px;background:#fff;text-align:center}
+    .result.visible{display:block}
+    .result h2{margin:0 0 8px;font-size:22px}
+    .candidate{font-size:32px;font-weight:800;letter-spacing:3px;margin:8px 0}
+    .suggestion{display:none;margin:10px 0;padding:10px;border-radius:8px;background:#fff6cf}
+    .suggestion.visible{display:block}
+    .chosen{display:none;margin-top:14px;padding:14px;border-radius:10px;background:#effaf2;font-weight:bold;text-align:center}
+    .chosen.visible{display:block}
+    canvas{display:none}
+    @media(max-width:380px){
+      main{padding-left:12px;padding-right:12px}
+      h1{font-size:23px}
+      .candidate{font-size:27px}
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Kentekenherkenning testen</h1>
+  <p class="privacy">Camerabeeld en OCR worden alleen lokaal op dit apparaat verwerkt. Er wordt geen foto opgeslagen.</p>
+
+  <button type="button" class="primary" id="scanBtn">📷 Scan kenteken</button>
+
+  <section class="camera" id="cameraSection" aria-label="Camera">
+    <div class="viewport">
+      <video id="cameraVideo" playsinline muted></video>
+      <div class="plate-frame" aria-hidden="true"></div>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="primary" id="readBtn">Lees kenteken</button>
+      <button type="button" class="secondary" id="stopBtn">Stop camera</button>
+    </div>
+  </section>
+
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+  <div class="raw" id="rawResult"><strong>Ruwe OCR-tekst:</strong> <span id="rawText"></span></div>
+
+  <section class="result" id="resultSection" aria-live="polite">
+    <h2>Kenteken herkend</h2>
+    <div class="candidate" id="candidateText"></div>
+    <div class="suggestion" id="suggestionBox">
+      <span id="suggestionText"></span>
+      <button type="button" class="secondary" id="confirmSuggestionBtn"></button>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="primary" id="useBtn">Gebruik kenteken</button>
+      <button type="button" class="secondary" id="againBtn">Opnieuw scannen</button>
+    </div>
+  </section>
+
+  <div class="chosen" id="chosenMessage"></div>
+  <canvas id="captureCanvas"></canvas>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" crossorigin="anonymous"></script>
+<script>
+"use strict";
+const KNOWN_PLATES = ["X605VJ", "Z406BG"];
+const DUTCH_PATTERNS = [
+  /^[A-Z]{2}[0-9]{2}[0-9]{2}$/, /^[0-9]{2}[0-9]{2}[A-Z]{2}$/,
+  /^[0-9]{2}[A-Z]{2}[0-9]{2}$/, /^[A-Z]{2}[0-9]{2}[A-Z]{2}$/,
+  /^[A-Z]{2}[A-Z]{2}[0-9]{2}$/, /^[0-9]{2}[A-Z]{2}[A-Z]{2}$/,
+  /^[0-9]{2}[A-Z]{3}[0-9]$/, /^[0-9][A-Z]{3}[0-9]{2}$/,
+  /^[A-Z]{2}[0-9]{3}[A-Z]$/, /^[A-Z][0-9]{3}[A-Z]{2}$/,
+  /^[A-Z]{3}[0-9]{2}[A-Z]$/, /^[A-Z][0-9]{2}[A-Z]{3}$/
+];
+const AMBIGUOUS = new Set(["O0","0O","I1","1I"]);
+
+const scanBtn = document.getElementById("scanBtn");
+const cameraSection = document.getElementById("cameraSection");
+const video = document.getElementById("cameraVideo");
+const readBtn = document.getElementById("readBtn");
+const stopBtn = document.getElementById("stopBtn");
+const statusEl = document.getElementById("status");
+const rawResult = document.getElementById("rawResult");
+const rawText = document.getElementById("rawText");
+const resultSection = document.getElementById("resultSection");
+const candidateText = document.getElementById("candidateText");
+const suggestionBox = document.getElementById("suggestionBox");
+const suggestionText = document.getElementById("suggestionText");
+const confirmSuggestionBtn = document.getElementById("confirmSuggestionBtn");
+const useBtn = document.getElementById("useBtn");
+const againBtn = document.getElementById("againBtn");
+const chosenMessage = document.getElementById("chosenMessage");
+const canvas = document.getElementById("captureCanvas");
+
+let stream = null;
+let selectedCandidate = "";
+let suggestedCandidate = "";
+
+function setStatus(message, error=false){
+  statusEl.textContent = message;
+  statusEl.classList.toggle("error", error);
+}
+function stopCamera(){
+  if(stream) stream.getTracks().forEach(track=>track.stop());
+  stream = null;
+  video.srcObject = null;
+  cameraSection.classList.remove("active");
+}
+function clearTemporaryFrame(){
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  canvas.width = 0;
+  canvas.height = 0;
+}
+function resetResults(){
+  selectedCandidate = "";
+  suggestedCandidate = "";
+  rawText.textContent = "";
+  rawResult.classList.remove("visible");
+  resultSection.classList.remove("visible");
+  suggestionBox.classList.remove("visible");
+  chosenMessage.classList.remove("visible");
+  chosenMessage.textContent = "";
+  candidateText.textContent = "";
+  setStatus("");
+  clearTemporaryFrame();
+}
+async function startCamera(){
+  resetResults();
+  stopCamera();
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    setStatus("Camera is in deze browser niet beschikbaar.", true);
+    return;
+  }
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},
+      audio:false
+    });
+  }catch(firstError){
+    if(firstError && firstError.name === "NotAllowedError"){
+      setStatus("Cameratoegang is geweigerd. Geef Safari toestemming voor de camera.", true);
+      return;
+    }
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+      setStatus("Geen achtercamera gevonden; een beschikbare camera is geopend.");
+    }catch(error){
+      setStatus(error && error.name === "NotAllowedError"
+        ? "Cameratoegang is geweigerd. Geef Safari toestemming voor de camera."
+        : "Camera kon niet worden geopend.", true);
+      return;
+    }
+  }
+  video.srcObject = stream;
+  await video.play();
+  cameraSection.classList.add("active");
+  if(!statusEl.textContent) setStatus("Plaats het kenteken in het kader en tik op ‘Lees kenteken’.");
+}
+function normalizeOcrText(text){
+  return String(text||"").toUpperCase().replace(/[^A-Z0-9\s-]/g," ").replace(/[\s-]+/g," ").trim();
+}
+function isPlausibleDutchPlate(value){
+  return DUTCH_PATTERNS.some(pattern=>pattern.test(value));
+}
+function extractCandidates(text){
+  const compact = normalizeOcrText(text).replace(/[\s-]/g,"");
+  const candidates = new Set();
+  for(let index=0;index<=compact.length-6;index++){
+    const value = compact.slice(index,index+6);
+    if(isPlausibleDutchPlate(value)) candidates.add(value);
+  }
+  return [...candidates];
+}
+function ambiguityDistance(value, known){
+  if(value.length !== known.length) return Infinity;
+  let differences = 0;
+  for(let index=0;index<value.length;index++){
+    if(value[index] === known[index]) continue;
+    if(!AMBIGUOUS.has(value[index] + known[index])) return Infinity;
+    differences++;
+  }
+  return differences;
+}
+function findKnownSuggestion(text){
+  const compact = normalizeOcrText(text).replace(/[\s-]/g,"");
+  const possibilities = [];
+  for(let index=0;index<=compact.length-6;index++){
+    const value = compact.slice(index,index+6);
+    KNOWN_PLATES.forEach(known=>{
+      const distance = ambiguityDistance(value,known);
+      if(distance > 0 && distance < Infinity) possibilities.push({known,distance});
+    });
+  }
+  possibilities.sort((a,b)=>a.distance-b.distance);
+  if(!possibilities.length) return "";
+  if(possibilities.length > 1 && possibilities[0].distance === possibilities[1].distance && possibilities[0].known !== possibilities[1].known) return "";
+  return possibilities[0].known;
+}
+function getFrameCrop(sourceWidth,sourceHeight,displayWidth,displayHeight){
+  const scale = Math.max(displayWidth/sourceWidth, displayHeight/sourceHeight);
+  const hiddenX = Math.max(0,(sourceWidth*scale-displayWidth)/2);
+  const hiddenY = Math.max(0,(sourceHeight*scale-displayHeight)/2);
+  return {
+    x:Math.max(0,Math.round((hiddenX+displayWidth*.09)/scale)),
+    y:Math.max(0,Math.round((hiddenY+displayHeight*.37)/scale)),
+    width:Math.min(sourceWidth,Math.round(displayWidth*.82/scale)),
+    height:Math.min(sourceHeight,Math.round(displayHeight*.26/scale))
+  };
+}
+function showCandidate(candidate, suggestion=""){
+  selectedCandidate = candidate;
+  candidateText.textContent = candidate;
+  resultSection.classList.add("visible");
+  suggestionBox.classList.toggle("visible", !!suggestion);
+  suggestedCandidate = suggestion;
+  if(suggestion){
+    suggestionText.textContent = "Waarschijnlijk " + suggestion + ". Bevestig dit kenteken handmatig.";
+    confirmSuggestionBtn.textContent = "Bevestig " + suggestion;
+  }
+}
+async function readPlate(){
+  if(!stream || video.readyState < 2){
+    setStatus("Start eerst de camera en wacht tot het beeld zichtbaar is.", true);
+    return;
+  }
+  if(!window.Tesseract){
+    setStatus("De lokale OCR-library kon niet worden geladen.", true);
+    return;
+  }
+  readBtn.disabled = true;
+  resetResults();
+  setStatus("Kenteken wordt lokaal gelezen…");
+  const sourceWidth = video.videoWidth;
+  const sourceHeight = video.videoHeight;
+  const crop = getFrameCrop(sourceWidth,sourceHeight,video.clientWidth,video.clientHeight);
+  canvas.width = crop.width;
+  canvas.height = crop.height;
+  const context = canvas.getContext("2d", {willReadFrequently:true});
+  context.drawImage(video,crop.x,crop.y,crop.width,crop.height,0,0,crop.width,crop.height);
+  let text = "";
+  let worker = null;
+  try{
+    worker = await Tesseract.createWorker("eng",1,{
+      logger: message=>{
+        if(message.status === "recognizing text") setStatus("Kenteken wordt lokaal gelezen… " + Math.round(message.progress*100) + "%");
+      }
+    });
+    await worker.setParameters({tessedit_char_whitelist:"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- "});
+    const result = await worker.recognize(canvas);
+    text = result && result.data ? result.data.text : "";
+  }catch(error){
+    setStatus("OCR kon het camerabeeld niet verwerken.", true);
+    clearTemporaryFrame();
+    readBtn.disabled = false;
+    return;
+  }finally{
+    if(worker) await worker.terminate();
+  }
+  clearTemporaryFrame();
+  readBtn.disabled = false;
+  const normalized = normalizeOcrText(text);
+  rawText.textContent = normalized || "(geen tekst)";
+  rawResult.classList.add("visible");
+  if(!normalized){
+    setStatus("OCR heeft geen tekst gevonden. Probeer opnieuw met meer licht.", true);
+    return;
+  }
+  const candidates = extractCandidates(normalized);
+  if(candidates.length > 1){
+    setStatus("Meerdere mogelijke kentekens gevonden: " + candidates.join(", ") + ". Scan opnieuw en plaats één kenteken in het kader.", true);
+    return;
+  }
+  if(candidates.length === 1){
+    const suggestion = findKnownSuggestion(normalized);
+    showCandidate(candidates[0], suggestion && suggestion !== candidates[0] ? suggestion : "");
+    setStatus("Controleer het herkende kenteken voordat je het gebruikt.");
+    return;
+  }
+  const suggestion = findKnownSuggestion(normalized);
+  if(suggestion){
+    showCandidate(normalized.replace(/[\s-]/g,"").slice(0,6), suggestion);
+    setStatus("Geen zeker kentekenpatroon gevonden; er is alleen een waarschijnlijk voorstel.", true);
+    return;
+  }
+  setStatus("Geen plausibel Nederlands kenteken gevonden. Scan opnieuw.", true);
+}
+
+scanBtn.addEventListener("click",startCamera);
+stopBtn.addEventListener("click",stopCamera);
+readBtn.addEventListener("click",readPlate);
+againBtn.addEventListener("click",async ()=>{
+  resetResults();
+  if(!stream) await startCamera();
+  else setStatus("Plaats het kenteken opnieuw in het kader.");
+});
+confirmSuggestionBtn.addEventListener("click",()=>{
+  if(!suggestedCandidate) return;
+  selectedCandidate = suggestedCandidate;
+  candidateText.textContent = selectedCandidate;
+  suggestionBox.classList.remove("visible");
+  setStatus("Voorstel bevestigd. Controleer het kenteken nog één keer.");
+});
+useBtn.addEventListener("click",()=>{
+  if(!selectedCandidate){
+    setStatus("Er is nog geen kenteken gekozen.", true);
+    return;
+  }
+  chosenMessage.textContent = "Gekozen kenteken: " + selectedCandidate;
+  chosenMessage.classList.add("visible");
+});
+window.addEventListener("pagehide",()=>{
+  stopCamera();
+  clearTemporaryFrame();
+});
+</script>
+</body>
+</html>
