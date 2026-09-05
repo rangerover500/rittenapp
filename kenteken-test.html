@@ -24,6 +24,13 @@
     video{display:block;width:100%;height:100%;object-fit:cover}
     .plate-frame{position:absolute;left:5%;right:5%;top:15%;height:70%;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.22);pointer-events:none}
     .plate-frame::after{content:"Richt de camera op het kenteken";position:absolute;left:0;right:0;top:10px;color:#fff;text-align:center;font-weight:bold;text-shadow:0 1px 3px #000}
+    .camera-diagnostics{margin-top:10px;padding:10px;border-radius:9px;background:#fff;border:1px solid #dbe0e9;font-size:13px;color:#444}
+    .zoom-control{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-top:8px}
+    .zoom-control[hidden]{display:none}
+    .zoom-control label{font-weight:bold}
+    .zoom-control input{width:100%;min-height:36px;margin:0}
+    .zoom-value{min-width:42px;text-align:right;font-weight:bold;color:#111}
+    .zoom-note{margin-top:5px}
     .status{min-height:24px;margin:14px 0 0;font-weight:bold}
     .status.error{color:#a00018}
     .raw{display:none;margin-top:12px;padding:10px;border-radius:8px;background:#fff;border:1px solid #dbe0e9;overflow-wrap:anywhere}
@@ -55,6 +62,15 @@
     <div class="viewport">
       <video id="cameraVideo" playsinline muted></video>
       <div class="plate-frame" aria-hidden="true"></div>
+    </div>
+    <div class="camera-diagnostics">
+      <div id="videoInfo">Resolutie wordt na het starten getoond.</div>
+      <div class="zoom-control" id="zoomControl" hidden>
+        <label for="zoomSlider">Zoom</label>
+        <input type="range" id="zoomSlider">
+        <output class="zoom-value" id="zoomValue" for="zoomSlider"></output>
+      </div>
+      <div class="zoom-note" id="zoomNote"></div>
     </div>
     <div class="toolbar">
       <button type="button" class="primary" id="readBtn">Lees kenteken</button>
@@ -99,6 +115,11 @@ const AMBIGUOUS = new Set(["O0","0O","I1","1I"]);
 const scanBtn = document.getElementById("scanBtn");
 const cameraSection = document.getElementById("cameraSection");
 const video = document.getElementById("cameraVideo");
+const videoInfo = document.getElementById("videoInfo");
+const zoomControl = document.getElementById("zoomControl");
+const zoomSlider = document.getElementById("zoomSlider");
+const zoomValue = document.getElementById("zoomValue");
+const zoomNote = document.getElementById("zoomNote");
 const readBtn = document.getElementById("readBtn");
 const stopBtn = document.getElementById("stopBtn");
 const statusEl = document.getElementById("status");
@@ -115,6 +136,7 @@ const chosenMessage = document.getElementById("chosenMessage");
 const canvas = document.getElementById("captureCanvas");
 
 let stream = null;
+let videoTrack = null;
 let selectedCandidate = "";
 let suggestedCandidate = "";
 
@@ -125,8 +147,12 @@ function setStatus(message, error=false){
 function stopCamera(){
   if(stream) stream.getTracks().forEach(track=>track.stop());
   stream = null;
+  videoTrack = null;
   video.srcObject = null;
   cameraSection.classList.remove("active");
+  zoomControl.hidden = true;
+  zoomNote.textContent = "";
+  videoInfo.textContent = "Resolutie wordt na het starten getoond.";
 }
 function clearTemporaryFrame(){
   const context = canvas.getContext("2d");
@@ -156,7 +182,7 @@ async function startCamera(){
   }
   try{
     stream = await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},
+      video:{facingMode:{ideal:"environment"},width:{ideal:3840,min:1280},height:{ideal:2160,min:720}},
       audio:false
     });
   }catch(firstError){
@@ -176,9 +202,62 @@ async function startCamera(){
   }
   video.srcObject = stream;
   await video.play();
+  videoTrack = stream.getVideoTracks()[0] || null;
+  await setupCameraDiagnostics(videoTrack);
   cameraSection.classList.add("active");
   if(!statusEl.textContent) setStatus("Richt de camera op het kenteken en tik op ‘Lees kenteken’.");
 }
+function clampZoom(value,capability){
+  return Math.min(capability.max,Math.max(capability.min,Number(value)));
+}
+function showZoomValue(value){
+  zoomValue.value = Number(value).toFixed(1) + "×";
+}
+async function applyZoom(value){
+  if(!videoTrack) return false;
+  let capabilities;
+  try{ capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {}; }
+  catch(error){ capabilities = {}; }
+  if(!capabilities.zoom) return false;
+  const zoom = clampZoom(value,capabilities.zoom);
+  try{
+    await videoTrack.applyConstraints({advanced:[{zoom}]});
+    zoomSlider.value = String(zoom);
+    showZoomValue(zoom);
+    zoomNote.textContent = "Camera-zoom beschikbaar.";
+    return true;
+  }catch(error){
+    zoomNote.textContent = "Zoom kon niet worden ingesteld; de scanner blijft zonder aangepaste zoom werken.";
+    return false;
+  }
+}
+async function setupCameraDiagnostics(track){
+  const settings = track && track.getSettings ? track.getSettings() : {};
+  const width = settings.width || video.videoWidth || 0;
+  const height = settings.height || video.videoHeight || 0;
+  videoInfo.textContent = "Actieve videoresolutie: " + (width && height ? width + " × " + height : "onbekend");
+  let capabilities = {};
+  try{ capabilities = track && track.getCapabilities ? track.getCapabilities() : {}; }
+  catch(error){ capabilities = {}; }
+  const zoom = capabilities.zoom;
+  if(!zoom || !Number.isFinite(zoom.min) || !Number.isFinite(zoom.max)){
+    zoomControl.hidden = true;
+    zoomNote.textContent = "Camera-zoom niet beschikbaar in deze browser.";
+    return;
+  }
+  zoomSlider.min = String(zoom.min);
+  zoomSlider.max = String(zoom.max);
+  zoomSlider.step = String(zoom.step || 0.1);
+  const initialZoom = clampZoom(2,zoom);
+  zoomSlider.value = String(initialZoom);
+  showZoomValue(initialZoom);
+  zoomControl.hidden = false;
+  zoomNote.textContent = "Camera-zoom beschikbaar.";
+  await applyZoom(initialZoom);
+}
+zoomSlider.addEventListener("input",async ()=>{
+  await applyZoom(zoomSlider.value);
+});
 function normalizeOcrText(text){
   return String(text||"").toUpperCase().replace(/[^A-Z0-9\s-]/g," ").replace(/[\s-]+/g," ").trim();
 }
