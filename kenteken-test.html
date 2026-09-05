@@ -35,6 +35,11 @@
     .status.error{color:#a00018}
     .raw{display:none;margin-top:12px;padding:10px;border-radius:8px;background:#fff;border:1px solid #dbe0e9;overflow-wrap:anywhere}
     .raw.visible{display:block}
+    .ocr-line{margin-top:5px}
+    .ocr-previews{display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}
+    .ocr-previews.visible{display:grid}
+    .ocr-preview{margin:0;font-size:11px;text-align:center;color:#555}
+    .ocr-preview canvas{display:block;width:100%;height:auto;margin-top:4px;border:1px solid #ccd2dd;border-radius:5px}
     .result{display:none;margin-top:16px;padding:18px;border:2px solid #111;border-radius:14px;background:#fff;text-align:center}
     .result.visible{display:block}
     .result h2{margin:0 0 8px;font-size:22px}
@@ -79,7 +84,13 @@
   </section>
 
   <div class="status" id="status" role="status" aria-live="polite"></div>
-  <div class="raw" id="rawResult"><strong>Ruwe OCR-tekst:</strong> <span id="rawText"></span></div>
+  <div class="raw" id="rawResult">
+    <strong>Ruwe OCR-tekst:</strong>
+    <div class="ocr-line">OCR origineel: <span id="rawOriginal"></span></div>
+    <div class="ocr-line">OCR contrast: <span id="rawContrast"></span></div>
+    <div class="ocr-line">OCR zwart/wit: <span id="rawThreshold"></span></div>
+    <div class="ocr-previews" id="ocrPreviews"></div>
+  </div>
 
   <section class="result" id="resultSection" aria-live="polite">
     <h2>Kenteken herkend</h2>
@@ -124,7 +135,10 @@ const readBtn = document.getElementById("readBtn");
 const stopBtn = document.getElementById("stopBtn");
 const statusEl = document.getElementById("status");
 const rawResult = document.getElementById("rawResult");
-const rawText = document.getElementById("rawText");
+const rawOriginal = document.getElementById("rawOriginal");
+const rawContrast = document.getElementById("rawContrast");
+const rawThreshold = document.getElementById("rawThreshold");
+const ocrPreviews = document.getElementById("ocrPreviews");
 const resultSection = document.getElementById("resultSection");
 const candidateText = document.getElementById("candidateText");
 const suggestionBox = document.getElementById("suggestionBox");
@@ -163,7 +177,11 @@ function clearTemporaryFrame(){
 function resetResults(){
   selectedCandidate = "";
   suggestedCandidate = "";
-  rawText.textContent = "";
+  rawOriginal.textContent = "";
+  rawContrast.textContent = "";
+  rawThreshold.textContent = "";
+  ocrPreviews.innerHTML = "";
+  ocrPreviews.classList.remove("visible");
   rawResult.classList.remove("visible");
   resultSection.classList.remove("visible");
   suggestionBox.classList.remove("visible");
@@ -337,6 +355,102 @@ function getFrameCrop(sourceWidth,sourceHeight,displayWidth,displayHeight){
     height:Math.min(sourceHeight,Math.round(displayHeight*.34/scale))
   };
 }
+function otsuThreshold(grays){
+  const histogram = new Uint32Array(256);
+  grays.forEach(value=>histogram[value]++);
+  const total = grays.length;
+  let sum = 0;
+  for(let value=0;value<256;value++) sum += value*histogram[value];
+  let backgroundWeight = 0;
+  let backgroundSum = 0;
+  let bestVariance = -1;
+  let threshold = 128;
+  for(let value=0;value<256;value++){
+    backgroundWeight += histogram[value];
+    if(!backgroundWeight) continue;
+    const foregroundWeight = total-backgroundWeight;
+    if(!foregroundWeight) break;
+    backgroundSum += value*histogram[value];
+    const backgroundMean = backgroundSum/backgroundWeight;
+    const foregroundMean = (sum-backgroundSum)/foregroundWeight;
+    const variance = backgroundWeight*foregroundWeight*(backgroundMean-foregroundMean)**2;
+    if(variance>bestVariance){ bestVariance=variance; threshold=value; }
+  }
+  return threshold;
+}
+function createOcrVariants(sourceCanvas){
+  const width = sourceCanvas.width*2;
+  const height = sourceCanvas.height*2;
+  const makeCanvas = ()=>{
+    const item = document.createElement("canvas");
+    item.width = width;
+    item.height = height;
+    return item;
+  };
+  const original = makeCanvas();
+  const originalContext = original.getContext("2d",{willReadFrequently:true});
+  originalContext.imageSmoothingEnabled = true;
+  originalContext.imageSmoothingQuality = "high";
+  originalContext.drawImage(sourceCanvas,0,0,width,height);
+  const sourceData = originalContext.getImageData(0,0,width,height);
+  const contrast = makeCanvas();
+  const contrastContext = contrast.getContext("2d",{willReadFrequently:true});
+  const contrastData = contrastContext.createImageData(width,height);
+  const grays = new Uint8Array(width*height);
+  for(let pixel=0,index=0;pixel<sourceData.data.length;pixel+=4,index++){
+    const gray = Math.round(sourceData.data[pixel]*.299+sourceData.data[pixel+1]*.587+sourceData.data[pixel+2]*.114);
+    const enhanced = Math.max(0,Math.min(255,Math.round((gray-128)*1.9+128)));
+    grays[index] = enhanced;
+    contrastData.data[pixel] = enhanced;
+    contrastData.data[pixel+1] = enhanced;
+    contrastData.data[pixel+2] = enhanced;
+    contrastData.data[pixel+3] = 255;
+  }
+  contrastContext.putImageData(contrastData,0,0);
+  const thresholdValue = otsuThreshold(grays);
+  const threshold = makeCanvas();
+  const thresholdContext = threshold.getContext("2d");
+  const thresholdData = thresholdContext.createImageData(width,height);
+  for(let index=0,pixel=0;index<grays.length;index++,pixel+=4){
+    const value = grays[index]>thresholdValue ? 255 : 0;
+    thresholdData.data[pixel] = value;
+    thresholdData.data[pixel+1] = value;
+    thresholdData.data[pixel+2] = value;
+    thresholdData.data[pixel+3] = 255;
+  }
+  thresholdContext.putImageData(thresholdData,0,0);
+  return [
+    {key:"original",label:"Origineel",canvas:original},
+    {key:"contrast",label:"Contrast",canvas:contrast},
+    {key:"threshold",label:"Zwart/wit",canvas:threshold,threshold:thresholdValue}
+  ];
+}
+function showOcrPreviews(variants){
+  ocrPreviews.innerHTML = "";
+  variants.forEach(variant=>{
+    const preview = document.createElement("figure");
+    preview.className = "ocr-preview";
+    const caption = document.createElement("figcaption");
+    caption.textContent = variant.label;
+    preview.append(caption,variant.canvas);
+    ocrPreviews.appendChild(preview);
+  });
+  ocrPreviews.classList.add("visible");
+}
+function combineVariantCandidates(results){
+  const combined = new Map();
+  results.forEach(result=>{
+    extractCandidates(result.text).forEach((candidate,index)=>{
+      const current = combined.get(candidate) || {candidate,hits:0,score:0};
+      current.hits++;
+      current.score += Math.max(1,20-index);
+      combined.set(candidate,current);
+    });
+  });
+  return [...combined.values()]
+    .sort((a,b)=>b.hits-a.hits || b.score-a.score || a.candidate.localeCompare(b.candidate))
+    .map(item=>item.candidate);
+}
 function showCandidate(candidate, suggestion=""){
   selectedCandidate = candidate;
   candidateText.textContent = candidate;
@@ -367,7 +481,18 @@ async function readPlate(){
   canvas.height = crop.height;
   const context = canvas.getContext("2d", {willReadFrequently:true});
   context.drawImage(video,crop.x,crop.y,crop.width,crop.height,0,0,crop.width,crop.height);
-  let text = "";
+  let variants;
+  try{
+    variants = createOcrVariants(canvas);
+  }catch(error){
+    clearTemporaryFrame();
+    readBtn.disabled = false;
+    setStatus("Beeldvoorbewerking kon niet worden uitgevoerd. Probeer opnieuw.", true);
+    return;
+  }
+  clearTemporaryFrame();
+  showOcrPreviews(variants);
+  const ocrResults = [];
   let worker = null;
   try{
     worker = await Tesseract.createWorker("eng",1,{
@@ -379,38 +504,47 @@ async function readPlate(){
       tessedit_pageseg_mode:Tesseract.PSM ? Tesseract.PSM.SINGLE_LINE : "7",
       tessedit_char_whitelist:"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- "
     });
-    const result = await worker.recognize(canvas);
-    text = result && result.data ? result.data.text : "";
+    for(let index=0;index<variants.length;index++){
+      const variant = variants[index];
+      setStatus("OCR " + variant.label.toLowerCase() + " wordt lokaal gelezen… " + (index+1) + "/" + variants.length);
+      try{
+        const result = await worker.recognize(variant.canvas);
+        ocrResults.push({key:variant.key,text:result && result.data ? result.data.text : ""});
+      }catch(error){
+        ocrResults.push({key:variant.key,text:""});
+      }
+    }
   }catch(error){
     setStatus("OCR kon het camerabeeld niet verwerken.", true);
-    clearTemporaryFrame();
     readBtn.disabled = false;
     return;
   }finally{
-    if(worker) await worker.terminate();
+    if(worker){ try{ await worker.terminate(); }catch(error){} }
   }
-  clearTemporaryFrame();
   readBtn.disabled = false;
-  const normalized = normalizeOcrText(text);
-  rawText.textContent = normalized || "(geen tekst)";
+  const textFor = key=>normalizeOcrText((ocrResults.find(result=>result.key===key)||{}).text) || "(geen tekst)";
+  rawOriginal.textContent = textFor("original");
+  rawContrast.textContent = textFor("contrast");
+  rawThreshold.textContent = textFor("threshold");
   rawResult.classList.add("visible");
-  if(!normalized){
+  const combinedText = ocrResults.map(result=>result.text).filter(Boolean).join("\n");
+  if(!normalizeOcrText(combinedText)){
     setStatus("OCR heeft geen tekst gevonden. Probeer opnieuw met meer licht.", true);
     return;
   }
-  const candidates = extractCandidates(text);
+  const candidates = combineVariantCandidates(ocrResults);
   if(candidates.length){
-    const suggestion = findKnownSuggestion(text);
+    const suggestion = findKnownSuggestion(combinedText);
     showCandidate(candidates[0], suggestion && suggestion !== candidates[0] ? suggestion : "");
     setStatus(candidates.length > 1
       ? "Meerdere mogelijke kentekens gevonden. Sterkste eerst: " + candidates.join(", ") + ". Controleer de keuze."
       : "Controleer het herkende kenteken voordat je het gebruikt.");
     return;
   }
-  const suggestion = findKnownSuggestion(text);
+  const suggestion = findKnownSuggestion(combinedText);
   if(suggestion){
-    const uncertain = collectOcrSequences(text).sort((a,b)=>b.score-a.score)[0];
-    showCandidate(uncertain ? uncertain.value : normalized.replace(/[\s-]/g,"").slice(0,6), suggestion);
+    const uncertain = collectOcrSequences(combinedText).sort((a,b)=>b.score-a.score)[0];
+    showCandidate(uncertain ? uncertain.value : normalizeOcrText(combinedText).replace(/[\s-]/g,"").slice(0,6), suggestion);
     setStatus("Geen zeker kentekenpatroon gevonden; er is alleen een waarschijnlijk voorstel.", true);
     return;
   }
@@ -423,7 +557,7 @@ readBtn.addEventListener("click",readPlate);
 againBtn.addEventListener("click",async ()=>{
   resetResults();
   if(!stream) await startCamera();
-  else setStatus("Plaats het kenteken opnieuw in het kader.");
+  else setStatus("Richt het kenteken opnieuw binnen de strook.");
 });
 confirmSuggestionBtn.addEventListener("click",()=>{
   if(!suggestedCandidate) return;
