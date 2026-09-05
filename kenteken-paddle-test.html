@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>PaddleOCR kentekenherkenning testen</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f6fb;color:#111;font-family:Arial,sans-serif;overflow-x:hidden}
+    main{width:min(560px,100%);min-height:100vh;margin:auto;padding:calc(18px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
+    h1{font-size:25px;margin:0 0 8px}
+    p{line-height:1.45}
+    .privacy{margin:0 0 16px;padding:12px;border:1px solid #bdd7c5;border-radius:10px;background:#effaf2;color:#174d26}
+    button{min-height:50px;border:0;border-radius:10px;padding:11px 15px;font:700 16px Arial,sans-serif;touch-action:manipulation}
+    button:disabled{opacity:.55}
+    .primary{width:100%;background:#111;color:#fff}
+    .secondary{background:#e8ebf2;color:#111;border:1px solid #cfd5e1}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .toolbar button{flex:1 1 145px}
+    .camera{display:none;margin-top:16px}
+    .camera.active{display:block}
+    .viewport{position:relative;overflow:hidden;border-radius:14px;background:#111;aspect-ratio:4/3}
+    video{display:block;width:100%;height:100%;object-fit:cover}
+    .plate-frame{position:absolute;left:5%;right:5%;top:33%;height:34%;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.22);pointer-events:none}
+    .plate-frame::after{content:"Richt het kenteken binnen deze strook";position:absolute;left:0;right:0;bottom:calc(100% + 8px);color:#fff;text-align:center;font-weight:bold;text-shadow:0 1px 3px #000}
+    .panel{margin-top:10px;padding:10px;border-radius:9px;background:#fff;border:1px solid #dbe0e9;font-size:13px;color:#444;overflow-wrap:anywhere}
+    .zoom-control{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-top:8px}
+    .zoom-control[hidden]{display:none}
+    .zoom-control label{font-weight:bold}
+    .zoom-control input{width:100%;min-height:36px;margin:0}
+    .zoom-value{min-width:42px;text-align:right;font-weight:bold;color:#111}
+    .status{min-height:24px;margin:14px 0 0;font-weight:bold}
+    .status.error{color:#a00018}
+    .diagnostics{display:grid;gap:4px}
+    .raw{display:none;margin-top:12px}
+    .raw.visible{display:block}
+    .raw-lines{margin:8px 0 0;padding:0;list-style:none}
+    .raw-lines li{padding:8px 0;border-top:1px solid #e3e6ec}
+    .line-text{font-weight:bold;color:#111;overflow-wrap:anywhere}
+    .line-score{color:#555}
+    .result{display:none;margin-top:16px;padding:18px;border:2px solid #111;border-radius:14px;background:#fff;text-align:center}
+    .result.visible{display:block}
+    .result h2{margin:0 0 8px;font-size:22px}
+    .candidate{font-size:32px;font-weight:800;letter-spacing:3px;margin:8px 0}
+    .alternatives{margin-top:8px;color:#555;overflow-wrap:anywhere}
+    canvas{display:none}
+    @media(max-width:380px){
+      main{padding-left:12px;padding-right:12px}
+      h1{font-size:22px}
+      .candidate{font-size:27px}
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>PaddleOCR kenteken-test</h1>
+  <p class="privacy">Camerabeeld en OCR worden alleen lokaal op dit apparaat verwerkt. Er wordt geen foto opgeslagen of geüpload.</p>
+
+  <button type="button" class="primary" id="scanBtn">📷 Scan kenteken</button>
+
+  <section class="camera" id="cameraSection" aria-label="Camera">
+    <div class="viewport">
+      <video id="cameraVideo" playsinline muted></video>
+      <div class="plate-frame" aria-hidden="true"></div>
+    </div>
+    <div class="panel">
+      <div id="videoInfo">Resolutie wordt na het starten getoond.</div>
+      <div class="zoom-control" id="zoomControl" hidden>
+        <label for="zoomSlider">Zoom</label>
+        <input type="range" id="zoomSlider">
+        <output class="zoom-value" id="zoomValue" for="zoomSlider"></output>
+      </div>
+      <div id="zoomNote"></div>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="primary" id="readBtn">Lees kenteken</button>
+      <button type="button" class="secondary" id="stopBtn">Stop camera</button>
+    </div>
+  </section>
+
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+
+  <section class="panel diagnostics" aria-label="PaddleOCR diagnostiek">
+    <strong>PaddleOCR.js 0.4.2 · PP-OCRv5 mobile</strong>
+    <span>Modellen: PP-OCRv5_mobile_det (4.843.520 bytes) + PP-OCRv5_mobile_rec (16.701.440 bytes)</span>
+    <span id="initTime">Laden/initialiseren: nog niet uitgevoerd</span>
+    <span id="ocrTime">OCR-verwerking: nog niet uitgevoerd</span>
+    <span id="backendInfo">Backend: WASM-worker wordt eerst geprobeerd</span>
+    <span id="lineCount">Gevonden tekstregels: 0</span>
+  </section>
+
+  <section class="panel raw" id="rawResult" aria-live="polite">
+    <strong>PaddleOCR herkend:</strong>
+    <div id="rawText">(geen tekst)</div>
+    <ul class="raw-lines" id="rawLines"></ul>
+  </section>
+
+  <section class="result" id="resultSection" aria-live="polite">
+    <h2 id="resultTitle">Kenteken herkend</h2>
+    <div class="candidate" id="candidateText"></div>
+    <div class="alternatives" id="alternatives"></div>
+    <div class="toolbar">
+      <button type="button" class="secondary" id="againBtn">Opnieuw scannen</button>
+    </div>
+  </section>
+
+  <canvas id="captureCanvas"></canvas>
+</main>
+
+<script type="module">
+"use strict";
+const PADDLE_SDK_URL = "https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm";
+const PADDLE_WORKER_URL = "https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/dist/assets/worker-entry-C9UNuyOJ.js";
+const WASM_PATH = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/";
+const DET_MODEL = "PP-OCRv5_mobile_det";
+const REC_MODEL = "PP-OCRv5_mobile_rec";
+const DUTCH_PATTERNS = [
+  /^[A-Z]{2}[0-9]{2}[0-9]{2}$/, /^[0-9]{2}[0-9]{2}[A-Z]{2}$/,
+  /^[0-9]{2}[A-Z]{2}[0-9]{2}$/, /^[A-Z]{2}[0-9]{2}[A-Z]{2}$/,
+  /^[A-Z]{2}[A-Z]{2}[0-9]{2}$/, /^[0-9]{2}[A-Z]{2}[A-Z]{2}$/,
+  /^[0-9]{2}[A-Z]{3}[0-9]$/, /^[0-9][A-Z]{3}[0-9]{2}$/,
+  /^[A-Z]{2}[0-9]{3}[A-Z]$/, /^[A-Z][0-9]{3}[A-Z]{2}$/,
+  /^[A-Z]{3}[0-9]{2}[A-Z]$/, /^[A-Z][0-9]{2}[A-Z]{3}$/
+];
+
+const scanBtn = document.getElementById("scanBtn");
+const cameraSection = document.getElementById("cameraSection");
+const video = document.getElementById("cameraVideo");
+const videoInfo = document.getElementById("videoInfo");
+const zoomControl = document.getElementById("zoomControl");
+const zoomSlider = document.getElementById("zoomSlider");
+const zoomValue = document.getElementById("zoomValue");
+const zoomNote = document.getElementById("zoomNote");
+const readBtn = document.getElementById("readBtn");
+const stopBtn = document.getElementById("stopBtn");
+const statusEl = document.getElementById("status");
+const initTime = document.getElementById("initTime");
+const ocrTime = document.getElementById("ocrTime");
+const backendInfo = document.getElementById("backendInfo");
+const lineCount = document.getElementById("lineCount");
+const rawResult = document.getElementById("rawResult");
+const rawText = document.getElementById("rawText");
+const rawLines = document.getElementById("rawLines");
+const resultSection = document.getElementById("resultSection");
+const resultTitle = document.getElementById("resultTitle");
+const candidateText = document.getElementById("candidateText");
+const alternatives = document.getElementById("alternatives");
+const againBtn = document.getElementById("againBtn");
+const canvas = document.getElementById("captureCanvas");
+
+let stream = null;
+let videoTrack = null;
+let paddleOcr = null;
+let paddleInitPromise = null;
+let workerMode = true;
+
+function setStatus(message,error=false){
+  statusEl.textContent = message;
+  statusEl.classList.toggle("error",error);
+}
+function stopCamera(){
+  if(stream) stream.getTracks().forEach(track=>track.stop());
+  stream = null;
+  videoTrack = null;
+  video.srcObject = null;
+  cameraSection.classList.remove("active");
+  zoomControl.hidden = true;
+  zoomNote.textContent = "";
+  videoInfo.textContent = "Resolutie wordt na het starten getoond.";
+}
+function clearTemporaryFrame(){
+  const context = canvas.getContext("2d");
+  context.clearRect(0,0,canvas.width,canvas.height);
+  canvas.width = 0;
+  canvas.height = 0;
+}
+function resetResult(){
+  rawResult.classList.remove("visible");
+  rawText.textContent = "(geen tekst)";
+  rawLines.replaceChildren();
+  resultSection.classList.remove("visible");
+  resultTitle.textContent = "Kenteken herkend";
+  candidateText.textContent = "";
+  alternatives.textContent = "";
+  ocrTime.textContent = "OCR-verwerking: nog niet uitgevoerd";
+  lineCount.textContent = "Gevonden tekstregels: 0";
+  clearTemporaryFrame();
+}
+async function startCamera(){
+  resetResult();
+  stopCamera();
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    setStatus("Camera is in deze browser niet beschikbaar.",true);
+    return;
+  }
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:"environment"},width:{ideal:3840,min:1280},height:{ideal:2160,min:720}},
+      audio:false
+    });
+  }catch(firstError){
+    if(firstError && firstError.name === "NotAllowedError"){
+      setStatus("Cameratoegang is geweigerd. Geef Safari toestemming voor de camera.",true);
+      return;
+    }
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+      setStatus("Geen achtercamera gevonden; een beschikbare camera is geopend.");
+    }catch(error){
+      setStatus(error && error.name === "NotAllowedError"
+        ? "Cameratoegang is geweigerd. Geef Safari toestemming voor de camera."
+        : "Camera kon niet worden geopend.",true);
+      return;
+    }
+  }
+  video.srcObject = stream;
+  await video.play();
+  videoTrack = stream.getVideoTracks()[0] || null;
+  await setupCameraDiagnostics(videoTrack);
+  cameraSection.classList.add("active");
+  if(!statusEl.textContent) setStatus("Richt de camera op het kenteken en tik op ‘Lees kenteken’.");
+}
+function clampZoom(value,capability){
+  return Math.min(capability.max,Math.max(capability.min,Number(value)));
+}
+function showZoomValue(value){
+  zoomValue.value = Number(value).toFixed(1) + "×";
+}
+async function applyZoom(value){
+  if(!videoTrack) return false;
+  let capabilities;
+  try{ capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {}; }
+  catch(error){ capabilities = {}; }
+  if(!capabilities.zoom) return false;
+  const zoom = clampZoom(value,capabilities.zoom);
+  try{
+    await videoTrack.applyConstraints({advanced:[{zoom}]});
+    zoomSlider.value = String(zoom);
+    showZoomValue(zoom);
+    zoomNote.textContent = "Camera-zoom beschikbaar.";
+    return true;
+  }catch(error){
+    zoomNote.textContent = "Zoom kon niet worden ingesteld; de scanner blijft zonder aangepaste zoom werken.";
+    return false;
+  }
+}
+async function setupCameraDiagnostics(track){
+  const settings = track && track.getSettings ? track.getSettings() : {};
+  const width = settings.width || video.videoWidth || 0;
+  const height = settings.height || video.videoHeight || 0;
+  videoInfo.textContent = "Actieve videoresolutie: " + (width && height ? width + " × " + height : "onbekend");
+  let capabilities = {};
+  try{ capabilities = track && track.getCapabilities ? track.getCapabilities() : {}; }
+  catch(error){ capabilities = {}; }
+  const zoom = capabilities.zoom;
+  if(!zoom || !Number.isFinite(zoom.min) || !Number.isFinite(zoom.max)){
+    zoomControl.hidden = true;
+    zoomNote.textContent = "Camera-zoom niet beschikbaar in deze browser.";
+    return;
+  }
+  zoomSlider.min = String(zoom.min);
+  zoomSlider.max = String(zoom.max);
+  zoomSlider.step = String(zoom.step || .1);
+  const initialZoom = clampZoom(2,zoom);
+  zoomSlider.value = String(initialZoom);
+  showZoomValue(initialZoom);
+  zoomControl.hidden = false;
+  zoomNote.textContent = "Camera-zoom beschikbaar.";
+  await applyZoom(initialZoom);
+}
+function normalizeOcrText(text){
+  return String(text||"").toUpperCase().replace(/[^A-Z0-9\s-]/g," ").replace(/[\s-]+/g," ").trim();
+}
+function isPlausibleDutchPlate(value){
+  if(!DUTCH_PATTERNS.some(pattern=>pattern.test(value))) return false;
+  return !/[AEIOU]/.test(value.replace(/[0-9]/g,""));
+}
+function collectOcrSequences(text){
+  const sequences = new Map();
+  const add = (value,score)=>{
+    const compact = value.replace(/[^A-Z0-9]/g,"");
+    if(compact.length === 6) sequences.set(compact,Math.max(score,sequences.get(compact)||0));
+  };
+  String(text||"").split(/\r?\n/).forEach(rawLine=>{
+    const cleaned = normalizeOcrText(rawLine).replace(/\b(?:NL|EU)\b/g," ").replace(/\s+/g," ").trim();
+    if(!cleaned) return;
+    const groups = cleaned.split(" ");
+    const lineCompact = groups.join("");
+    if(lineCompact.length === 6) add(lineCompact,groups.length>1 ? 150 : 140);
+    groups.forEach(group=>{
+      if(group.length === 6) add(group,140);
+      if(group.length>6){
+        for(let index=0;index<=group.length-6;index++) add(group.slice(index,index+6),45);
+      }
+    });
+    for(let start=0;start<groups.length;start++){
+      let value = "";
+      for(let end=start;end<Math.min(groups.length,start+4);end++){
+        if(groups[end].length>4) break;
+        value += groups[end];
+        if(value.length===6) add(value,125-(end-start)*5);
+        if(value.length>=6) break;
+      }
+    }
+  });
+  return [...sequences].map(([value,score])=>({value,score}));
+}
+function extractCandidates(items){
+  const scored = new Map();
+  items.forEach((item,lineIndex)=>{
+    collectOcrSequences(item.text).forEach(sequence=>{
+      if(!isPlausibleDutchPlate(sequence.value)) return;
+      const confidence = Number.isFinite(item.score) ? item.score*100 : 0;
+      const score = sequence.score + confidence - lineIndex;
+      scored.set(sequence.value,Math.max(score,scored.get(sequence.value)||-Infinity));
+    });
+  });
+  return [...scored].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0])).map(([value])=>value);
+}
+function getFrameCrop(sourceWidth,sourceHeight,displayWidth,displayHeight){
+  const scale = Math.max(displayWidth/sourceWidth,displayHeight/sourceHeight);
+  const hiddenX = Math.max(0,(sourceWidth*scale-displayWidth)/2);
+  const hiddenY = Math.max(0,(sourceHeight*scale-displayHeight)/2);
+  return {
+    x:Math.max(0,Math.round((hiddenX+displayWidth*.05)/scale)),
+    y:Math.max(0,Math.round((hiddenY+displayHeight*.33)/scale)),
+    width:Math.min(sourceWidth,Math.round(displayWidth*.90/scale)),
+    height:Math.min(sourceHeight,Math.round(displayHeight*.34/scale))
+  };
+}
+function describeBackend(summary,runtime){
+  const details = runtime || summary || {};
+  const requested = details.requestedBackend || details.backend || "wasm";
+  const det = details.detProvider || "onbekend";
+  const rec = details.recProvider || "onbekend";
+  return requested + " · worker " + (workerMode ? "aan" : "uit (fallback)") + " · detectie " + det + " · herkenning " + rec;
+}
+async function createPaddleInstance(PaddleOCR,useWorker){
+  const worker = useWorker ? {
+    createWorker:()=>{
+      const source = 'import "' + PADDLE_WORKER_URL + '";';
+      const url = URL.createObjectURL(new Blob([source],{type:"text/javascript"}));
+      const instance = new Worker(url,{type:"module",name:"paddleocr-worker"});
+      setTimeout(()=>URL.revokeObjectURL(url),0);
+      return instance;
+    }
+  } : false;
+  return PaddleOCR.create({
+    textDetectionModelName:DET_MODEL,
+    textRecognitionModelName:REC_MODEL,
+    textDetectionBatchSize:1,
+    textRecognitionBatchSize:4,
+    worker,
+    ortOptions:{backend:"wasm",wasmPaths:WASM_PATH,numThreads:1,simd:true}
+  });
+}
+async function ensurePaddleOcr(){
+  if(paddleOcr) return paddleOcr;
+  if(paddleInitPromise) return paddleInitPromise;
+  paddleInitPromise = (async()=>{
+    const started = performance.now();
+    setStatus("PaddleOCR.js en PP-OCRv5 worden geladen… Dit kan de eerste keer even duren.");
+    const {PaddleOCR} = await import(PADDLE_SDK_URL);
+    try{
+      workerMode = true;
+      paddleOcr = await createPaddleInstance(PaddleOCR,true);
+    }catch(workerError){
+      workerMode = false;
+      paddleOcr = await createPaddleInstance(PaddleOCR,false);
+    }
+    const elapsed = performance.now()-started;
+    const summary = paddleOcr.getInitializationSummary ? paddleOcr.getInitializationSummary() : null;
+    initTime.textContent = "Laden/initialiseren: " + Math.round(elapsed) + " ms";
+    backendInfo.textContent = "Backend: " + describeBackend(summary,null);
+    return paddleOcr;
+  })();
+  try{
+    return await paddleInitPromise;
+  }catch(error){
+    paddleInitPromise = null;
+    paddleOcr = null;
+    throw error;
+  }
+}
+function renderLines(items){
+  rawLines.replaceChildren();
+  items.forEach(item=>{
+    const row = document.createElement("li");
+    const text = document.createElement("div");
+    text.className = "line-text";
+    text.textContent = item.text || "(lege regel)";
+    const score = document.createElement("div");
+    score.className = "line-score";
+    score.textContent = "Confidence: " + (Number.isFinite(item.score) ? (item.score*100).toFixed(1) + "%" : "niet beschikbaar");
+    row.append(text,score);
+    rawLines.appendChild(row);
+  });
+}
+async function readPlate(){
+  if(!stream || video.readyState<2){
+    setStatus("Start eerst de camera en wacht tot het beeld zichtbaar is.",true);
+    return;
+  }
+  readBtn.disabled = true;
+  resetResult();
+  setStatus("Scanbeeld wordt lokaal voorbereid…");
+  const crop = getFrameCrop(video.videoWidth,video.videoHeight,video.clientWidth,video.clientHeight);
+  canvas.width = crop.width;
+  canvas.height = crop.height;
+  canvas.getContext("2d").drawImage(video,crop.x,crop.y,crop.width,crop.height,0,0,crop.width,crop.height);
+  try{
+    const ocr = await ensurePaddleOcr();
+    setStatus("PaddleOCR leest de scanstrook lokaal…");
+    const started = performance.now();
+    const [result] = await ocr.predict(canvas,{textDetLimitSideLen:960,textDetLimitType:"max",textRecScoreThresh:.15});
+    const elapsed = performance.now()-started;
+    clearTemporaryFrame();
+    const items = result && Array.isArray(result.items) ? result.items : [];
+    const raw = items.map(item=>item.text).filter(Boolean).join("\n");
+    rawText.textContent = raw || "(geen tekst)";
+    renderLines(items);
+    rawResult.classList.add("visible");
+    ocrTime.textContent = "OCR-verwerking: " + Math.round(elapsed) + " ms" + (result && result.metrics ? " (SDK: " + Math.round(result.metrics.totalMs) + " ms)" : "");
+    lineCount.textContent = "Gevonden tekstregels: " + items.length;
+    backendInfo.textContent = "Backend: " + describeBackend(null,result && result.runtime);
+    const candidates = extractCandidates(items);
+    resultSection.classList.add("visible");
+    if(candidates.length){
+      resultTitle.textContent = "Kenteken herkend";
+      candidateText.textContent = candidates[0];
+      alternatives.textContent = candidates.length>1 ? "Andere plausibele kandidaten: " + candidates.slice(1).join(", ") + ". Controleer de keuze." : "Controleer het kenteken voordat je het gebruikt.";
+      setStatus(candidates.length>1 ? "Meerdere plausibele kandidaten gevonden; de sterkste staat bovenaan." : "Plausibel Nederlands kenteken gevonden.");
+    }else{
+      resultTitle.textContent = "Geen plausibel Nederlands kenteken gevonden.";
+      candidateText.textContent = "";
+      alternatives.textContent = "Probeer opnieuw en controleer licht, afstand en scherpte.";
+      setStatus("Geen plausibel Nederlands kenteken gevonden.",true);
+    }
+  }catch(error){
+    clearTemporaryFrame();
+    setStatus("PaddleOCR kon niet worden geladen of uitgevoerd. Controleer de internetverbinding en probeer opnieuw.",true);
+  }finally{
+    readBtn.disabled = false;
+  }
+}
+
+zoomSlider.addEventListener("input",()=>applyZoom(zoomSlider.value));
+scanBtn.addEventListener("click",startCamera);
+stopBtn.addEventListener("click",stopCamera);
+readBtn.addEventListener("click",readPlate);
+againBtn.addEventListener("click",()=>{
+  resetResult();
+  setStatus(stream ? "Richt het kenteken opnieuw binnen de strook." : "Start de camera opnieuw.");
+});
+window.addEventListener("pagehide",()=>{
+  stopCamera();
+  clearTemporaryFrame();
+  if(paddleOcr && paddleOcr.dispose) paddleOcr.dispose();
+  paddleOcr = null;
+  paddleInitPromise = null;
+});
+</script>
+</body>
+</html>
