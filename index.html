@@ -115,6 +115,25 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .edit-modal h3{margin:0 0 8px}
 .edit-modal p{margin:0 0 12px;color:#555}
 .edit-modal .toolbar{justify-content:flex-end}
+.plate-scan-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));background:rgba(0,0,0,.72);z-index:10000}
+.plate-scan-overlay.active{display:flex}
+.plate-scan-modal{width:min(560px,100%);max-height:100%;overflow-y:auto;background:#fff;border-radius:14px;padding:16px}
+.plate-scan-modal h2{margin:0 0 8px}
+.plate-scan-privacy{margin:0 0 12px;color:#444;font-size:13px;line-height:1.4}
+.plate-scan-viewport{position:relative;overflow:hidden;border-radius:14px;background:#111;aspect-ratio:4/3}
+.plate-scan-viewport video{display:block;width:100%;height:100%;object-fit:cover}
+.plate-scan-frame{position:absolute;left:5%;right:5%;top:33%;height:34%;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.22);pointer-events:none}
+.plate-scan-frame::after{content:"Richt het kenteken binnen deze strook";position:absolute;left:0;right:0;bottom:calc(100% + 8px);color:#fff;text-align:center;font-weight:bold;text-shadow:0 1px 3px #000}
+.plate-scan-zoom{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-top:10px}
+.plate-scan-zoom[hidden]{display:none}
+.plate-scan-zoom input{min-height:36px;padding:0;background:transparent}
+.plate-scan-status{min-height:22px;margin-top:10px;font-weight:bold}
+.plate-scan-status.error{color:var(--danger)}
+.plate-scan-result{display:none;margin-top:12px;padding:14px;border:2px solid #111;border-radius:12px;text-align:center}
+.plate-scan-result.visible{display:block}
+.plate-scan-candidate{font-family:Arial,sans-serif;font-size:30px;font-weight:800;letter-spacing:3px;margin:8px 0}
+.plate-scan-warning{color:#8a5a00;font-weight:bold}
+@media(max-width:380px){.plate-scan-modal{padding:12px}.plate-scan-candidate{font-size:26px}.plate-scan-frame::after{font-size:13px}}
 </style>
 </head>
 <body>
@@ -170,6 +189,9 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <input id="plate" placeholder="Bijv. X-605-VJ" autocomplete="off">
         <div class="suggestions" id="plateSuggestions"></div>
         <div class="quick" id="plateButtons"></div>
+        <div class="toolbar">
+          <button type="button" class="btn-secondary" id="openPlateScannerBtn">📷 Scan kenteken</button>
+        </div>
         <div class="info" id="rdwInfo"></div>
       </div>
 
@@ -415,6 +437,37 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       </div>
     </div>
   </div>
+
+  <div class="plate-scan-overlay" id="plateScannerOverlay" role="dialog" aria-modal="true" aria-labelledby="plateScannerTitle">
+    <div class="plate-scan-modal">
+      <h2 id="plateScannerTitle">Kenteken scannen</h2>
+      <p class="plate-scan-privacy">Camerabeeld en kentekenherkenning worden alleen lokaal op dit apparaat verwerkt. Er wordt geen foto opgeslagen of geüpload.</p>
+      <div class="plate-scan-viewport">
+        <video id="plateScannerVideo" playsinline muted></video>
+        <div class="plate-scan-frame" aria-hidden="true"></div>
+      </div>
+      <div class="plate-scan-zoom" id="plateScannerZoom" hidden>
+        <label for="plateScannerZoomSlider">Zoom</label>
+        <input type="range" id="plateScannerZoomSlider">
+        <output id="plateScannerZoomValue" for="plateScannerZoomSlider"></output>
+      </div>
+      <div class="plate-scan-status" id="plateScannerStatus" role="status" aria-live="polite"></div>
+      <div class="plate-scan-result" id="plateScannerResult" aria-live="polite">
+        <strong>Kenteken herkend</strong>
+        <div class="plate-scan-candidate" id="plateScannerCandidate"></div>
+        <div class="plate-scan-warning" id="plateScannerWarning"></div>
+        <div class="toolbar">
+          <button type="button" class="btn-primary" id="useScannedPlateBtn">Gebruik kenteken</button>
+          <button type="button" class="btn-secondary" id="scanAgainBtn">Opnieuw scannen</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <button type="button" class="btn-primary" id="readScannedPlateBtn" disabled>Lees kenteken</button>
+        <button type="button" class="btn-secondary" id="cancelPlateScannerBtn">Annuleren</button>
+      </div>
+      <canvas id="plateScannerCanvas" hidden></canvas>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -424,6 +477,9 @@ const STORAGE_TRIPS = "trips_v31";
 const STORAGE_DAYDATA = "dayData_v31";
 const STORAGE_PLATES = "plates_v31";
 const STORAGE_ADDRESSES = "addresses_v35";
+const PADDLE_OCR_SDK_URL = "https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm";
+const PADDLE_OCR_WORKER_URL = "https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/dist/assets/worker-entry-C9UNuyOJ.js";
+const PADDLE_OCR_WASM_PATH = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
 const DEFAULT_ADDRESSES = {
@@ -446,6 +502,11 @@ let addressHistory = [];
 let currentDraftSaved = false;
 let postboxAnswer = null;
 let editingWorkdayDate = null;
+let plateScannerStream = null;
+let plateScannerTrack = null;
+let plateScannerOcr = null;
+let plateScannerInitPromise = null;
+let scannedPlateCandidate = null;
 
 let currentStep = 0;
 let editingTripId = null;
@@ -487,6 +548,17 @@ const voiceStatusEl = document.getElementById("voiceStatus");
 const postboxYesBtn = document.getElementById("postboxYesBtn");
 const postboxNoBtn = document.getElementById("postboxNoBtn");
 const plateSuggestionsEl = document.getElementById("plateSuggestions");
+const plateScannerOverlayEl = document.getElementById("plateScannerOverlay");
+const plateScannerVideoEl = document.getElementById("plateScannerVideo");
+const plateScannerZoomEl = document.getElementById("plateScannerZoom");
+const plateScannerZoomSliderEl = document.getElementById("plateScannerZoomSlider");
+const plateScannerZoomValueEl = document.getElementById("plateScannerZoomValue");
+const plateScannerStatusEl = document.getElementById("plateScannerStatus");
+const plateScannerResultEl = document.getElementById("plateScannerResult");
+const plateScannerCandidateEl = document.getElementById("plateScannerCandidate");
+const plateScannerWarningEl = document.getElementById("plateScannerWarning");
+const plateScannerCanvasEl = document.getElementById("plateScannerCanvas");
+const readScannedPlateBtnEl = document.getElementById("readScannedPlateBtn");
 const fromSuggestionsEl = document.getElementById("fromSuggestions");
 const toSuggestionsEl = document.getElementById("toSuggestions");
 const stopsSuggestionsEl = document.getElementById("stopsSuggestions");
@@ -812,6 +884,7 @@ function ensureTripIds(){
   if(changed) saveAll();
 }
 function setScreen(name){
+  if(name !== "invoer") closePlateScanner();
   Object.entries(screens).forEach(([key, el]) => el.classList.toggle("active", key === name));
   screenButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.screenBtn === name));
 }
@@ -974,6 +1047,261 @@ async function lookupPlate(){
   rdwInfoEl.textContent = text;
   updateReview();
   return info;
+}
+
+const SCANNER_DUTCH_PLATE_PATTERNS = [
+  /^[A-Z]{2}[0-9]{2}[0-9]{2}$/, /^[0-9]{2}[0-9]{2}[A-Z]{2}$/,
+  /^[0-9]{2}[A-Z]{2}[0-9]{2}$/, /^[A-Z]{2}[0-9]{2}[A-Z]{2}$/,
+  /^[A-Z]{2}[A-Z]{2}[0-9]{2}$/, /^[0-9]{2}[A-Z]{2}[A-Z]{2}$/,
+  /^[0-9]{2}[A-Z]{3}[0-9]$/, /^[0-9][A-Z]{3}[0-9]{2}$/,
+  /^[A-Z]{2}[0-9]{3}[A-Z]$/, /^[A-Z][0-9]{3}[A-Z]{2}$/,
+  /^[A-Z]{3}[0-9]{2}[A-Z]$/, /^[A-Z][0-9]{2}[A-Z]{3}$/
+];
+function setPlateScannerStatus(message, error=false){
+  plateScannerStatusEl.textContent = message;
+  plateScannerStatusEl.classList.toggle("error", error);
+}
+function clearPlateScannerCanvas(){
+  const context = plateScannerCanvasEl.getContext("2d");
+  context.clearRect(0,0,plateScannerCanvasEl.width,plateScannerCanvasEl.height);
+  plateScannerCanvasEl.width = 0;
+  plateScannerCanvasEl.height = 0;
+}
+function resetPlateScannerResult(){
+  scannedPlateCandidate = null;
+  plateScannerResultEl.classList.remove("visible");
+  plateScannerCandidateEl.textContent = "";
+  plateScannerWarningEl.textContent = "";
+  clearPlateScannerCanvas();
+}
+function stopPlateScannerCamera(){
+  if(plateScannerStream) plateScannerStream.getTracks().forEach(track=>track.stop());
+  plateScannerStream = null;
+  plateScannerTrack = null;
+  plateScannerVideoEl.srcObject = null;
+  plateScannerZoomEl.hidden = true;
+}
+function closePlateScanner(){
+  stopPlateScannerCamera();
+  resetPlateScannerResult();
+  plateScannerOverlayEl.classList.remove("active");
+  readScannedPlateBtnEl.disabled = true;
+  setPlateScannerStatus("");
+}
+function clampPlateScannerZoom(value, capability){
+  return Math.min(capability.max,Math.max(capability.min,Number(value)));
+}
+async function applyPlateScannerZoom(value){
+  if(!plateScannerTrack) return false;
+  let capabilities = {};
+  try{ capabilities = plateScannerTrack.getCapabilities ? plateScannerTrack.getCapabilities() : {}; }
+  catch(error){ capabilities = {}; }
+  if(!capabilities.zoom) return false;
+  const zoom = clampPlateScannerZoom(value,capabilities.zoom);
+  try{
+    await plateScannerTrack.applyConstraints({advanced:[{zoom}]});
+    plateScannerZoomSliderEl.value = String(zoom);
+    plateScannerZoomValueEl.value = Number(zoom).toFixed(1) + "×";
+    return true;
+  }catch(error){
+    setPlateScannerStatus("Camera-zoom kon niet worden ingesteld; scannen blijft mogelijk.",true);
+    return false;
+  }
+}
+async function setupPlateScannerZoom(){
+  let capabilities = {};
+  try{ capabilities = plateScannerTrack && plateScannerTrack.getCapabilities ? plateScannerTrack.getCapabilities() : {}; }
+  catch(error){ capabilities = {}; }
+  const zoom = capabilities.zoom;
+  if(!zoom || !Number.isFinite(zoom.min) || !Number.isFinite(zoom.max)){
+    plateScannerZoomEl.hidden = true;
+    return;
+  }
+  plateScannerZoomSliderEl.min = String(zoom.min);
+  plateScannerZoomSliderEl.max = String(zoom.max);
+  plateScannerZoomSliderEl.step = String(zoom.step || .1);
+  const initialZoom = clampPlateScannerZoom(2,zoom);
+  plateScannerZoomSliderEl.value = String(initialZoom);
+  plateScannerZoomValueEl.value = Number(initialZoom).toFixed(1) + "×";
+  plateScannerZoomEl.hidden = false;
+  await applyPlateScannerZoom(initialZoom);
+}
+async function startPlateScannerCamera(){
+  stopPlateScannerCamera();
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("Camera is in deze browser niet beschikbaar.");
+  try{
+    plateScannerStream = await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:"environment"},width:{ideal:3840,min:1280},height:{ideal:2160,min:720}},
+      audio:false
+    });
+  }catch(firstError){
+    if(firstError && firstError.name === "NotAllowedError") throw new Error("Cameratoegang is geweigerd. Geef Safari toestemming voor de camera.");
+    try{ plateScannerStream = await navigator.mediaDevices.getUserMedia({video:true,audio:false}); }
+    catch(error){ throw new Error(error && error.name === "NotAllowedError" ? "Cameratoegang is geweigerd. Geef Safari toestemming voor de camera." : "Camera kon niet worden geopend."); }
+  }
+  plateScannerVideoEl.srcObject = plateScannerStream;
+  await plateScannerVideoEl.play();
+  plateScannerTrack = plateScannerStream.getVideoTracks()[0] || null;
+  await setupPlateScannerZoom();
+}
+function createPaddleOcrWorker(){
+  const source = 'import "' + PADDLE_OCR_WORKER_URL + '";';
+  const url = URL.createObjectURL(new Blob([source],{type:"text/javascript"}));
+  const worker = new Worker(url,{type:"module",name:"paddleocr-worker"});
+  setTimeout(()=>URL.revokeObjectURL(url),0);
+  return worker;
+}
+async function createPlateScannerOcr(PaddleOCR, useWorker){
+  return PaddleOCR.create({
+    textDetectionModelName:"PP-OCRv5_mobile_det",
+    textRecognitionModelName:"PP-OCRv5_mobile_rec",
+    textDetectionBatchSize:1,
+    textRecognitionBatchSize:4,
+    worker:useWorker ? {createWorker:createPaddleOcrWorker} : false,
+    ortOptions:{backend:"wasm",wasmPaths:PADDLE_OCR_WASM_PATH,numThreads:1,simd:true}
+  });
+}
+async function ensurePlateScannerOcr(){
+  if(plateScannerOcr) return plateScannerOcr;
+  if(plateScannerInitPromise) return plateScannerInitPromise;
+  plateScannerInitPromise = (async()=>{
+    const {PaddleOCR} = await import(PADDLE_OCR_SDK_URL);
+    try{ plateScannerOcr = await createPlateScannerOcr(PaddleOCR,true); }
+    catch(workerError){ plateScannerOcr = await createPlateScannerOcr(PaddleOCR,false); }
+    return plateScannerOcr;
+  })();
+  try{ return await plateScannerInitPromise; }
+  catch(error){ plateScannerInitPromise = null; plateScannerOcr = null; throw error; }
+}
+function normalizePlateScannerText(text){
+  return String(text||"").toUpperCase().replace(/[^A-Z0-9\s-]/g," ").replace(/[\s-]+/g," ").trim();
+}
+function isPlausibleScannedPlate(value){
+  if(!SCANNER_DUTCH_PLATE_PATTERNS.some(pattern=>pattern.test(value))) return false;
+  return !/[AEIOU]/.test(value.replace(/[0-9]/g,""));
+}
+function collectScannedPlateSequences(text){
+  const sequences = new Map();
+  const add = (value,score)=>{
+    const compact = value.replace(/[^A-Z0-9]/g,"");
+    if(compact.length===6) sequences.set(compact,Math.max(score,sequences.get(compact)||0));
+  };
+  String(text||"").split(/\r?\n/).forEach(rawLine=>{
+    const cleaned = normalizePlateScannerText(rawLine).replace(/\b(?:NL|EU)\b/g," ").replace(/\s+/g," ").trim();
+    if(!cleaned) return;
+    const groups = cleaned.split(" ");
+    const lineCompact = groups.join("");
+    if(lineCompact.length===6) add(lineCompact,groups.length>1 ? 150 : 140);
+    groups.forEach(group=>{
+      if(group.length===6) add(group,140);
+      if(group.length>6) for(let index=0;index<=group.length-6;index++) add(group.slice(index,index+6),45);
+    });
+    for(let start=0;start<groups.length;start++){
+      let value = "";
+      for(let end=start;end<Math.min(groups.length,start+4);end++){
+        if(groups[end].length>4) break;
+        value += groups[end];
+        if(value.length===6) add(value,125-(end-start)*5);
+        if(value.length>=6) break;
+      }
+    }
+  });
+  return [...sequences].map(([value,score])=>({value,score}));
+}
+function extractScannedPlateCandidates(items){
+  const candidates = new Map();
+  items.forEach((item,lineIndex)=>{
+    collectScannedPlateSequences(item.text).forEach(sequence=>{
+      if(!isPlausibleScannedPlate(sequence.value)) return;
+      const confidence = Number.isFinite(item.score) ? item.score : 0;
+      const rank = sequence.score + confidence*100 - lineIndex;
+      const current = candidates.get(sequence.value);
+      if(!current || rank>current.rank) candidates.set(sequence.value,{value:sequence.value,confidence,rank});
+    });
+  });
+  return [...candidates.values()].sort((a,b)=>b.rank-a.rank || a.value.localeCompare(b.value));
+}
+function formatScannedPlate(value){
+  const formats = [
+    [/^[A-Z]{2}[0-9]{4}$/,[2,2,2]], [/^[0-9]{4}[A-Z]{2}$/,[2,2,2]],
+    [/^[0-9]{2}[A-Z]{2}[0-9]{2}$/,[2,2,2]], [/^[A-Z]{2}[0-9]{2}[A-Z]{2}$/,[2,2,2]],
+    [/^[A-Z]{4}[0-9]{2}$/,[2,2,2]], [/^[0-9]{2}[A-Z]{4}$/,[2,2,2]],
+    [/^[0-9]{2}[A-Z]{3}[0-9]$/,[2,3,1]], [/^[0-9][A-Z]{3}[0-9]{2}$/,[1,3,2]],
+    [/^[A-Z]{2}[0-9]{3}[A-Z]$/,[2,3,1]], [/^[A-Z][0-9]{3}[A-Z]{2}$/,[1,3,2]],
+    [/^[A-Z]{3}[0-9]{2}[A-Z]$/,[3,2,1]], [/^[A-Z][0-9]{2}[A-Z]{3}$/,[1,2,3]]
+  ];
+  const match = formats.find(([pattern])=>pattern.test(value));
+  if(!match) return value;
+  let offset = 0;
+  return match[1].map(length=>{ const part=value.slice(offset,offset+length); offset+=length; return part; }).join("-");
+}
+function getPlateScannerCrop(sourceWidth,sourceHeight,displayWidth,displayHeight){
+  const scale = Math.max(displayWidth/sourceWidth,displayHeight/sourceHeight);
+  const hiddenX = Math.max(0,(sourceWidth*scale-displayWidth)/2);
+  const hiddenY = Math.max(0,(sourceHeight*scale-displayHeight)/2);
+  return {
+    x:Math.max(0,Math.round((hiddenX+displayWidth*.05)/scale)),
+    y:Math.max(0,Math.round((hiddenY+displayHeight*.33)/scale)),
+    width:Math.min(sourceWidth,Math.round(displayWidth*.90/scale)),
+    height:Math.min(sourceHeight,Math.round(displayHeight*.34/scale))
+  };
+}
+async function openPlateScanner(){
+  resetPlateScannerResult();
+  plateScannerOverlayEl.classList.add("active");
+  readScannedPlateBtnEl.disabled = true;
+  setPlateScannerStatus("Camera wordt gestart…");
+  try{
+    await startPlateScannerCamera();
+    setPlateScannerStatus("Kentekenherkenning wordt gestart…");
+    await ensurePlateScannerOcr();
+    if(!plateScannerOverlayEl.classList.contains("active")) return;
+    readScannedPlateBtnEl.disabled = false;
+    setPlateScannerStatus("Richt het kenteken binnen de strook en tik op ‘Lees kenteken’.");
+  }catch(error){
+    stopPlateScannerCamera();
+    setPlateScannerStatus(error.message || "Kentekenherkenning kon niet worden gestart.",true);
+  }
+}
+async function readPlateWithPaddleOcr(){
+  if(!plateScannerStream || plateScannerVideoEl.readyState<2 || !plateScannerOcr){
+    setPlateScannerStatus("Wacht tot camera en kentekenherkenning gereed zijn.",true);
+    return;
+  }
+  resetPlateScannerResult();
+  readScannedPlateBtnEl.disabled = true;
+  setPlateScannerStatus("Kenteken wordt lokaal gelezen…");
+  const crop = getPlateScannerCrop(plateScannerVideoEl.videoWidth,plateScannerVideoEl.videoHeight,plateScannerVideoEl.clientWidth,plateScannerVideoEl.clientHeight);
+  plateScannerCanvasEl.width = crop.width;
+  plateScannerCanvasEl.height = crop.height;
+  plateScannerCanvasEl.getContext("2d").drawImage(plateScannerVideoEl,crop.x,crop.y,crop.width,crop.height,0,0,crop.width,crop.height);
+  try{
+    const [result] = await plateScannerOcr.predict(plateScannerCanvasEl,{textDetLimitSideLen:960,textDetLimitType:"max",textRecScoreThresh:.15});
+    const items = result && Array.isArray(result.items) ? result.items : [];
+    const candidates = extractScannedPlateCandidates(items);
+    if(!candidates.length){
+      setPlateScannerStatus("Geen plausibel Nederlands kenteken gevonden. Probeer opnieuw.",true);
+      return;
+    }
+    scannedPlateCandidate = candidates[0];
+    plateScannerCandidateEl.textContent = formatScannedPlate(scannedPlateCandidate.value);
+    plateScannerWarningEl.textContent = scannedPlateCandidate.confidence<.8 || candidates.length>1 ? "Controleer het kenteken extra goed." : "";
+    plateScannerResultEl.classList.add("visible");
+    setPlateScannerStatus("Controleer het herkende kenteken.");
+  }catch(error){
+    setPlateScannerStatus("Kenteken kon niet worden gelezen. Probeer opnieuw.",true);
+  }finally{
+    clearPlateScannerCanvas();
+    readScannedPlateBtnEl.disabled = false;
+  }
+}
+function useScannedPlate(){
+  if(!scannedPlateCandidate) return;
+  const value = scannedPlateCandidate.value;
+  closePlateScanner();
+  plateEl.value = value;
+  plateEl.dispatchEvent(new Event("input",{bubbles:true}));
+  plateEl.focus();
 }
 
 function getSpeechRecognitionCtor(){
@@ -1211,6 +1539,7 @@ function updateReview(){
   updateDayReminder();
 }
 function renderStep(){
+  if(currentStep !== 3) closePlateScanner();
   steps.forEach(step => {
     const stepNum = Number(step.dataset.step);
     step.classList.toggle("active", stepNum === currentStep);
@@ -1918,6 +2247,15 @@ plateEl.addEventListener("input", ()=>{
     plateEl.value = value; updatePlateStyle(); lookupPlate();
   });
 });
+$("openPlateScannerBtn").addEventListener("click", openPlateScanner);
+readScannedPlateBtnEl.addEventListener("click", readPlateWithPaddleOcr);
+$("useScannedPlateBtn").addEventListener("click", useScannedPlate);
+$("scanAgainBtn").addEventListener("click", ()=>{
+  resetPlateScannerResult();
+  setPlateScannerStatus("Richt het kenteken opnieuw binnen de strook.");
+});
+$("cancelPlateScannerBtn").addEventListener("click", closePlateScanner);
+plateScannerZoomSliderEl.addEventListener("input", ()=>applyPlateScannerZoom(plateScannerZoomSliderEl.value));
 fromEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(fromEl, fromSuggestionsEl); updateReview(); });
 toEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(toEl, toSuggestionsEl); updateReview(); });
 stopsEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(stopsEl, stopsSuggestionsEl, true); updateReview(); });
@@ -2019,6 +2357,15 @@ async function bootApp(){
 bootApp().catch(err=>{
   alert("Database-app kon niet starten: " + err.message);
   console.error(err);
+});
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden) closePlateScanner();
+});
+window.addEventListener("pagehide",()=>{
+  closePlateScanner();
+  if(plateScannerOcr && plateScannerOcr.dispose) plateScannerOcr.dispose();
+  plateScannerOcr = null;
+  plateScannerInitPromise = null;
 });
 </script>
 </body>
