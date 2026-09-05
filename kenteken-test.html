@@ -22,8 +22,8 @@
     .camera.active{display:block}
     .viewport{position:relative;overflow:hidden;border-radius:14px;background:#111;aspect-ratio:4/3}
     video{display:block;width:100%;height:100%;object-fit:cover}
-    .plate-frame{position:absolute;left:5%;right:5%;top:15%;height:70%;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.22);pointer-events:none}
-    .plate-frame::after{content:"Richt de camera op het kenteken";position:absolute;left:0;right:0;top:10px;color:#fff;text-align:center;font-weight:bold;text-shadow:0 1px 3px #000}
+    .plate-frame{position:absolute;left:5%;right:5%;top:33%;height:34%;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.22);pointer-events:none}
+    .plate-frame::after{content:"Richt het kenteken binnen deze strook";position:absolute;left:0;right:0;bottom:calc(100% + 8px);color:#fff;text-align:center;font-weight:bold;text-shadow:0 1px 3px #000}
     .camera-diagnostics{margin-top:10px;padding:10px;border-radius:9px;background:#fff;border:1px solid #dbe0e9;font-size:13px;color:#444}
     .zoom-control{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-top:8px}
     .zoom-control[hidden]{display:none}
@@ -262,31 +262,38 @@ function normalizeOcrText(text){
   return String(text||"").toUpperCase().replace(/[^A-Z0-9\s-]/g," ").replace(/[\s-]+/g," ").trim();
 }
 function isPlausibleDutchPlate(value){
-  return DUTCH_PATTERNS.some(pattern=>pattern.test(value));
+  if(!DUTCH_PATTERNS.some(pattern=>pattern.test(value))) return false;
+  if(KNOWN_PLATES.includes(value)) return true;
+  return !/[AEIOU]/.test(value.replace(/[0-9]/g,""));
 }
 function collectOcrSequences(text){
-  const cleaned = normalizeOcrText(text).replace(/\b(?:NL|EU)\b/g," ").replace(/\s+/g," ").trim();
-  const groups = cleaned ? cleaned.split(" ") : [];
   const sequences = new Map();
   const add = (value,score)=>{
     const compact = value.replace(/[^A-Z0-9]/g,"");
     if(compact.length === 6) sequences.set(compact,Math.max(score,sequences.get(compact)||0));
   };
-  groups.forEach(group=>{
-    if(group.length === 6) add(group,100);
-    if(group.length > 6){
-      for(let index=0;index<=group.length-6;index++) add(group.slice(index,index+6),45);
+  String(text||"").split(/\r?\n/).forEach(rawLine=>{
+    const cleaned = normalizeOcrText(rawLine).replace(/\b(?:NL|EU)\b/g," ").replace(/\s+/g," ").trim();
+    if(!cleaned) return;
+    const groups = cleaned.split(" ");
+    const lineCompact = groups.join("");
+    if(lineCompact.length === 6) add(lineCompact,groups.length > 1 ? 150 : 140);
+    groups.forEach(group=>{
+      if(group.length === 6) add(group,140);
+      if(group.length > 6){
+        for(let index=0;index<=group.length-6;index++) add(group.slice(index,index+6),45);
+      }
+    });
+    for(let start=0;start<groups.length;start++){
+      let value = "";
+      for(let end=start;end<Math.min(groups.length,start+4);end++){
+        if(groups[end].length > 4) break;
+        value += groups[end];
+        if(value.length === 6) add(value,125-(end-start)*5);
+        if(value.length >= 6) break;
+      }
     }
   });
-  for(let start=0;start<groups.length;start++){
-    let value = "";
-    for(let end=start;end<Math.min(groups.length,start+4);end++){
-      if(groups[end].length > 4) break;
-      value += groups[end];
-      if(value.length === 6) add(value,95-(end-start)*5);
-      if(value.length >= 6) break;
-    }
-  }
   return [...sequences].map(([value,score])=>({value,score}));
 }
 function extractCandidates(text){
@@ -325,9 +332,9 @@ function getFrameCrop(sourceWidth,sourceHeight,displayWidth,displayHeight){
   const hiddenY = Math.max(0,(sourceHeight*scale-displayHeight)/2);
   return {
     x:Math.max(0,Math.round((hiddenX+displayWidth*.05)/scale)),
-    y:Math.max(0,Math.round((hiddenY+displayHeight*.15)/scale)),
+    y:Math.max(0,Math.round((hiddenY+displayHeight*.33)/scale)),
     width:Math.min(sourceWidth,Math.round(displayWidth*.90/scale)),
-    height:Math.min(sourceHeight,Math.round(displayHeight*.70/scale))
+    height:Math.min(sourceHeight,Math.round(displayHeight*.34/scale))
   };
 }
 function showCandidate(candidate, suggestion=""){
@@ -368,7 +375,10 @@ async function readPlate(){
         if(message.status === "recognizing text") setStatus("Kenteken wordt lokaal gelezen… " + Math.round(message.progress*100) + "%");
       }
     });
-    await worker.setParameters({tessedit_char_whitelist:"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- "});
+    await worker.setParameters({
+      tessedit_pageseg_mode:Tesseract.PSM ? Tesseract.PSM.SINGLE_LINE : "7",
+      tessedit_char_whitelist:"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- "
+    });
     const result = await worker.recognize(canvas);
     text = result && result.data ? result.data.text : "";
   }catch(error){
@@ -388,18 +398,18 @@ async function readPlate(){
     setStatus("OCR heeft geen tekst gevonden. Probeer opnieuw met meer licht.", true);
     return;
   }
-  const candidates = extractCandidates(normalized);
+  const candidates = extractCandidates(text);
   if(candidates.length){
-    const suggestion = findKnownSuggestion(normalized);
+    const suggestion = findKnownSuggestion(text);
     showCandidate(candidates[0], suggestion && suggestion !== candidates[0] ? suggestion : "");
     setStatus(candidates.length > 1
       ? "Meerdere mogelijke kentekens gevonden. Sterkste eerst: " + candidates.join(", ") + ". Controleer de keuze."
       : "Controleer het herkende kenteken voordat je het gebruikt.");
     return;
   }
-  const suggestion = findKnownSuggestion(normalized);
+  const suggestion = findKnownSuggestion(text);
   if(suggestion){
-    const uncertain = collectOcrSequences(normalized).sort((a,b)=>b.score-a.score)[0];
+    const uncertain = collectOcrSequences(text).sort((a,b)=>b.score-a.score)[0];
     showCandidate(uncertain ? uncertain.value : normalized.replace(/[\s-]/g,"").slice(0,6), suggestion);
     setStatus("Geen zeker kentekenpatroon gevonden; er is alleen een waarschijnlijk voorstel.", true);
     return;
