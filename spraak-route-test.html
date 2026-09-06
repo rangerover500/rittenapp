@@ -18,7 +18,7 @@
     .secondary{background:#e8ebf2;color:#111;border:1px solid #cfd5e1}
     .yes{background:#d7f0dd;color:#164e24;border:1px solid #9bc8a6}
     .no{background:#f7d9dc;color:#711923;border:1px solid #e1aeb4}
-    .status{min-height:24px;margin:14px 0;font-weight:bold}
+    .status{min-height:24px;margin:14px 0;font-weight:bold;white-space:pre-line}
     .status.error{color:#a00018}
     .result{display:none;padding:15px;border:1px solid #dbe0e9;border-radius:12px;background:#fff}
     .result.visible{display:block}
@@ -201,8 +201,10 @@ function createRecognition(onTranscript){
   };
   recognition.onerror = event=>{
     if(activeRecognition !== recognition) return;
-    const message = event.error === "not-allowed" ? "Microfoontoegang is geweigerd." : "Spraakherkenning is mislukt. Probeer opnieuw.";
-    setStatus(message,true);
+    const friendlyMessage = event.error === "not-allowed" ? "Microfoontoegang is geweigerd." : "Spraakherkenning is mislukt. Probeer opnieuw.";
+    const errorCode = String(event.error || "onbekend");
+    const technicalMessage = event.message ? "\nMelding: " + String(event.message) : "";
+    setStatus(friendlyMessage + "\nFoutcode: " + errorCode + technicalMessage,true);
   };
   recognition.onend = ()=>{
     if(activeRecognition !== recognition) return;
