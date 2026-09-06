@@ -87,8 +87,47 @@ function localTimeNow(){
   const now = new Date();
   return pad(now.getHours()) + ":" + pad(now.getMinutes());
 }
+const DUTCH_SMALL_NUMBERS = new Map([
+  ["nul",0],["een",1],["twee",2],["drie",3],["vier",4],["vijf",5],["zes",6],["zeven",7],["acht",8],["negen",9],
+  ["tien",10],["elf",11],["twaalf",12],["dertien",13],["veertien",14],["vijftien",15],["zestien",16],["zeventien",17],["achttien",18],["negentien",19]
+]);
+const DUTCH_TENS = new Map([["twintig",20],["dertig",30],["veertig",40],["vijftig",50],["zestig",60],["zeventig",70],["tachtig",80],["negentig",90]]);
+const HOUSE_NUMBER_CUES = new Set(["nummer","nr","huisnummer"]);
+const NON_ADDRESS_PREFIXES = new Set(["de","het","een","van","naar","met","als"]);
+function normalizeNumberWordKey(value){
+  return String(value||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+}
+function parseDutchNumberWord(value){
+  const word = normalizeNumberWordKey(value);
+  if(DUTCH_SMALL_NUMBERS.has(word)) return DUTCH_SMALL_NUMBERS.get(word);
+  if(DUTCH_TENS.has(word)) return DUTCH_TENS.get(word);
+  for(const [unitWord,unit] of DUTCH_SMALL_NUMBERS){
+    if(unit<1 || unit>9) continue;
+    for(const [tensWord,tens] of DUTCH_TENS){
+      if(word===unitWord+"en"+tensWord) return tens+unit;
+    }
+  }
+  return null;
+}
+function normalizeAddressHouseNumberWords(value){
+  const words = String(value||"").split(/\s+/).filter(Boolean);
+  return words.map((word,index)=>{
+    const number = parseDutchNumberWord(word);
+    if(number===null) return word;
+    const previous = normalizeNumberWordKey(words[index-1]);
+    const next = normalizeNumberWordKey(words[index+1]);
+    const hasLikelyNameBefore = index>0 && !NON_ADDRESS_PREFIXES.has(previous);
+    const afterNumberCue = HOUSE_NUMBER_CUES.has(previous);
+    const atStreetNameEnd = hasLikelyNameBefore && index===words.length-1;
+    const beforePlaceMarker = hasLikelyNameBefore && next==="in";
+    const streetNameBefore = words.slice(0,index).some(part=>/(?:straat|weg|laan|plein|kade|dijk|gracht|singel|steeg|pad|dreef|markt|plantsoen|wijk)$/i.test(part));
+    const beforePlaceName = streetNameBefore && index<words.length-1;
+    return afterNumberCue || atStreetNameEnd || beforePlaceMarker || beforePlaceName ? String(number) : word;
+  }).join(" ");
+}
 function tidyPlace(value){
-  return String(value||"").replace(/^[\s,.;:]+|[\s,.;:]+$/g,"").replace(/\s+/g," ").trim();
+  const cleaned = String(value||"").replace(/^[\s,.;:]+|[\s,.;:]+$/g,"").replace(/\s+/g," ").trim();
+  return normalizeAddressHouseNumberWords(cleaned);
 }
 function parseDepartureTime(text,nowProvider=localTimeNow){
   if(/\bvertrek(?:tijd)?\s+is\s+nu\b/i.test(text)) return nowProvider();
