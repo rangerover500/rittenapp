@@ -582,6 +582,7 @@ let plateScannerMode = "primary";
 let pendingGreenPlate = "";
 let dealerPlate = "";
 let originalPlate = "";
+let originalPlateTargetTripId = null;
 
 let currentStep = 0;
 let editingTripId = null;
@@ -720,6 +721,7 @@ function dbReplaceAll(storeName, items){
   }));
 }
 function normalizeTripFromAny(t, sourceKey){
+  const normalizedOriginalPlate = normalizePlate(t.originalPlate || "");
   return {
     id: String(t.id || "").trim() || createTripId(),
     date: String(t.date || "").trim(),
@@ -728,7 +730,8 @@ function normalizeTripFromAny(t, sourceKey){
     from: normalizeLocation(t.from || ""),
     to: normalizeLocation(t.to || ""),
     plate: normalizePlate(t.plate || ""),
-    originalPlate: normalizePlate(t.originalPlate || ""),
+    originalPlate: normalizedOriginalPlate,
+    isDealerPlate: t.isDealerPlate === true || !!normalizedOriginalPlate,
     vehicle: String(t.vehicle || "").trim(),
     priceText: String(t.priceText || "").trim(),
     odometer: String(t.odometer || "").trim(),
@@ -1122,6 +1125,9 @@ async function fetchPlateInfo(plate){
 function isDealerPlateActive(){
   return !!dealerPlate && normalizePlate(plateEl.value) === dealerPlate;
 }
+function isStoredDealerTrip(trip){
+  return !!trip && (trip.isDealerPlate === true || !!normalizePlate(trip.originalPlate || ""));
+}
 function resetDealerPlateState(){
   dealerPlate = "";
   originalPlate = "";
@@ -1196,6 +1202,7 @@ function closePlateScanner(){
   stopPlateScannerCamera();
   resetPlateScannerResult();
   plateScannerMode = "primary";
+  originalPlateTargetTripId = null;
   plateScannerOverlayEl.classList.remove("active");
   readScannedPlateBtnEl.disabled = true;
   setPlateScannerStatus("");
@@ -1481,7 +1488,8 @@ function showDealerPlateFlow(){
   stopPlateScannerCamera();
   plateScannerResultEl.classList.remove("visible");
   greenPlateQuestionEl.classList.remove("visible");
-  dealerPlateCandidateEl.textContent = formatScannedPlate(dealerPlate);
+  const targetTrip = originalPlateTargetTripId ? trips.find(trip=>trip.id===originalPlateTargetTripId) : null;
+  dealerPlateCandidateEl.textContent = formatScannedPlate(targetTrip ? normalizePlate(targetTrip.plate) : dealerPlate);
   dealerPlateFlowEl.classList.add("visible");
   readScannedPlateBtnEl.disabled = true;
   setPlateScannerStatus("Handelaarskenteken bewaard. Scan of typ nu het originele kenteken.");
@@ -1509,6 +1517,28 @@ async function useOriginalPlate(value){
   if(!isPlausibleScannedPlate(normalized)){
     setPlateScannerStatus("Vul een plausibel Nederlands origineel kenteken in.",true);
     return false;
+  }
+  if(originalPlateTargetTripId){
+    const targetId = originalPlateTargetTripId;
+    const targetIndex = trips.findIndex(trip=>trip.id===targetId);
+    if(targetIndex === -1){
+      setPlateScannerStatus("De gekozen rit kon niet meer worden gevonden.",true);
+      return false;
+    }
+    const info = await fetchPlateInfo(normalized);
+    const targetTrip = trips[targetIndex];
+    trips[targetIndex] = {
+      ...targetTrip,
+      originalPlate: normalized,
+      isDealerPlate: true,
+      vehicle: info.vehicleText || targetTrip.vehicle || "",
+      priceText: info.priceText || targetTrip.priceText || ""
+    };
+    await saveAllToDB();
+    renderTrips();
+    closePlateScanner();
+    alert("Origineel kenteken toegevoegd. De handelaarsplaat blijft het kenteken van de rit.");
+    return true;
   }
   originalPlate = normalized;
   const leadingDealerPlate = dealerPlate;
@@ -1667,7 +1697,9 @@ function buildReviewHtml(){
   const stopsList = stopsEl.value.trim() ? stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).join(", ") : "-";
   const plateLines = isDealerPlateActive()
     ? `<div><strong>Handelaarskenteken:</strong> ${plateEl.value || "-"} <span class="small">(leidend kenteken van de rit)</span></div>
-       <div><strong>Origineel kenteken:</strong> ${originalPlate || "-"}</div>`
+       ${originalPlate
+         ? `<div><strong>Origineel kenteken:</strong> ${originalPlate}</div>`
+         : `<div class="trip-missing-note">Origineel kenteken nog niet ingevuld.</div>`}`
     : `<div><strong>Kenteken:</strong> ${plateEl.value || "-"}</div>`;
   return `
     <div><strong>Werkdag:</strong> ${wd.workStart || "-"} → ${wd.workEnd || "-"}</div>
@@ -1887,6 +1919,7 @@ function buildTripObject(existingId, vehicleText, priceText, fromValue, toValue)
     to: normalizeLocation(toValue),
     plate: normalizePlate(plateEl.value),
     originalPlate: isDealerPlateActive() ? normalizePlate(originalPlate) : "",
+    isDealerPlate: isDealerPlateActive(),
     vehicle: vehicleText || "",
     priceText: priceText || "",
     odometer: String(odometerEl.value || "").trim()
@@ -1894,15 +1927,6 @@ function buildTripObject(existingId, vehicleText, priceText, fromValue, toValue)
 }
 function validateTrip(trip){
   return !!(trip.date && trip.timeStart && trip.from && trip.to && trip.plate);
-}
-function ensureDealerOriginalPlate(){
-  if(!isDealerPlateActive() || originalPlate) return true;
-  alert("Scan of vul eerst het originele kenteken in voor deze handelaarsplaat.");
-  currentStep = 3;
-  renderStep();
-  plateScannerOverlayEl.classList.add("active");
-  showDealerPlateFlow();
-  return false;
 }
 function savePlateToList(p){
   const plate = normalizePlate(p);
@@ -1932,7 +1956,6 @@ function clearDraftSavedStatus(){
 }
 $("saveTripBtn").addEventListener("click", async ()=>{
   if(!editingTripId && !ensurePostboxesAcknowledged()) return;
-  if(!ensureDealerOriginalPlate()) return;
   const info = await lookupPlate();
   const existing = editingTripId ? trips.find(t=>t.id===editingTripId) : null;
   const trip = buildTripObject(existing ? existing.id : null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
@@ -1957,11 +1980,12 @@ $("saveTripBtn").addEventListener("click", async ()=>{
   sortTrips();
   await saveAllToDB();
   renderTrips();
-  markDraftSaved("Rit bijgewerkt en opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
+  markDraftSaved(trip.isDealerPlate && !trip.originalPlate
+    ? "Rit opgeslagen. Origineel kenteken nog niet ingevuld."
+    : "Rit bijgewerkt en opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
 });
 $("saveRouteBtn").addEventListener("click", async ()=>{
   if(!ensurePostboxesAcknowledged()) return;
-  if(!ensureDealerOriginalPlate()) return;
   const p = normalizePlate(plateEl.value);
   if(!dateEl.value || !timeStartEl.value || !fromEl.value || !toEl.value || !p){
     alert("Vul datum, starttijd, van, naar en kenteken in.");
@@ -1992,6 +2016,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
       to: points[i+1],
       plate: p,
       originalPlate: isDealerPlateActive() ? normalizePlate(originalPlate) : "",
+      isDealerPlate: isDealerPlateActive(),
       vehicle: info.vehicleText || "",
       priceText: info.priceText || "",
       odometer: String(odometerEl.value || "").trim()
@@ -2001,7 +2026,9 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
   sortTrips();
   saveAll();
   renderTrips();
-  markDraftSaved("Route met tussenstops opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
+  markDraftSaved(newTrips.some(trip=>trip.isDealerPlate && !trip.originalPlate)
+    ? "Route met tussenstops opgeslagen. Origineel kenteken nog niet ingevuld."
+    : "Route met tussenstops opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
 });
 
 function clearForm(){
@@ -2139,11 +2166,21 @@ quickEditOverlayEl.addEventListener("click", e=>{
   if(e.key === "Escape") closeQuickTripEdit();
 }));
 
+function openOriginalPlateForTrip(id){
+  const trip = trips.find(item=>item.id===id);
+  if(!trip || !isStoredDealerTrip(trip) || normalizePlate(trip.originalPlate || "")) return;
+  closePlateScanner();
+  originalPlateTargetTripId = id;
+  plateScannerOverlayEl.classList.add("active");
+  showDealerPlateFlow();
+}
+
 function renderTrips(){
   tripTableEl.innerHTML = "";
   trips.forEach(t=>{
     const row = document.createElement("tr");
     const needsOdometer = mandatoryOdoPlates.includes(normalizePlate(t.plate || "")) && !String(t.odometer || "").trim();
+    const needsOriginalPlate = isStoredDealerTrip(t) && !normalizePlate(t.originalPlate || "");
     if(needsOdometer) row.classList.add("trip-missing-required");
     row.innerHTML = `
       <td>${escapeHtml(t.date||"")}</td>
@@ -2151,12 +2188,13 @@ function renderTrips(){
       <td>${escapeHtml(t.timeEnd||"")}</td>
       <td>${escapeHtml(t.from||"")}</td>
       <td>${escapeHtml(t.to||"")}</td>
-      <td>${escapeHtml(t.plate||"")}</td>
+      <td>${escapeHtml(t.plate||"")}${needsOriginalPlate ? '<span class="trip-missing-note">Origineel kenteken nog niet ingevuld.</span>' : ''}</td>
       <td>${escapeHtml(t.vehicle||"")}${t.priceText ? '<br><span class="small">Nieuwprijs: ' + escapeHtml(t.priceText) + '</span>' : ''}</td>
       <td>${escapeHtml(t.odometer||"")}${needsOdometer ? '<span class="trip-missing-note">⚠ Km-stand nog aanvullen</span>' : ''}</td>
       <td>
         <button type="button" class="btn-edit" data-action="quickEdit" data-id="${escapeHtml(t.id)}">Snel wijzigen</button>
         <button type="button" class="btn-edit" data-action="edit" data-id="${escapeHtml(t.id)}">Bewerk</button>
+        ${needsOriginalPlate ? `<button type="button" class="btn-edit" data-action="addOriginalPlate" data-id="${escapeHtml(t.id)}">Origineel kenteken toevoegen</button>` : ""}
         <button type="button" class="btn-delete" data-action="delete" data-id="${escapeHtml(t.id)}">Verwijder</button>
       </td>
     `;
@@ -2242,6 +2280,10 @@ tripTableEl.addEventListener("click", e=>{
   if(!btn) return;
   const id = btn.dataset.id;
   // Snel wijzigen wordt rechtstreeks aan de knop gekoppeld in renderTrips().
+  if(btn.dataset.action === "addOriginalPlate"){
+    openOriginalPlateForTrip(id);
+    return;
+  }
   if(btn.dataset.action === "edit"){
     const t = trips.find(x=>x.id===id);
     if(!t) return;
@@ -2249,13 +2291,13 @@ tripTableEl.addEventListener("click", e=>{
     timeStartEl.value = t.timeStart || now();
     timeEndRotterdamEl.value = t.timeEnd || "";
     plateEl.value = t.plate || "";
-    dealerPlate = t.originalPlate ? normalizePlate(t.plate || "") : "";
+    dealerPlate = isStoredDealerTrip(t) ? normalizePlate(t.plate || "") : "";
     originalPlate = normalizePlate(t.originalPlate || "");
     odometerEl.value = t.odometer || "";
     fromEl.value = t.from || "";
     toEl.value = t.to || "";
     stopsEl.value = "";
-    rdwInfoEl.textContent = (t.originalPlate ? "Origineel kenteken " + t.originalPlate : (t.plate || "")) + (t.vehicle ? " — " + t.vehicle : "") + (t.priceText ? " — Nieuwprijs: " + t.priceText : "");
+    rdwInfoEl.textContent = (t.originalPlate ? "Origineel kenteken " + t.originalPlate : (isStoredDealerTrip(t) ? "Origineel kenteken nog niet ingevuld." : (t.plate || ""))) + (t.vehicle ? " — " + t.vehicle : "") + (t.priceText ? " — Nieuwprijs: " + t.priceText : "");
     editingTripId = t.id;
     resetPostboxAnswer();
     $("cancelEditBtn").style.display = "inline-block";
@@ -2516,6 +2558,7 @@ $("importMergeBtn").addEventListener("click", ()=>{
         addedTrips++;
       }else if(trip.originalPlate && normalizePlate(existingTrip.originalPlate||"") !== trip.originalPlate){
         existingTrip.originalPlate = trip.originalPlate;
+        existingTrip.isDealerPlate = true;
         addedTrips++;
       }
     });
