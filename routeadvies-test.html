@@ -45,17 +45,17 @@
       </label>
       <label>Eindbestemming
         <select id="end">
-          <option>Rotterdam</option><option>Den Haag</option><option>Dordrecht</option><option>Brielle</option><option>Charlois</option>
+          <option>Rotterdam</option><option>Den Haag</option><option>Dordrecht</option><option>Brielle</option><option value="Charlois">ABS</option>
         </select>
       </label>
       <label>Tussenstop 1
         <select id="stop1">
-          <option>Geen</option><option>Rotterdam</option><option>Den Haag</option><option>Dordrecht</option><option>Brielle</option><option>Charlois</option>
+          <option>Geen</option><option>Rotterdam</option><option>Den Haag</option><option>Dordrecht</option><option>Brielle</option><option value="Charlois">ABS</option>
         </select>
       </label>
       <label>Tussenstop 2
         <select id="stop2">
-          <option>Geen</option><option>Rotterdam</option><option>Den Haag</option><option>Dordrecht</option><option>Brielle</option><option>Charlois</option>
+          <option>Geen</option><option>Rotterdam</option><option>Den Haag</option><option>Dordrecht</option><option>Brielle</option><option value="Charlois">ABS</option>
         </select>
       </label>
     </div>
@@ -116,17 +116,19 @@ function makeText(tag,className,text){
   element.textContent=text;
   return element;
 }
+function displayName(name){ return name==="Charlois" ? "ABS" : name; }
+function displayText(text){ return text.replaceAll("Charlois","ABS"); }
 function renderKnown(data){
   const summary=makeText("div","result-card","");
-  summary.append(makeText("h2","","Logische bekende route"),makeText("div","route","Route: "+data.route.join(" → ")));
+  summary.append(makeText("h2","","Logische bekende route"),makeText("div","route","Route: "+data.route.map(displayName).join(" → ")));
   if(data.mainRoute) summary.append(makeText("div","main-route","Hoofdroute: "+data.mainRoute));
   resultEl.appendChild(summary);
   const checks=makeText("div","checks","");
   Object.entries(data.checks).forEach(([location,boxes])=>{
     const card=makeText("article","check-card","");
-    card.appendChild(makeText("h3","",location+":"));
+    card.appendChild(makeText("h3","",displayName(location)+":"));
     const list=document.createElement("ul");
-    boxes.forEach(box=>list.appendChild(makeText("li","","✓ "+box)));
+    boxes.forEach(box=>list.appendChild(makeText("li","","✓ "+displayName(box))));
     card.appendChild(list);
     if(data.note&&location==="Charlois") card.appendChild(makeText("div","note","Opmerking: "+data.note.toLowerCase()));
     checks.appendChild(card);
@@ -141,12 +143,12 @@ function renderRouteAdvice(route){
   if(outcome.type==="known") renderKnown(outcome.data);
   if(outcome.type==="illogical"){
     const card=makeText("div","result-card warning","");
-    card.append(makeText("h2","","Onlogische route"),makeText("div","route","Route: "+route.join(" → ")),makeText("p","",outcome.warning),makeText("p","","De route wordt niet geblokkeerd."));
+    card.append(makeText("h2","","Onlogische route"),makeText("div","route","Route: "+route.map(displayName).join(" → ")),makeText("p","",displayText(outcome.warning)),makeText("p","","De route wordt niet geblokkeerd."));
     resultEl.appendChild(card);
   }
   if(outcome.type==="unknown"){
     const card=makeText("div","result-card unknown","");
-    card.append(makeText("h2","","Onbekende route"),makeText("div","route","Route: "+route.join(" → ")),makeText("p","","Deze route staat niet in het rittenschema."));
+    card.append(makeText("h2","","Onbekende route"),makeText("div","route","Route: "+route.map(displayName).join(" → ")),makeText("p","","Deze route staat niet in het rittenschema."));
     resultEl.appendChild(card);
   }
 }
