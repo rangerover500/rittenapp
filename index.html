@@ -1682,7 +1682,8 @@ function fillSmartRouteFromTranscript(transcript){
 
 function updateDayReminder(){
   const d = dateEl.value || today();
-  if(isToday(d) && currentHour() >= 17 && !(dayData[d] && dayData[d].workEnd)){
+  const workday = dayData[d] || {};
+  if(isToday(d) && currentHour() >= 17 && String(workday.workStart || "").trim() && !String(workday.workEnd || "").trim()){
     dayReminderEl.style.display = "block";
     dayReminderEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
     editStatusEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
