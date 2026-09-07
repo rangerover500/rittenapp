@@ -119,6 +119,12 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 
 .trip-missing-required{background:#fff0f0 !important;}
 .trip-missing-note{display:block;margin-top:4px;color:#b00000;font-weight:bold;font-size:12px;}
+.trip-plate-cell{min-width:0;max-width:120px}
+.trip-plate-value{font-weight:bold;overflow-wrap:anywhere}
+.trip-plate-value.dealer{color:#187A43}
+.trip-plate-original-label{margin-top:3px;color:#555;font-size:12px}
+.trip-plate-original-value{color:#111;overflow-wrap:anywhere}
+.trip-plate-original-value.missing{color:#8a5a00;font-size:12px}
 .edit-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:18px;z-index:9999}
 .edit-modal-overlay.active{display:flex}
 .edit-modal{width:min(420px,100%);background:#fff;border-radius:14px;padding:18px;box-shadow:0 10px 35px rgba(0,0,0,.25)}
@@ -2182,6 +2188,14 @@ function renderTrips(){
     const row = document.createElement("tr");
     const needsOdometer = mandatoryOdoPlates.includes(normalizePlate(t.plate || "")) && !String(t.odometer || "").trim();
     const needsOriginalPlate = isStoredDealerTrip(t) && !normalizePlate(t.originalPlate || "");
+    const styledAsDealerPlate = t.isDealerPlate === true;
+    const displayedPlate = formatScannedPlate(normalizePlate(t.plate || ""));
+    const displayedOriginalPlate = formatScannedPlate(normalizePlate(t.originalPlate || ""));
+    const plateCell = styledAsDealerPlate
+      ? `<div class="trip-plate-value dealer">${escapeHtml(displayedPlate)}</div>
+         <div class="trip-plate-original-label">Origineel:</div>
+         <div class="trip-plate-original-value${displayedOriginalPlate ? "" : " missing"}">${escapeHtml(displayedOriginalPlate || "Nog niet ingevuld")}</div>`
+      : `<div class="trip-plate-value">${escapeHtml(displayedPlate)}</div>`;
     if(needsOdometer) row.classList.add("trip-missing-required");
     row.innerHTML = `
       <td>${escapeHtml(t.date||"")}</td>
@@ -2189,7 +2203,7 @@ function renderTrips(){
       <td>${escapeHtml(t.timeEnd||"")}</td>
       <td>${escapeHtml(t.from||"")}</td>
       <td>${escapeHtml(t.to||"")}</td>
-      <td>${escapeHtml(t.plate||"")}${needsOriginalPlate ? '<span class="trip-missing-note">Origineel kenteken nog niet ingevuld.</span>' : ''}</td>
+      <td class="trip-plate-cell">${plateCell}</td>
       <td>${escapeHtml(t.vehicle||"")}${t.priceText ? '<br><span class="small">Nieuwprijs: ' + escapeHtml(t.priceText) + '</span>' : ''}</td>
       <td>${escapeHtml(t.odometer||"")}${needsOdometer ? '<span class="trip-missing-note">⚠ Km-stand nog aanvullen</span>' : ''}</td>
       <td>
