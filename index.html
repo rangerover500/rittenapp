@@ -143,6 +143,14 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .plate-scan-result.visible{display:block}
 .plate-scan-candidate{font-family:Arial,sans-serif;font-size:30px;font-weight:800;letter-spacing:3px;margin:8px 0}
 .plate-scan-warning{color:#8a5a00;font-weight:bold}
+.plate-scan-dealer{display:none;margin-top:12px;padding:14px;border:2px solid #d29a45;border-radius:12px;background:#fff8ec;text-align:center}
+.plate-scan-dealer.visible{display:block}
+.plate-scan-dealer h3{margin:0 0 8px}
+.plate-scan-dealer .toolbar{justify-content:center}
+.plate-scan-dealer-note{margin:8px 0;color:#555;font-size:13px;line-height:1.4}
+.plate-scan-manual{margin-top:12px;text-align:left}
+.plate-scan-manual[hidden]{display:none}
+.plate-scan-manual button{width:100%;margin-top:8px}
 @media(max-width:380px){.plate-scan-modal{padding:12px}.plate-scan-candidate{font-size:26px}.plate-scan-frame::after{font-size:13px}}
 </style>
 </head>
@@ -464,12 +472,35 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       </div>
       <div class="plate-scan-status" id="plateScannerStatus" role="status" aria-live="polite"></div>
       <div class="plate-scan-result" id="plateScannerResult" aria-live="polite">
-        <strong>Kenteken herkend</strong>
+        <strong id="plateScannerResultTitle">Kenteken herkend</strong>
         <div class="plate-scan-candidate" id="plateScannerCandidate"></div>
         <div class="plate-scan-warning" id="plateScannerWarning"></div>
         <div class="toolbar">
           <button type="button" class="btn-primary" id="useScannedPlateBtn">Gebruik kenteken</button>
+          <button type="button" class="btn-secondary" id="forceDealerPlateBtn">Toch handelaarsplaat</button>
           <button type="button" class="btn-secondary" id="scanAgainBtn">Opnieuw scannen</button>
+        </div>
+      </div>
+      <div class="plate-scan-dealer" id="greenPlateQuestion" aria-live="polite">
+        <h3>Waarschijnlijk groene handelaarsplaat. Klopt dit?</h3>
+        <div class="plate-scan-candidate" id="greenPlateCandidate"></div>
+        <div class="toolbar">
+          <button type="button" class="btn-primary" id="greenPlateYesBtn">JA</button>
+          <button type="button" class="btn-secondary" id="greenPlateNoBtn">NEE</button>
+        </div>
+      </div>
+      <div class="plate-scan-dealer" id="dealerPlateFlow" aria-live="polite">
+        <h3>Handelaarskenteken</h3>
+        <div class="plate-scan-candidate" id="dealerPlateCandidate"></div>
+        <p class="plate-scan-dealer-note">Dit kenteken blijft leidend voor de rit. Het originele kenteken wordt alleen gebruikt voor de RDW-opzoeking.</p>
+        <div class="toolbar">
+          <button type="button" class="btn-secondary" id="scanOriginalPlateBtn">Scan origineel kenteken</button>
+          <button type="button" class="btn-secondary" id="showManualOriginalPlateBtn">Origineel kenteken handmatig invoeren</button>
+        </div>
+        <div class="plate-scan-manual" id="manualOriginalPlateBlock" hidden>
+          <label for="manualOriginalPlate">Origineel kenteken</label>
+          <input id="manualOriginalPlate" maxlength="12" autocomplete="off" placeholder="Bijv. HKV-28-V">
+          <button type="button" class="btn-primary" id="useManualOriginalPlateBtn">Gebruik origineel kenteken</button>
         </div>
       </div>
       <div class="toolbar">
@@ -547,6 +578,10 @@ let plateScannerTrack = null;
 let plateScannerOcr = null;
 let plateScannerInitPromise = null;
 let scannedPlateCandidate = null;
+let plateScannerMode = "primary";
+let pendingGreenPlate = "";
+let dealerPlate = "";
+let originalPlate = "";
 
 let currentStep = 0;
 let editingTripId = null;
@@ -596,10 +631,19 @@ const plateScannerZoomSliderEl = document.getElementById("plateScannerZoomSlider
 const plateScannerZoomValueEl = document.getElementById("plateScannerZoomValue");
 const plateScannerStatusEl = document.getElementById("plateScannerStatus");
 const plateScannerResultEl = document.getElementById("plateScannerResult");
+const plateScannerResultTitleEl = document.getElementById("plateScannerResultTitle");
 const plateScannerCandidateEl = document.getElementById("plateScannerCandidate");
 const plateScannerWarningEl = document.getElementById("plateScannerWarning");
 const plateScannerCanvasEl = document.getElementById("plateScannerCanvas");
 const readScannedPlateBtnEl = document.getElementById("readScannedPlateBtn");
+const useScannedPlateBtnEl = document.getElementById("useScannedPlateBtn");
+const forceDealerPlateBtnEl = document.getElementById("forceDealerPlateBtn");
+const greenPlateQuestionEl = document.getElementById("greenPlateQuestion");
+const greenPlateCandidateEl = document.getElementById("greenPlateCandidate");
+const dealerPlateFlowEl = document.getElementById("dealerPlateFlow");
+const dealerPlateCandidateEl = document.getElementById("dealerPlateCandidate");
+const manualOriginalPlateBlockEl = document.getElementById("manualOriginalPlateBlock");
+const manualOriginalPlateEl = document.getElementById("manualOriginalPlate");
 const fromSuggestionsEl = document.getElementById("fromSuggestions");
 const toSuggestionsEl = document.getElementById("toSuggestions");
 const stopsSuggestionsEl = document.getElementById("stopsSuggestions");
@@ -684,6 +728,7 @@ function normalizeTripFromAny(t, sourceKey){
     from: normalizeLocation(t.from || ""),
     to: normalizeLocation(t.to || ""),
     plate: normalizePlate(t.plate || ""),
+    originalPlate: normalizePlate(t.originalPlate || ""),
     vehicle: String(t.vehicle || "").trim(),
     priceText: String(t.priceText || "").trim(),
     odometer: String(t.odometer || "").trim(),
@@ -1074,6 +1119,16 @@ async function fetchPlateInfo(plate){
     return {vehicleText:"", priceText:""};
   }
 }
+function isDealerPlateActive(){
+  return !!dealerPlate && normalizePlate(plateEl.value) === dealerPlate;
+}
+function resetDealerPlateState(){
+  dealerPlate = "";
+  originalPlate = "";
+}
+function getRdwLookupPlate(){
+  return isDealerPlateActive() ? originalPlate : normalizePlate(plateEl.value);
+}
 async function lookupPlate(){
   updatePlateStyle();
   if(!plateEl.value){
@@ -1081,8 +1136,14 @@ async function lookupPlate(){
     updateReview();
     return {vehicleText:"", priceText:""};
   }
-  const info = await fetchPlateInfo(plateEl.value);
-  let text = plateEl.value;
+  const lookupValue = getRdwLookupPlate();
+  if(isDealerPlateActive() && !lookupValue){
+    rdwInfoEl.textContent = "Handelaarskenteken " + plateEl.value + " — vul het originele kenteken in voor RDW.";
+    updateReview();
+    return {vehicleText:"", priceText:""};
+  }
+  const info = await fetchPlateInfo(lookupValue);
+  let text = isDealerPlateActive() ? "Origineel kenteken " + lookupValue : plateEl.value;
   if(info.vehicleText) text += " — " + info.vehicleText;
   if(info.priceText) text += " — Nieuwprijs: " + info.priceText;
   rdwInfoEl.textContent = text;
@@ -1110,9 +1171,18 @@ function clearPlateScannerCanvas(){
 }
 function resetPlateScannerResult(){
   scannedPlateCandidate = null;
+  pendingGreenPlate = "";
   plateScannerResultEl.classList.remove("visible");
+  greenPlateQuestionEl.classList.remove("visible");
+  dealerPlateFlowEl.classList.remove("visible");
   plateScannerCandidateEl.textContent = "";
   plateScannerWarningEl.textContent = "";
+  plateScannerResultTitleEl.textContent = "Kenteken herkend";
+  useScannedPlateBtnEl.textContent = "Gebruik kenteken";
+  forceDealerPlateBtnEl.hidden = false;
+  greenPlateCandidateEl.textContent = "";
+  manualOriginalPlateBlockEl.hidden = true;
+  manualOriginalPlateEl.value = "";
   clearPlateScannerCanvas();
 }
 function stopPlateScannerCamera(){
@@ -1125,6 +1195,7 @@ function stopPlateScannerCamera(){
 function closePlateScanner(){
   stopPlateScannerCamera();
   resetPlateScannerResult();
+  plateScannerMode = "primary";
   plateScannerOverlayEl.classList.remove("active");
   readScannedPlateBtnEl.disabled = true;
   setPlateScannerStatus("");
@@ -1257,10 +1328,60 @@ function extractScannedPlateCandidates(items){
       const confidence = Number.isFinite(item.score) ? item.score : 0;
       const rank = sequence.score + confidence*100 - lineIndex;
       const current = candidates.get(sequence.value);
-      if(!current || rank>current.rank) candidates.set(sequence.value,{value:sequence.value,confidence,rank});
+      if(!current || rank>current.rank) candidates.set(sequence.value,{value:sequence.value,confidence,rank,item});
     });
   });
   return [...candidates.values()].sort((a,b)=>b.rank-a.rank || a.value.localeCompare(b.value));
+}
+const GREEN_PLATE_THRESHOLD_PERCENT = 10;
+function normalizePlateScannerPoly(poly){
+  if(!Array.isArray(poly)) return [];
+  if(poly.length>=4 && Array.isArray(poly[0])){
+    return poly.map(point=>({x:Number(point[0]),y:Number(point[1])})).filter(point=>Number.isFinite(point.x)&&Number.isFinite(point.y));
+  }
+  if(poly.length>=8 && poly.every(Number.isFinite)){
+    const points = [];
+    for(let i=0;i<poly.length-1;i+=2) points.push({x:Number(poly[i]),y:Number(poly[i+1])});
+    return points;
+  }
+  return [];
+}
+function getGreenPlateRegion(item,width,height){
+  const points = normalizePlateScannerPoly(item && item.poly);
+  if(points.length>=4){
+    const xs=points.map(point=>point.x), ys=points.map(point=>point.y);
+    const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+    const textWidth=Math.max(1,maxX-minX), textHeight=Math.max(1,maxY-minY);
+    const padX=Math.max(width*.025,textWidth*.22), padY=Math.max(height*.06,textHeight*1.25);
+    const x=Math.max(0,Math.floor(minX-padX)), y=Math.max(0,Math.floor(minY-padY));
+    return {x,y,width:Math.max(1,Math.min(width-x,Math.ceil(textWidth+2*padX))),height:Math.max(1,Math.min(height-y,Math.ceil(textHeight+2*padY)))};
+  }
+  return {x:Math.floor(width*.12),y:Math.floor(height*.2),width:Math.max(1,Math.floor(width*.76)),height:Math.max(1,Math.floor(height*.6))};
+}
+function getRgbHue(r,g,b){
+  const rn=r/255, gn=g/255, bn=b/255, max=Math.max(rn,gn,bn), min=Math.min(rn,gn,bn), delta=max-min;
+  if(!delta) return 0;
+  let hue=max===rn?((gn-bn)/delta)%6:max===gn?(bn-rn)/delta+2:(rn-gn)/delta+4;
+  hue*=60;
+  return hue<0?hue+360:hue;
+}
+function analyzeGreenPlate(canvasElement,item){
+  const region=getGreenPlateRegion(item,canvasElement.width,canvasElement.height);
+  const data=canvasElement.getContext("2d",{willReadFrequently:true}).getImageData(region.x,region.y,region.width,region.height).data;
+  const step=Math.max(1,Math.floor(Math.sqrt((region.width*region.height)/50000)));
+  let sampled=0, green=0;
+  for(let y=0;y<region.height;y+=step){
+    for(let x=0;x<region.width;x+=step){
+      const index=(y*region.width+x)*4, r=data[index], g=data[index+1], b=data[index+2];
+      const max=Math.max(r,g,b), min=Math.min(r,g,b), saturation=max?((max-min)/max):0;
+      if(max<35||max>250) continue;
+      sampled++;
+      const hue=getRgbHue(r,g,b);
+      if(hue>=70&&hue<=170&&saturation>=.22&&g>r*1.08&&g>b*1.05) green++;
+    }
+  }
+  const percentage=sampled?green/sampled*100:0;
+  return {percentage,detected:percentage>=GREEN_PLATE_THRESHOLD_PERCENT};
 }
 function formatScannedPlate(value){
   const formats = [
@@ -1288,6 +1409,7 @@ function getPlateScannerCrop(sourceWidth,sourceHeight,displayWidth,displayHeight
   };
 }
 async function openPlateScanner(){
+  plateScannerMode = "primary";
   resetPlateScannerResult();
   plateScannerOverlayEl.classList.add("active");
   readScannedPlateBtnEl.disabled = true;
@@ -1325,10 +1447,19 @@ async function readPlateWithPaddleOcr(){
       return;
     }
     scannedPlateCandidate = candidates[0];
-    plateScannerCandidateEl.textContent = formatScannedPlate(scannedPlateCandidate.value);
-    plateScannerWarningEl.textContent = scannedPlateCandidate.confidence<.8 || candidates.length>1 ? "Controleer het kenteken extra goed." : "";
-    plateScannerResultEl.classList.add("visible");
-    setPlateScannerStatus("Controleer het herkende kenteken.");
+    if(plateScannerMode === "original"){
+      showScannedPlateResult(scannedPlateCandidate,candidates.length,true);
+      return;
+    }
+    const greenMeasurement = analyzeGreenPlate(plateScannerCanvasEl,scannedPlateCandidate.item);
+    if(greenMeasurement.detected){
+      pendingGreenPlate = scannedPlateCandidate.value;
+      greenPlateCandidateEl.textContent = formatScannedPlate(pendingGreenPlate);
+      greenPlateQuestionEl.classList.add("visible");
+      setPlateScannerStatus("Groen signaal gevonden. Bevestig zelf of dit een handelaarsplaat is.");
+      return;
+    }
+    showScannedPlateResult(scannedPlateCandidate,candidates.length,false);
   }catch(error){
     setPlateScannerStatus("Kenteken kon niet worden gelezen. Probeer opnieuw.",true);
   }finally{
@@ -1336,9 +1467,67 @@ async function readPlateWithPaddleOcr(){
     readScannedPlateBtnEl.disabled = false;
   }
 }
+function showScannedPlateResult(candidate,candidateCount,isOriginal){
+  scannedPlateCandidate = candidate;
+  plateScannerResultTitleEl.textContent = isOriginal ? "Origineel kenteken herkend" : "Kenteken herkend";
+  plateScannerCandidateEl.textContent = formatScannedPlate(candidate.value);
+  plateScannerWarningEl.textContent = candidate.confidence<.8 || candidateCount>1 ? "Controleer het kenteken extra goed." : "";
+  useScannedPlateBtnEl.textContent = isOriginal ? "Gebruik origineel kenteken" : "Gebruik kenteken";
+  forceDealerPlateBtnEl.hidden = isOriginal;
+  plateScannerResultEl.classList.add("visible");
+  setPlateScannerStatus("Controleer het herkende kenteken.");
+}
+function showDealerPlateFlow(){
+  stopPlateScannerCamera();
+  plateScannerResultEl.classList.remove("visible");
+  greenPlateQuestionEl.classList.remove("visible");
+  dealerPlateCandidateEl.textContent = formatScannedPlate(dealerPlate);
+  dealerPlateFlowEl.classList.add("visible");
+  readScannedPlateBtnEl.disabled = true;
+  setPlateScannerStatus("Handelaarskenteken bewaard. Scan of typ nu het originele kenteken.");
+}
+function confirmDealerPlate(value){
+  const normalized = normalizePlate(value);
+  if(!normalized) return;
+  dealerPlate = normalized;
+  originalPlate = "";
+  plateEl.value = dealerPlate;
+  updatePlateStyle();
+  updateReview();
+  showDealerPlateFlow();
+}
+function declineGreenPlate(){
+  const candidate = scannedPlateCandidate && scannedPlateCandidate.value === pendingGreenPlate
+    ? scannedPlateCandidate
+    : {value:pendingGreenPlate,confidence:0};
+  greenPlateQuestionEl.classList.remove("visible");
+  pendingGreenPlate = "";
+  showScannedPlateResult(candidate,1,false);
+}
+async function useOriginalPlate(value){
+  const normalized = normalizePlate(value);
+  if(!isPlausibleScannedPlate(normalized)){
+    setPlateScannerStatus("Vul een plausibel Nederlands origineel kenteken in.",true);
+    return false;
+  }
+  originalPlate = normalized;
+  const leadingDealerPlate = dealerPlate;
+  closePlateScanner();
+  dealerPlate = leadingDealerPlate;
+  plateEl.value = dealerPlate;
+  updatePlateStyle();
+  await lookupPlate();
+  plateEl.focus();
+  return true;
+}
 function useScannedPlate(){
   if(!scannedPlateCandidate) return;
   const value = scannedPlateCandidate.value;
+  if(plateScannerMode === "original"){
+    useOriginalPlate(value);
+    return;
+  }
+  resetDealerPlateState();
   closePlateScanner();
   plateEl.value = value;
   plateEl.dispatchEvent(new Event("input",{bubbles:true}));
@@ -1476,12 +1665,16 @@ function buildReviewHtml(){
   const d = dateEl.value || today();
   const wd = dayData[d] || {};
   const stopsList = stopsEl.value.trim() ? stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).join(", ") : "-";
+  const plateLines = isDealerPlateActive()
+    ? `<div><strong>Handelaarskenteken:</strong> ${plateEl.value || "-"} <span class="small">(leidend kenteken van de rit)</span></div>
+       <div><strong>Origineel kenteken:</strong> ${originalPlate || "-"}</div>`
+    : `<div><strong>Kenteken:</strong> ${plateEl.value || "-"}</div>`;
   return `
     <div><strong>Werkdag:</strong> ${wd.workStart || "-"} → ${wd.workEnd || "-"}</div>
     <div><strong>Datum:</strong> ${d || "-"}</div>
     <div><strong>Starttijd rit:</strong> ${timeStartEl.value || "-"}</div>
     <div><strong>Eindtijd rit:</strong> ${timeEndRotterdamEl.value || "-"}</div>
-    <div><strong>Kenteken:</strong> ${plateEl.value || "-"}</div>
+    ${plateLines}
     <div><strong>Auto:</strong> ${rdwInfoEl.textContent || "-"}</div>
     <div><strong>Km-stand:</strong> ${odometerEl.value || "-"}</div>
     <div><strong>Van:</strong> ${fromEl.value || "-"}</div>
@@ -1693,6 +1886,7 @@ function buildTripObject(existingId, vehicleText, priceText, fromValue, toValue)
     from: normalizeLocation(fromValue),
     to: normalizeLocation(toValue),
     plate: normalizePlate(plateEl.value),
+    originalPlate: isDealerPlateActive() ? normalizePlate(originalPlate) : "",
     vehicle: vehicleText || "",
     priceText: priceText || "",
     odometer: String(odometerEl.value || "").trim()
@@ -1700,6 +1894,15 @@ function buildTripObject(existingId, vehicleText, priceText, fromValue, toValue)
 }
 function validateTrip(trip){
   return !!(trip.date && trip.timeStart && trip.from && trip.to && trip.plate);
+}
+function ensureDealerOriginalPlate(){
+  if(!isDealerPlateActive() || originalPlate) return true;
+  alert("Scan of vul eerst het originele kenteken in voor deze handelaarsplaat.");
+  currentStep = 3;
+  renderStep();
+  plateScannerOverlayEl.classList.add("active");
+  showDealerPlateFlow();
+  return false;
 }
 function savePlateToList(p){
   const plate = normalizePlate(p);
@@ -1729,6 +1932,7 @@ function clearDraftSavedStatus(){
 }
 $("saveTripBtn").addEventListener("click", async ()=>{
   if(!editingTripId && !ensurePostboxesAcknowledged()) return;
+  if(!ensureDealerOriginalPlate()) return;
   const info = await lookupPlate();
   const existing = editingTripId ? trips.find(t=>t.id===editingTripId) : null;
   const trip = buildTripObject(existing ? existing.id : null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
@@ -1757,6 +1961,7 @@ $("saveTripBtn").addEventListener("click", async ()=>{
 });
 $("saveRouteBtn").addEventListener("click", async ()=>{
   if(!ensurePostboxesAcknowledged()) return;
+  if(!ensureDealerOriginalPlate()) return;
   const p = normalizePlate(plateEl.value);
   if(!dateEl.value || !timeStartEl.value || !fromEl.value || !toEl.value || !p){
     alert("Vul datum, starttijd, van, naar en kenteken in.");
@@ -1786,6 +1991,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
       from: points[i],
       to: points[i+1],
       plate: p,
+      originalPlate: isDealerPlateActive() ? normalizePlate(originalPlate) : "",
       vehicle: info.vehicleText || "",
       priceText: info.priceText || "",
       odometer: String(odometerEl.value || "").trim()
@@ -1809,6 +2015,7 @@ function clearForm(){
   toEl.value = "";
   stopsEl.value = "";
   rdwInfoEl.textContent = "";
+  resetDealerPlateState();
   editingTripId = null;
   resetPostboxAnswer();
   $("cancelEditBtn").style.display = "none";
@@ -2042,11 +2249,13 @@ tripTableEl.addEventListener("click", e=>{
     timeStartEl.value = t.timeStart || now();
     timeEndRotterdamEl.value = t.timeEnd || "";
     plateEl.value = t.plate || "";
+    dealerPlate = t.originalPlate ? normalizePlate(t.plate || "") : "";
+    originalPlate = normalizePlate(t.originalPlate || "");
     odometerEl.value = t.odometer || "";
     fromEl.value = t.from || "";
     toEl.value = t.to || "";
     stopsEl.value = "";
-    rdwInfoEl.textContent = (t.plate || "") + (t.vehicle ? " — " + t.vehicle : "") + (t.priceText ? " — Nieuwprijs: " + t.priceText : "");
+    rdwInfoEl.textContent = (t.originalPlate ? "Origineel kenteken " + t.originalPlate : (t.plate || "")) + (t.vehicle ? " — " + t.vehicle : "") + (t.priceText ? " — Nieuwprijs: " + t.priceText : "");
     editingTripId = t.id;
     resetPostboxAnswer();
     $("cancelEditBtn").style.display = "inline-block";
@@ -2156,14 +2365,14 @@ function combineTripsForExport(currentTrips){
   return combined;
 }
 function buildWorkbookFromData(exportTrips, exportDayData){
-  const headers = ["ID","Datum","Starttijd","Eindtijd","Van","Naar","Kenteken","Auto","Nieuwprijs","Km-stand","Afstand (km)"];
+  const headers = ["ID","Datum","Starttijd","Eindtijd","Van","Naar","Kenteken","Origineel kenteken","Auto","Nieuwprijs","Km-stand","Afstand (km)"];
   const tripRows = [
     headers,
-    ...exportTrips.map(t=>[t.id||"",t.date||"",t.timeStart||"",t.timeEnd||"",t.from||"",t.to||"",t.plate||"",t.vehicle||"",t.priceText||"",t.odometer||"",exportDistance(t)])
+    ...exportTrips.map(t=>[t.id||"",t.date||"",t.timeStart||"",t.timeEnd||"",t.from||"",t.to||"",t.plate||"",t.originalPlate||"",t.vehicle||"",t.priceText||"",t.odometer||"",exportDistance(t)])
   ];
   const totalDistance = exportTrips.reduce((sum,trip)=>sum+(exportDistance(trip)===""?0:exportDistance(trip)),0);
-  tripRows.push(["","","","","","","","","","Totaal",Math.round(totalDistance*10)/10]);
-  tripRows.push(["","","","","","","","","","Aantal ritten",exportTrips.length]);
+  tripRows.push(["","","","","","","","","","","Totaal",Math.round(totalDistance*10)/10]);
+  tripRows.push(["","","","","","","","","","","Aantal ritten",exportTrips.length]);
 
   const workdayRows = [
     ["Datum","Aanwezig vanaf","Klaar om","Gewerkte tijd"],
@@ -2203,6 +2412,7 @@ function readImportedWorkbook(file, callback){
           from: normalizeLocation(r["Van"]||""),
           to: normalizeLocation(r["Naar"]||""),
           plate: normalizePlate(r["Kenteken"]||""),
+          originalPlate: normalizePlate(r["Origineel kenteken"]||""),
           vehicle: String(r["Auto"]||"").trim(),
           priceText: String(r["Nieuwprijs"]||"").trim(),
           odometer: String(r["Km-stand"]||"").trim()
@@ -2264,7 +2474,7 @@ async function buildCurrentDraftTripForExport(){
   if(!hasDraft) return null;
   const hasStops = stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).length > 0;
   if(hasStops) return null;
-  const info = await fetchPlateInfo(plateEl.value);
+  const info = await fetchPlateInfo(getRdwLookupPlate());
   const trip = buildTripObject(null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
   if(!validateTrip(trip)) return null;
   if(trips.some(t =>
@@ -2300,7 +2510,14 @@ $("importMergeBtn").addEventListener("click", ()=>{
     if(err){ alert("Import mislukt."); return; }
     let addedTrips = 0;
     result.importedTrips.forEach(trip => {
-      if(!tripExistsInList(trips, trip)){ trips.push(trip); addedTrips++; }
+      const existingTrip = trips.find(existing=>tripExistsInList([existing],trip));
+      if(!existingTrip){
+        trips.push(trip);
+        addedTrips++;
+      }else if(trip.originalPlate && normalizePlate(existingTrip.originalPlate||"") !== trip.originalPlate){
+        existingTrip.originalPlate = trip.originalPlate;
+        addedTrips++;
+      }
     });
     let addedDays = 0;
     Object.keys(result.importedDayData).forEach(d=>{
@@ -2345,6 +2562,7 @@ function rebuildPlateListFromTrips(){
 function renderPlateButtons(){
   const frequent = plates.length ? plates.slice(0, 10) : ["X605VJ","Z406BG"];
   addQuickButtons("plateButtons", frequent, value=>{
+    resetDealerPlateState();
     plateEl.value = value;
     updatePlateStyle();
     lookupPlate();
@@ -2356,14 +2574,42 @@ renderAddressHistoryButtons();
 
 dateEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateReview(); });
 plateEl.addEventListener("input", ()=>{
+  if(dealerPlate && normalizePlate(plateEl.value) !== dealerPlate) resetDealerPlateState();
   clearDraftSavedStatus(); updatePlateStyle(); lookupPlate();
   renderSuggestions(plateSuggestionsEl, getAllKnownPlates(), plateEl.value, value=>{
-    plateEl.value = value; updatePlateStyle(); lookupPlate();
+    resetDealerPlateState(); plateEl.value = value; updatePlateStyle(); lookupPlate();
   });
 });
 $("openPlateScannerBtn").addEventListener("click", openPlateScanner);
 readScannedPlateBtnEl.addEventListener("click", readPlateWithPaddleOcr);
-$("useScannedPlateBtn").addEventListener("click", useScannedPlate);
+useScannedPlateBtnEl.addEventListener("click", useScannedPlate);
+$("greenPlateYesBtn").addEventListener("click", ()=>confirmDealerPlate(pendingGreenPlate));
+$("greenPlateNoBtn").addEventListener("click", declineGreenPlate);
+forceDealerPlateBtnEl.addEventListener("click", ()=>confirmDealerPlate(scannedPlateCandidate && scannedPlateCandidate.value));
+$("scanOriginalPlateBtn").addEventListener("click", async ()=>{
+  plateScannerMode = "original";
+  resetPlateScannerResult();
+  plateScannerOverlayEl.classList.add("active");
+  readScannedPlateBtnEl.disabled = true;
+  setPlateScannerStatus("Camera wordt gestart voor het originele kenteken…");
+  try{
+    await startPlateScannerCamera();
+    await ensurePlateScannerOcr();
+    readScannedPlateBtnEl.disabled = false;
+    setPlateScannerStatus("Richt het originele kenteken binnen de strook en tik op ‘Lees kenteken’.");
+  }catch(error){
+    stopPlateScannerCamera();
+    setPlateScannerStatus(error.message || "Camera kon niet worden gestart.",true);
+  }
+});
+$("showManualOriginalPlateBtn").addEventListener("click", ()=>{
+  manualOriginalPlateBlockEl.hidden = false;
+  manualOriginalPlateEl.focus();
+});
+manualOriginalPlateEl.addEventListener("input", ()=>{
+  manualOriginalPlateEl.value = normalizePlate(manualOriginalPlateEl.value);
+});
+$("useManualOriginalPlateBtn").addEventListener("click", ()=>useOriginalPlate(manualOriginalPlateEl.value));
 $("scanAgainBtn").addEventListener("click", ()=>{
   resetPlateScannerResult();
   setPlateScannerStatus("Richt het kenteken opnieuw binnen de strook.");
