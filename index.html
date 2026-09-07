@@ -72,6 +72,16 @@ button{cursor:pointer}
 .warning{color:var(--danger);font-weight:bold;margin:0 0 10px 0;display:none}
 .info{margin-top:10px;color:#333;min-height:20px}
 .review{background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px;line-height:1.7}
+.route-advice{margin-top:12px;border:1px solid #dfe4ef;border-radius:10px;background:#f7f8fb;padding:12px;line-height:1.45}
+.route-advice h3{margin:0 0 8px;font-size:18px}
+.route-advice-summary{font-weight:bold;overflow-wrap:anywhere}
+.route-advice-main{margin-top:7px;color:#444}
+.route-advice-warning{border-color:#e2ad61;background:#fff7e7;color:#713e00}
+.route-advice-unknown{color:#444}
+.route-advice-checks{display:grid;gap:8px;margin-top:10px}
+.route-advice-check{border:1px solid #e1e5ed;border-radius:8px;background:#fff;padding:9px 10px}
+.route-advice-check strong{display:block;margin-bottom:3px}
+.route-advice-check div{margin-top:2px}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .small{font-size:13px;color:var(--muted)}
 .table-wrap{overflow-x:auto}
@@ -251,6 +261,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="step-title">Controle</div>
         <div class="step-sub">Controleer de gegevens en sla de rit op.</div>
         <div class="review" id="reviewBox"></div>
+        <section class="route-advice" id="routeAdvice" aria-live="polite"></section>
         <div class="conditional-block" id="rotterdamEndBlock">
           <label for="timeEndRotterdam">Eindtijd rit (optioneel)</label>
           <input type="time" id="timeEndRotterdam">
@@ -495,6 +506,35 @@ let standardAddresses = {...DEFAULT_ADDRESSES};
 let QUICK_LOCATIONS = Object.keys(standardAddresses);
 const ALL_STEPS = [0,1,2,3,4,5,6,7];
 
+const KNOWN_ROUTES = [
+  {route:["Rotterdam","Den Haag"],mainRoute:"Nieuwe A16 → A13",checks:{"Rotterdam":["Den Haag"]}},
+  {route:["Rotterdam","Brielle"],mainRoute:"A15 (Europoort)",checks:{"Rotterdam":["Brielle","Charlois"]}},
+  {route:["Rotterdam","Dordrecht"],mainRoute:"A16 (Richting Breda)",checks:{"Rotterdam":["Dordrecht"]}},
+  {route:["Rotterdam","Charlois"],mainRoute:"Lokaal / A15",checks:{"Rotterdam":["Charlois"]}},
+  {route:["Den Haag","Rotterdam"],mainRoute:"Nieuwe A16",checks:{"Den Haag":["Rotterdam"]}},
+  {route:["Dordrecht","Rotterdam"],mainRoute:"A16",checks:{"Dordrecht":["Rotterdam"]}},
+  {route:["Brielle","Rotterdam"],mainRoute:"A15",checks:{"Brielle":["Charlois","Rotterdam"]}},
+
+  {route:["Rotterdam","Den Haag","Charlois","Brielle"],checks:{"Rotterdam":["Den Haag","Charlois","Brielle"],"Den Haag":["Charlois","Brielle"],"Charlois":["Brielle"]}},
+  {route:["Rotterdam","Den Haag","Dordrecht"],checks:{"Rotterdam":["Den Haag","Dordrecht"],"Den Haag":["Dordrecht"]}},
+  {route:["Rotterdam","Dordrecht","Charlois","Brielle"],checks:{"Rotterdam":["Dordrecht","Charlois","Brielle"],"Dordrecht":["Charlois","Brielle"],"Charlois":["Brielle"]}},
+  {route:["Rotterdam","Dordrecht","Den Haag"],checks:{"Rotterdam":["Dordrecht","Den Haag"],"Dordrecht":["Den Haag"]}},
+  {route:["Rotterdam","Charlois","Brielle"],checks:{"Rotterdam":["Charlois","Brielle"],"Charlois":["Brielle"]},note:"Alleen lossen"},
+  {route:["Den Haag","Rotterdam","Charlois","Brielle"],checks:{"Den Haag":["Rotterdam","Charlois","Brielle"],"Rotterdam":["Charlois","Brielle"]}},
+  {route:["Den Haag","Rotterdam","Dordrecht"],checks:{"Den Haag":["Rotterdam","Dordrecht"],"Rotterdam":["Dordrecht"]}},
+  {route:["Dordrecht","Rotterdam","Charlois","Brielle"],checks:{"Dordrecht":["Rotterdam","Charlois","Brielle"],"Rotterdam":["Charlois","Brielle"]}},
+  {route:["Dordrecht","Rotterdam","Den Haag"],checks:{"Dordrecht":["Rotterdam","Den Haag"],"Rotterdam":["Den Haag"]}},
+  {route:["Brielle","Charlois","Rotterdam","Den Haag"],checks:{"Brielle":["Charlois","Rotterdam","Den Haag"],"Charlois":["Rotterdam","Den Haag"],"Rotterdam":["Den Haag"]}},
+  {route:["Brielle","Charlois","Rotterdam","Dordrecht"],checks:{"Brielle":["Charlois","Rotterdam","Dordrecht"],"Charlois":["Rotterdam","Dordrecht"],"Rotterdam":["Dordrecht"]}}
+];
+const ILLOGICAL_EXACT = new Map([
+  ["Rotterdam|Charlois|Dordrecht","Charlois ligt richting Europoort/Brielle. Daarna naar Dordrecht of Den Haag rijden betekent onnodig omrijden."],
+  ["Rotterdam|Charlois|Den Haag","Charlois ligt richting Europoort/Brielle. Daarna naar Dordrecht of Den Haag rijden betekent onnodig omrijden."],
+  ["Den Haag|Dordrecht|Rotterdam","Rotterdam ligt logisch tussen Den Haag en Dordrecht. Stop eerst in Rotterdam."],
+  ["Dordrecht|Den Haag|Rotterdam","Vanuit Dordrecht passeert de logische route richting Den Haag eerst Rotterdam. Stop dus eerst in Rotterdam."],
+  ["Dordrecht|Brielle|Charlois|Rotterdam","Charlois wordt hierbij eerst voorbijgereden richting Brielle en daarna pas aangedaan. Dat is volgens het schema onlogisch."]
+]);
+
 let trips = [];
 let dayData = {};
 let plates = [];
@@ -526,6 +566,7 @@ const progressFillEl = document.getElementById("progressFill");
 const prevBtnEl = document.getElementById("prevBtn");
 const nextBtnEl = document.getElementById("nextBtn");
 const reviewBoxEl = document.getElementById("reviewBox");
+const routeAdviceEl = document.getElementById("routeAdvice");
 const editStatusEl = document.getElementById("editStatus");
 const dayReminderEl = document.getElementById("dayReminder");
 
@@ -1526,8 +1567,81 @@ function ensurePostboxesAcknowledged(){
 }
 postboxYesBtn.addEventListener("click", ()=>setPostboxAnswer(true));
 postboxNoBtn.addEventListener("click", ()=>setPostboxAnswer(false));
+function routeAdviceKey(route){ return route.join("|"); }
+function classifyRouteAdvice(route){
+  if(route[0]==="Charlois") return {type:"illogical",warning:"Charlois is volgens het schema een tussenstation/depot en geen vertrekpunt voor geplande ritten."};
+  const warning=ILLOGICAL_EXACT.get(routeAdviceKey(route));
+  if(warning) return {type:"illogical",warning};
+  const known=KNOWN_ROUTES.find(item=>routeAdviceKey(item.route)===routeAdviceKey(route));
+  return known ? {type:"known",data:known} : {type:"unknown"};
+}
+function routeAdviceLocationKey(value){
+  const normalized=normalizeLocation(value);
+  const keys={
+    "breeland rotterdam":"Rotterdam",
+    "breeland den haag":"Den Haag",
+    "breeland dordrecht":"Dordrecht",
+    "breeland brielle":"Brielle",
+    "rotterdam":"Rotterdam",
+    "den haag":"Den Haag",
+    "dordrecht":"Dordrecht",
+    "brielle":"Brielle",
+    "abs den elzen":"Charlois",
+    "abs":"Charlois",
+    "charlois":"Charlois"
+  };
+  return keys[normalized.toLowerCase()] || normalized;
+}
+function getCurrentRouteAdvicePoints(){
+  return [
+    routeAdviceLocationKey(fromEl.value),
+    ...getStopsList().map(routeAdviceLocationKey),
+    routeAdviceLocationKey(toEl.value)
+  ];
+}
+function routeAdviceDisplayName(name){ return name==="Charlois" ? "ABS" : name; }
+function routeAdviceDisplayText(text){ return text.replace(/Charlois/g,"ABS"); }
+function makeRouteAdviceText(tag,className,text){
+  const element=document.createElement(tag);
+  if(className) element.className=className;
+  element.textContent=text;
+  return element;
+}
+function renderRouteAdvice(){
+  routeAdviceEl.replaceChildren(makeRouteAdviceText("h3","","Routeadvies"));
+  routeAdviceEl.className="route-advice";
+  if(!fromEl.value.trim() || !toEl.value.trim()){
+    routeAdviceEl.appendChild(makeRouteAdviceText("div","route-advice-unknown","Vul Van en Naar in om routeadvies te tonen."));
+    return;
+  }
+  const route=getCurrentRouteAdvicePoints();
+  const outcome=classifyRouteAdvice(route);
+  routeAdviceEl.appendChild(makeRouteAdviceText("div","route-advice-summary","Route: "+route.map(routeAdviceDisplayName).join(" → ")));
+  if(outcome.type==="known"){
+    if(outcome.data.mainRoute) routeAdviceEl.appendChild(makeRouteAdviceText("div","route-advice-main","Hoofdroute: "+outcome.data.mainRoute));
+    routeAdviceEl.appendChild(makeRouteAdviceText("h3","","Postbakcontrole:"));
+    const checks=makeRouteAdviceText("div","route-advice-checks","");
+    Object.entries(outcome.data.checks).forEach(([location,boxes])=>{
+      const card=makeRouteAdviceText("div","route-advice-check","");
+      card.appendChild(makeRouteAdviceText("strong","",routeAdviceDisplayName(location)+":"));
+      boxes.forEach(box=>card.appendChild(makeRouteAdviceText("div","","✓ "+routeAdviceDisplayName(box))));
+      if(outcome.data.note && location==="Charlois") card.appendChild(makeRouteAdviceText("div","note","Opmerking: "+outcome.data.note.toLowerCase()));
+      checks.appendChild(card);
+    });
+    routeAdviceEl.appendChild(checks);
+    return;
+  }
+  if(outcome.type==="illogical"){
+    routeAdviceEl.classList.add("route-advice-warning");
+    routeAdviceEl.append(makeRouteAdviceText("strong","","Onlogische route"),makeRouteAdviceText("div","",routeAdviceDisplayText(outcome.warning)),makeRouteAdviceText("div","","De route wordt niet geblokkeerd."));
+    return;
+  }
+  routeAdviceEl.classList.add("route-advice-unknown");
+  routeAdviceEl.appendChild(makeRouteAdviceText("div","","Deze route staat niet in het rittenschema."));
+}
 function updateReview(){
   reviewBoxEl.innerHTML = buildReviewHtml();
+  renderRouteAdvice();
   const showMaps = !!(fromEl.value.trim() && toEl.value.trim());
   const hasStops = !!stopsEl.value.split(",").map(s=>s.trim()).filter(Boolean).length;
   $("mapsAppleBtn").style.display = showMaps ? "inline-block" : "none";
