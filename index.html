@@ -741,6 +741,7 @@ function normalizeTripFromAny(t, sourceKey){
     vehicle: String(t.vehicle || "").trim(),
     priceText: String(t.priceText || "").trim(),
     odometer: String(t.odometer || "").trim(),
+    distanceKm: exportDistance(t),
     sourceKey: sourceKey || ""
   };
 }
@@ -2408,7 +2409,7 @@ function combineTripsForExport(currentTrips){
 
   (currentTrips||[]).forEach(trip=>{
     const date = normalizeExportDate(trip?.date);
-    if(!date || date <= "2026-08-27") return;
+    if(!date) return;
     const id = String(trip?.id||"").trim();
     const key = exportFallbackKey(trip||{});
     if(id && seenIds.has(id)) return;
@@ -2472,7 +2473,8 @@ function readImportedWorkbook(file, callback){
           originalPlate: normalizePlate(r["Origineel kenteken"]||""),
           vehicle: String(r["Auto"]||"").trim(),
           priceText: String(r["Nieuwprijs"]||"").trim(),
-          odometer: String(r["Km-stand"]||"").trim()
+          odometer: String(r["Km-stand"]||"").trim(),
+          distanceKm: exportDistance(r)
         })).filter(t=>t.date || t.timeStart || t.from || t.to || t.plate);
       }
       const workSheetName = wb.SheetNames.find(n=>n.toLowerCase()==="werkdagen");
@@ -2545,13 +2547,14 @@ async function buildCurrentDraftTripForExport(){
 $("importReplaceBtn").addEventListener("click", ()=>{
   const file = importFileEl.files[0];
   if(!file){ alert("Kies eerst een Excel-bestand."); return; }
-  readImportedWorkbook(file, function(err, result){
+  readImportedWorkbook(file, async function(err, result){
     if(err){ alert("Import mislukt."); return; }
     trips = result.importedTrips;
     dayData = result.importedDayData;
     rebuildPlateListFromTrips();
     sortTrips();
-    saveAll();
+    try{ await saveAllToDB(); }
+    catch(e){ alert("Import opslaan in de database mislukt."); return; }
     renderTrips();
     renderWorkdays();
     renderPlateButtons();
@@ -2563,7 +2566,7 @@ $("importReplaceBtn").addEventListener("click", ()=>{
 $("importMergeBtn").addEventListener("click", ()=>{
   const file = importFileEl.files[0];
   if(!file){ alert("Kies eerst een Excel-bestand."); return; }
-  readImportedWorkbook(file, function(err, result){
+  readImportedWorkbook(file, async function(err, result){
     if(err){ alert("Import mislukt."); return; }
     let addedTrips = 0;
     result.importedTrips.forEach(trip => {
@@ -2571,10 +2574,19 @@ $("importMergeBtn").addEventListener("click", ()=>{
       if(!existingTrip){
         trips.push(trip);
         addedTrips++;
-      }else if(trip.originalPlate && normalizePlate(existingTrip.originalPlate||"") !== trip.originalPlate){
-        existingTrip.originalPlate = trip.originalPlate;
-        existingTrip.isDealerPlate = true;
-        addedTrips++;
+      }else{
+        let changed = false;
+        if(trip.originalPlate && normalizePlate(existingTrip.originalPlate||"") !== trip.originalPlate){
+          existingTrip.originalPlate = trip.originalPlate;
+          existingTrip.isDealerPlate = true;
+          changed = true;
+        }
+        const importedDistance = exportDistance(trip);
+        if(importedDistance !== "" && exportDistance(existingTrip) !== importedDistance){
+          existingTrip.distanceKm = importedDistance;
+          changed = true;
+        }
+        if(changed) addedTrips++;
       }
     });
     let addedDays = 0;
@@ -2588,7 +2600,8 @@ $("importMergeBtn").addEventListener("click", ()=>{
     });
     rebuildPlateListFromTrips();
     sortTrips();
-    saveAll();
+    try{ await saveAllToDB(); }
+    catch(e){ alert("Import opslaan in de database mislukt."); return; }
     renderTrips();
     renderWorkdays();
     renderPlateButtons();
