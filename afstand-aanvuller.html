@@ -380,7 +380,7 @@
       classifyUnresolvedTrips();
       renderResults();
       renderSummary();
-      calculateButton.disabled = !missingTrips.some(isGoogleEligible);
+      calculateButton.disabled = missingTrips.length === 0;
       saveButton.disabled = false;
       showMessage(`${analysis.trips.length} echte ritten gevonden; ${missingTrips.length} ritafstanden waren leeg.`, "ok");
     } catch (error) {
@@ -396,7 +396,10 @@
 
   calculateButton.addEventListener("click", async () => {
     const unresolved = missingTrips.filter(isGoogleEligible);
-    if (!unresolved.length) return showMessage("Er zijn geen onbekende routes meer.", "ok");
+    if (!unresolved.length) {
+      calculateButton.disabled = true;
+      return showMessage("Alle berekenbare routes zijn verwerkt. Niet-berekenbare routes zijn leeg gebleven; het bestand kan nu worden opgeslagen.", "ok");
+    }
     const key = apiKey.value.trim();
     if (!mayRequestGoogle(key)) return showMessage("Vul eerst een Google Maps JavaScript API-key in. Er is geen Google-request gedaan.", "error");
     calculateButton.disabled = true;
