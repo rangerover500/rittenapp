@@ -67,6 +67,16 @@
   const API_KEY_STORAGE = "rittenapp_google_maps_api_key";
   const ROUTE_HEADERS = ["Datum", "Van", "Naar"];
   const DISTANCE_HEADER = "Afstand (km)";
+  const STANDARD_ADDRESSES = {
+    "Breeland Rotterdam": "Autolettestraat 16, 3063 NP Rotterdam",
+    "Breeland Dordrecht": "Mijlweg 25, 3316 BE Dordrecht",
+    "Breeland Den Haag": "Neckar 7, 2491 BB Den Haag",
+    "Breeland Brielle": "Seggelant-Oost 9, 3237 MH Brielle",
+    "Carwash Capelle": "Kompasstraat 9-11, 2901 AM Capelle aan den IJssel",
+    "Perfect Carwrapping": "Lübeck 8, 2993 LK Barendrecht",
+    "ABS den Elzen": "Aploniastraat 1, 3084 CC Rotterdam"
+  };
+  const AMBIGUOUS_LOCATION_LABELS = new Set(["breeland", "breeland r'dam", "brielle", "dordrecht", "den haag"]);
   const excelFile = document.getElementById("excelFile");
   const apiKey = document.getElementById("apiKey");
   const rememberApiKey = document.getElementById("rememberApiKey");
@@ -98,8 +108,46 @@
     return Number.isFinite(number) ? number : null;
   }
 
+  function normalizeStandardLocation(value) {
+    const original = String(value == null ? "" : value).trim();
+    const text = normalize(original);
+    if (text.includes("breeland") && text.includes("rotterdam")) return "Breeland Rotterdam";
+    if (text.includes("breeland") && text.includes("dordrecht")) return "Breeland Dordrecht";
+    if (text.includes("breeland") && text.includes("den haag")) return "Breeland Den Haag";
+    if (text.includes("breeland") && text.includes("brielle")) return "Breeland Brielle";
+    if (text.includes("carwash") || text.includes("capelle") || text.includes("wasstraat")) return "Carwash Capelle";
+    if (text.includes("perfect") || text.includes("carwrapping")) return "Perfect Carwrapping";
+    if (text.includes("abs") || text.includes("elzen")) return "ABS den Elzen";
+    return original;
+  }
+
+  function resolveGoogleLocation(value) {
+    const standardLocation = normalizeStandardLocation(value);
+    return STANDARD_ADDRESSES[standardLocation] || String(value == null ? "" : value).trim();
+  }
+
   function routeKey(from, to) {
-    return `${normalize(from)}\u0000${normalize(to)}`;
+    return `${normalize(normalizeStandardLocation(from))}\u0000${normalize(normalizeStandardLocation(to))}`;
+  }
+
+  function isExcelTimeFractionLocation(value) {
+    const text = String(value == null ? "" : value).trim().replace(",", ".");
+    if (!/^\d+(?:\.\d+)?$/.test(text)) return false;
+    const number = Number(text);
+    return Number.isFinite(number) && number >= 0 && number < 1;
+  }
+
+  function getRouteIssue(from, to) {
+    if (isExcelTimeFractionLocation(from) || isExcelTimeFractionLocation(to)) {
+      return { kind: "invalid", status: "Ongeldige locatie (Excel-tijdwaarde)" };
+    }
+    if (normalize(normalizeStandardLocation(from)) === normalize(normalizeStandardLocation(to))) {
+      return { kind: "same", status: "Van en Naar zijn gelijk; controleer deze rit" };
+    }
+    if (AMBIGUOUS_LOCATION_LABELS.has(normalize(from)) || AMBIGUOUS_LOCATION_LABELS.has(normalize(to))) {
+      return { kind: "ambiguous", status: "Ambigue locatie; controleer het adres" };
+    }
+    return null;
   }
 
   function findHeaderRow(rows) {
@@ -225,6 +273,8 @@
 
   function fillKnownRoutes() {
     for (const trip of missingTrips) {
+      const issue = getRouteIssue(trip.from, trip.to);
+      if (issue?.kind === "invalid" || issue?.kind === "same") continue;
       const known = analysis.knownRoutes.get(routeKey(trip.from, trip.to));
       if (known == null) continue;
       if (setDistance(trip, known)) {
@@ -232,6 +282,21 @@
         trip.statusKind = "ok";
       }
     }
+  }
+
+  function classifyUnresolvedTrips() {
+    for (const trip of missingTrips) {
+      if (trip.distance != null) continue;
+      const issue = getRouteIssue(trip.from, trip.to);
+      if (!issue) continue;
+      trip.routeIssue = issue.kind;
+      trip.status = issue.status;
+      trip.statusKind = "error";
+    }
+  }
+
+  function isGoogleEligible(trip) {
+    return trip.distance == null && !trip.routeIssue;
   }
 
   function loadGoogleMaps(key) {
@@ -260,7 +325,7 @@
 
   function requestDrivingDistance(service, from, to) {
     return new Promise((resolve, reject) => {
-      service.route({ origin: String(from), destination: String(to), travelMode: google.maps.TravelMode.DRIVING }, (response, status) => {
+      service.route({ origin: resolveGoogleLocation(from), destination: resolveGoogleLocation(to), travelMode: google.maps.TravelMode.DRIVING }, (response, status) => {
         const metres = response?.routes?.[0]?.legs?.[0]?.distance?.value;
         if (status === google.maps.DirectionsStatus.OK && Number.isFinite(metres)) resolve(metres / 1000);
         else reject(new Error(`Google-status: ${status || "onbekend"}`));
@@ -309,9 +374,10 @@
       analysis = analyzeRows(sheetData, worksheet);
       missingTrips = analysis.trips.filter(trip => trip.initiallyBlank).map(trip => ({ ...trip, distance: null, status: "Google nodig", statusKind: "wait" }));
       fillKnownRoutes();
+      classifyUnresolvedTrips();
       renderResults();
       renderSummary();
-      calculateButton.disabled = !missingTrips.some(trip => trip.distance == null);
+      calculateButton.disabled = !missingTrips.some(isGoogleEligible);
       saveButton.disabled = false;
       showMessage(`${analysis.trips.length} echte ritten gevonden; ${missingTrips.length} ritafstanden waren leeg.`, "ok");
     } catch (error) {
@@ -326,7 +392,7 @@
   forgetApiKey.addEventListener("click", forgetRememberedApiKey);
 
   calculateButton.addEventListener("click", async () => {
-    const unresolved = missingTrips.filter(trip => trip.distance == null);
+    const unresolved = missingTrips.filter(isGoogleEligible);
     if (!unresolved.length) return showMessage("Er zijn geen onbekende routes meer.", "ok");
     const key = apiKey.value.trim();
     if (!mayRequestGoogle(key)) return showMessage("Vul eerst een Google Maps JavaScript API-key in. Er is geen Google-request gedaan.", "error");
@@ -336,12 +402,22 @@
       await loadGoogleMaps(key);
       const service = new google.maps.DirectionsService();
       for (const trip of unresolved) {
+        const known = analysis.knownRoutes.get(routeKey(trip.from, trip.to));
+        if (known != null) {
+          setDistance(trip, known);
+          trip.status = "Ingevuld uit bestaande gerichte route";
+          trip.statusKind = "ok";
+          renderResults();
+          renderSummary();
+          continue;
+        }
         trip.status = "Wordt berekend…";
         trip.statusKind = "wait";
         renderResults();
         try {
           const kilometres = await requestDrivingDistance(service, trip.from, trip.to);
           setDistance(trip, kilometres);
+          analysis.knownRoutes.set(routeKey(trip.from, trip.to), kilometres);
           trip.status = "Berekend met Google";
           trip.statusKind = "ok";
         } catch (error) {
@@ -355,7 +431,7 @@
     } catch (error) {
       showMessage(error.message || "Google Maps kon niet worden gestart.", "error");
     } finally {
-      calculateButton.disabled = !missingTrips.some(trip => trip.distance == null);
+      calculateButton.disabled = !missingTrips.some(isGoogleEligible);
       saveButton.disabled = false;
     }
   });
@@ -376,7 +452,7 @@
 
   loadRememberedApiKey();
 
-  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, routeKey, findHeaderRow, analyzeRows, mayRequestGoogle, roundKilometres, removeTemporaryDistanceCheckSheet, loadRememberedApiKey, updateRememberedApiKey, forgetRememberedApiKey, getExportFilename, API_KEY_STORAGE };
+  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, normalizeStandardLocation, resolveGoogleLocation, routeKey, isExcelTimeFractionLocation, getRouteIssue, findHeaderRow, analyzeRows, mayRequestGoogle, roundKilometres, isGoogleEligible, requestDrivingDistance, removeTemporaryDistanceCheckSheet, loadRememberedApiKey, updateRememberedApiKey, forgetRememberedApiKey, getExportFilename, API_KEY_STORAGE, STANDARD_ADDRESSES };
 })();
 </script>
 </body>
