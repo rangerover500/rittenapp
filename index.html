@@ -2510,7 +2510,7 @@ function tripExistsInList(list, trip){
 }
 function getTimestampedFilename(dateValue){
   const d = dateValue instanceof Date ? dateValue : new Date();
-  return "Ritten_"+pad(d.getDate())+pad(d.getMonth()+1)+String(d.getFullYear()).slice(-2)+"_"+pad(d.getHours())+pad(d.getMinutes())+".xlsx";
+  return "Ritten_"+d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+".xlsx";
 }
 $("exportBtn").addEventListener("click", async ()=>{
   let dbTrips;

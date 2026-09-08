@@ -65,7 +65,8 @@
 
   const SHEET_NAME = "Ritten";
   const API_KEY_STORAGE = "rittenapp_google_maps_api_key";
-  const REQUIRED_HEADERS = ["Datum", "Van", "Naar", "Afstand (km)"];
+  const ROUTE_HEADERS = ["Datum", "Van", "Naar"];
+  const DISTANCE_HEADER = "Afstand (km)";
   const excelFile = document.getElementById("excelFile");
   const apiKey = document.getElementById("apiKey");
   const rememberApiKey = document.getElementById("rememberApiKey");
@@ -81,7 +82,6 @@
   let sheetData = [];
   let analysis = null;
   let missingTrips = [];
-  let sourceFileName = "rittenapp-export.xlsx";
   let googleLoader = null;
 
   function normalize(value) {
@@ -103,14 +103,29 @@
   }
 
   function findHeaderRow(rows) {
-    return rows.findIndex(row => REQUIRED_HEADERS.every(header => row.some(cell => normalize(cell) === normalize(header))));
+    return rows.findIndex(row => ROUTE_HEADERS.every(header => row.some(cell => normalize(cell) === normalize(header))));
   }
 
-  function analyzeRows(rows) {
+  function analyzeRows(rows, targetWorksheet = null) {
     const headerRowIndex = findHeaderRow(rows);
-    if (headerRowIndex < 0) throw new Error(`De kolommen ${REQUIRED_HEADERS.join(", ")} zijn niet allemaal gevonden.`);
+    if (headerRowIndex < 0) throw new Error(`De kolommen ${ROUTE_HEADERS.join(", ")} zijn niet allemaal gevonden.`);
     const headers = rows[headerRowIndex];
-    const columns = Object.fromEntries(REQUIRED_HEADERS.map(header => [header, headers.findIndex(cell => normalize(cell) === normalize(header))]));
+    const columns = Object.fromEntries(ROUTE_HEADERS.map(header => [header, headers.findIndex(cell => normalize(cell) === normalize(header))]));
+    let distanceColumn = headers.findIndex(cell => normalize(cell) === normalize(DISTANCE_HEADER));
+    const distanceColumnAdded = distanceColumn < 0;
+    if (distanceColumnAdded) {
+      distanceColumn = rows.reduce((max, row) => Math.max(max, row.length), 0);
+      headers[distanceColumn] = DISTANCE_HEADER;
+      if (targetWorksheet) {
+        const address = XLSX.utils.encode_cell({ r: headerRowIndex, c: distanceColumn });
+        targetWorksheet[address] = { t: "s", v: DISTANCE_HEADER };
+        const range = XLSX.utils.decode_range(targetWorksheet["!ref"] || address);
+        range.e.c = Math.max(range.e.c, distanceColumn);
+        range.e.r = Math.max(range.e.r, headerRowIndex);
+        targetWorksheet["!ref"] = XLSX.utils.encode_range(range);
+      }
+    }
+    columns[DISTANCE_HEADER] = distanceColumn;
     const trips = [];
     const knownRoutes = new Map();
 
@@ -120,14 +135,14 @@
       const from = row[columns["Van"]];
       const to = row[columns["Naar"]];
       if (isBlank(date) || isBlank(from) || isBlank(to)) return;
-      const distance = row[columns["Afstand (km)"]];
+      const distance = row[columns[DISTANCE_HEADER]];
       const trip = { rowIndex, date, from, to, distance, initiallyBlank: isBlank(distance) };
       trips.push(trip);
       const number = numericDistance(distance);
       if (number !== null && !knownRoutes.has(routeKey(from, to))) knownRoutes.set(routeKey(from, to), number);
     });
 
-    return { headerRowIndex, columns, trips, knownRoutes };
+    return { headerRowIndex, columns, trips, knownRoutes, distanceColumnAdded };
   }
 
   function mayRequestGoogle(key) {
@@ -170,7 +185,7 @@
   }
 
   function setDistance(trip, value) {
-    const column = analysis.columns["Afstand (km)"];
+    const column = analysis.columns[DISTANCE_HEADER];
     if (!trip.initiallyBlank || !isBlank(sheetData[trip.rowIndex][column])) return false;
     const rounded = roundKilometres(value);
     const address = XLSX.utils.encode_cell({ r: trip.rowIndex, c: column });
@@ -256,7 +271,7 @@
   function updateExistingTotal() {
     const totalRowIndex = sheetData.findIndex((row, index) => index > analysis.headerRowIndex && row.some(cell => normalize(cell) === "totaal"));
     if (totalRowIndex < 0) return false;
-    const distanceColumn = analysis.columns["Afstand (km)"];
+    const distanceColumn = analysis.columns[DISTANCE_HEADER];
     const total = roundKilometres(analysis.trips.reduce((sum, trip) => sum + (numericDistance(sheetData[trip.rowIndex][distanceColumn]) || 0), 0));
     const address = XLSX.utils.encode_cell({ r: totalRowIndex, c: distanceColumn });
     const previous = worksheet[address] || {};
@@ -291,8 +306,7 @@
       if (!workbook.SheetNames.includes(SHEET_NAME)) throw new Error(`Werkblad “${SHEET_NAME}” ontbreekt.`);
       worksheet = workbook.Sheets[SHEET_NAME];
       sheetData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: true });
-      analysis = analyzeRows(sheetData);
-      sourceFileName = file.name;
+      analysis = analyzeRows(sheetData, worksheet);
       missingTrips = analysis.trips.filter(trip => trip.initiallyBlank).map(trip => ({ ...trip, distance: null, status: "Google nodig", statusKind: "wait" }));
       fillKnownRoutes();
       renderResults();
@@ -350,14 +364,19 @@
     if (!workbook || !worksheet || !analysis) return;
     updateExistingTotal();
     removeTemporaryDistanceCheckSheet(workbook);
-    const base = sourceFileName.replace(/\.xlsx$/i, "");
-    XLSX.writeFile(workbook, `${base}_afstanden_aangevuld.xlsx`, { compression: true });
+    XLSX.writeFile(workbook, getExportFilename(), { compression: true });
     showMessage("Het nieuwe Excelbestand is gemaakt. Het ingelezen bestand is niet gewijzigd.", "ok");
   });
 
+  function getExportFilename(dateValue) {
+    const date = dateValue instanceof Date ? dateValue : new Date();
+    const pad = value => String(value).padStart(2, "0");
+    return `Ritten_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}.xlsx`;
+  }
+
   loadRememberedApiKey();
 
-  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, routeKey, findHeaderRow, analyzeRows, mayRequestGoogle, roundKilometres, removeTemporaryDistanceCheckSheet, loadRememberedApiKey, updateRememberedApiKey, forgetRememberedApiKey, API_KEY_STORAGE };
+  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, routeKey, findHeaderRow, analyzeRows, mayRequestGoogle, roundKilometres, removeTemporaryDistanceCheckSheet, loadRememberedApiKey, updateRememberedApiKey, forgetRememberedApiKey, getExportFilename, API_KEY_STORAGE };
 })();
 </script>
 </body>
