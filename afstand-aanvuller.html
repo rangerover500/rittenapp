@@ -76,7 +76,7 @@
     "Perfect Carwrapping": "Lübeck 8, 2993 LK Barendrecht",
     "ABS den Elzen": "Aploniastraat 1, 3084 CC Rotterdam"
   };
-  const AMBIGUOUS_LOCATION_LABELS = new Set(["brielle", "dordrecht", "den haag"]);
+  const AMBIGUOUS_LOCATION_LABELS = new Set(["den haag"]);
   const excelFile = document.getElementById("excelFile");
   const apiKey = document.getElementById("apiKey");
   const rememberApiKey = document.getElementById("rememberApiKey");
@@ -112,6 +112,8 @@
     const original = String(value == null ? "" : value).trim();
     const text = normalize(original);
     if (text === "breeland" || text === "breeland r'dam") return "Breeland Rotterdam";
+    if (text === "brielle") return "Breeland Brielle";
+    if (text === "dordrecht") return "Breeland Dordrecht";
     if (text.includes("breeland") && text.includes("rotterdam")) return "Breeland Rotterdam";
     if (text.includes("breeland") && text.includes("dordrecht")) return "Breeland Dordrecht";
     if (text.includes("breeland") && text.includes("den haag")) return "Breeland Den Haag";
