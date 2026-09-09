@@ -65,7 +65,9 @@ button{cursor:pointer}
 #plateButtons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
 #plateButtons button{min-width:0;overflow-wrap:anywhere}
 #openPlateScannerBtn{width:100%;background:#1a73e8;color:#fff;border-color:#1a73e8}
-#screen-invoer .step[data-step="4"]>.step-title,#screen-invoer .step[data-step="5"]>.step-title,#screen-invoer .step[data-step="6"]>.step-title{color:var(--plate-blue);font-weight:800}
+#screen-invoer .step[data-step="4"]>.step-title{color:#003399;font-weight:800}
+#screen-invoer .step[data-step="5"]>.step-title{color:#187A43;font-weight:800}
+#screen-invoer .step[data-step="6"]>.step-title{color:#C65D00;font-weight:800}
 .wizard{border:1px solid #e6ebf7;border-radius:14px;background:#fafbff;padding:16px;padding-bottom:10px}
 #screen-invoer .wizard{padding-bottom:76px}
 .progress-text{font-size:13px;color:var(--muted);margin-bottom:6px}
@@ -231,7 +233,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <div class="step" data-step="4">
         <div class="step-title">Van</div>
         <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
-        <label for="from">Van</label>
         <div class="input-row">
           <input id="from" autocomplete="off">
           <button type="button" class="btn-voice" id="voiceFromBtn" title="Spreek van-locatie in">🎤</button>
@@ -245,7 +246,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <div class="step" data-step="5">
         <div class="step-title">Naar</div>
         <div class="step-sub">Kies een vaste locatie of typ zelf.</div>
-        <label for="to">Naar</label>
         <div class="input-row">
           <input id="to" autocomplete="off">
           <button type="button" class="btn-voice" id="voiceToBtn" title="Spreek naar-locatie in">🎤</button>
@@ -262,7 +262,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <div class="step" data-step="6">
         <div class="step-title">Tussenstops</div>
         <div class="step-sub">Optioneel. Meerdere tussenstops scheid je met komma's.</div>
-        <label for="stops">Tussenstop(s)</label>
         <div class="input-row">
           <input id="stops" placeholder="Bijv. ABS den Elzen, Perfect Carwrapping" autocomplete="off">
           <button type="button" class="btn-voice" id="voiceStopsBtn" title="Spreek tussenstops in">🎤</button>
