@@ -58,6 +58,8 @@ button{cursor:pointer}
   padding-left:44px;letter-spacing:2px;text-align:center;border:2px solid #caa64f
 }
 #plate.filled{font-weight:bold}
+.manual-dealer-choice{display:inline-flex;align-items:center;gap:10px;min-height:46px;margin:8px 0 0;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font-weight:bold;cursor:pointer}
+.manual-dealer-choice input{width:24px;height:24px;min-height:0;margin:0;padding:0;flex:0 0 24px;accent-color:#187A43}
 .quick{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
 .quick button{border:1px solid var(--line);background:#f1f3f8;border-radius:8px;padding:10px 12px;font-size:14px}
 .wizard{border:1px solid #e6ebf7;border-radius:14px;background:#fafbff;padding:16px;padding-bottom:10px}
@@ -211,6 +213,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="step-sub">Voer het kenteken in of kies een recent kenteken.</div>
         <label for="plate">Kenteken</label>
         <input id="plate" placeholder="Bijv. X-605-VJ" autocomplete="off">
+        <label class="manual-dealer-choice" for="manualDealerPlate"><input id="manualDealerPlate" type="checkbox"> Groene plaat</label>
         <div class="suggestions" id="plateSuggestions"></div>
         <div class="quick" id="plateButtons"></div>
         <div class="toolbar">
@@ -621,6 +624,7 @@ const dateEl = document.getElementById("date");
 const timeStartEl = document.getElementById("timeStart");
 const timeEndRotterdamEl = document.getElementById("timeEndRotterdam");
 const plateEl = document.getElementById("plate");
+const manualDealerPlateEl = document.getElementById("manualDealerPlate");
 const rdwInfoEl = document.getElementById("rdwInfo");
 const odoWarningEl = document.getElementById("odoWarning");
 const odometerEl = document.getElementById("odometer");
@@ -1138,6 +1142,7 @@ function isStoredDealerTrip(trip){
 function resetDealerPlateState(){
   dealerPlate = "";
   originalPlate = "";
+  manualDealerPlateEl.checked = false;
 }
 function getRdwLookupPlate(){
   return isDealerPlateActive() ? originalPlate : normalizePlate(plateEl.value);
@@ -1155,8 +1160,10 @@ async function lookupPlate(){
     updateReview();
     return {vehicleText:"", priceText:""};
   }
+  const dealerLookup = isDealerPlateActive();
   const info = await fetchPlateInfo(lookupValue);
-  let text = isDealerPlateActive() ? "Origineel kenteken " + lookupValue : plateEl.value;
+  if(dealerLookup !== isDealerPlateActive() || normalizePlate(getRdwLookupPlate()) !== normalizePlate(lookupValue)) return {vehicleText:"", priceText:""};
+  let text = dealerLookup ? "Origineel kenteken " + lookupValue : plateEl.value;
   if(info.vehicleText) text += " — " + info.vehicleText;
   if(info.priceText) text += " — Nieuwprijs: " + info.priceText;
   rdwInfoEl.textContent = text;
@@ -1506,7 +1513,9 @@ function confirmDealerPlate(value){
   if(!normalized) return;
   dealerPlate = normalized;
   originalPlate = "";
+  manualDealerPlateEl.checked = true;
   plateEl.value = dealerPlate;
+  rdwInfoEl.textContent = "Handelaarskenteken " + plateEl.value + " — vul het originele kenteken in voor RDW.";
   updatePlateStyle();
   updateReview();
   showDealerPlateFlow();
@@ -2309,6 +2318,7 @@ tripTableEl.addEventListener("click", e=>{
     plateEl.value = t.plate || "";
     dealerPlate = isStoredDealerTrip(t) ? normalizePlate(t.plate || "") : "";
     originalPlate = normalizePlate(t.originalPlate || "");
+    manualDealerPlateEl.checked = isStoredDealerTrip(t);
     odometerEl.value = t.odometer || "";
     fromEl.value = t.from || "";
     toEl.value = t.to || "";
@@ -2650,6 +2660,24 @@ plateEl.addEventListener("input", ()=>{
   renderSuggestions(plateSuggestionsEl, getAllKnownPlates(), plateEl.value, value=>{
     resetDealerPlateState(); plateEl.value = value; updatePlateStyle(); lookupPlate();
   });
+});
+manualDealerPlateEl.addEventListener("change", ()=>{
+  clearDraftSavedStatus();
+  if(!manualDealerPlateEl.checked){
+    resetDealerPlateState();
+    lookupPlate();
+    updateReview();
+    return;
+  }
+  const normalized = normalizePlate(plateEl.value);
+  if(!normalized){
+    manualDealerPlateEl.checked = false;
+    alert("Vul eerst een kenteken in.");
+    return;
+  }
+  closePlateScanner();
+  plateScannerOverlayEl.classList.add("active");
+  confirmDealerPlate(normalized);
 });
 $("openPlateScannerBtn").addEventListener("click", openPlateScanner);
 readScannedPlateBtnEl.addEventListener("click", readPlateWithPaddleOcr);
