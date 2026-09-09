@@ -62,6 +62,10 @@ button{cursor:pointer}
 .manual-dealer-choice input{width:24px;height:24px;min-height:0;margin:0;padding:0;flex:0 0 24px;accent-color:#187A43}
 .quick{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
 .quick button{border:1px solid var(--line);background:#f1f3f8;border-radius:8px;padding:10px 12px;font-size:14px}
+#plateButtons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+#plateButtons button{min-width:0;overflow-wrap:anywhere}
+#openPlateScannerBtn{width:100%;background:#1a73e8;color:#fff;border-color:#1a73e8}
+#screen-invoer .step[data-step="4"]>.step-title,#screen-invoer .step[data-step="5"]>.step-title,#screen-invoer .step[data-step="6"]>.step-title{color:var(--plate-blue);font-weight:800}
 .wizard{border:1px solid #e6ebf7;border-radius:14px;background:#fafbff;padding:16px;padding-bottom:10px}
 #screen-invoer .wizard{padding-bottom:76px}
 .progress-text{font-size:13px;color:var(--muted);margin-bottom:6px}
@@ -2643,7 +2647,7 @@ function rebuildPlateListFromTrips(){
   plates = plates.slice(0, 500);
 }
 function renderPlateButtons(){
-  const frequent = plates.length ? plates.slice(0, 10) : ["X605VJ","Z406BG"];
+  const frequent = plates.length ? plates.slice(0, 6) : ["X605VJ","Z406BG"];
   addQuickButtons("plateButtons", frequent, value=>{
     resetDealerPlateState();
     plateEl.value = value;
