@@ -65,9 +65,10 @@ button{cursor:pointer}
 #plateButtons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
 #plateButtons button{min-width:0;overflow-wrap:anywhere}
 #openPlateScannerBtn{width:100%;background:#1a73e8;color:#fff;border-color:#1a73e8}
-#screen-invoer .step[data-step="4"]>.step-title{color:#003399;font-weight:800}
-#screen-invoer .step[data-step="5"]>.step-title{color:#187A43;font-weight:800}
-#screen-invoer .step[data-step="6"]>.step-title{color:#C65D00;font-weight:800}
+#screen-invoer .step[data-step="4"]>.step-title,#screen-invoer .step[data-step="5"]>.step-title,#screen-invoer .step[data-step="6"]>.step-title{display:inline-block;color:#fff;font-weight:800;padding:4px 12px;margin-bottom:0;border-radius:8px}
+#screen-invoer .step[data-step="4"]>.step-title{background:#003399}
+#screen-invoer .step[data-step="5"]>.step-title{background:#187A43}
+#screen-invoer .step[data-step="6"]>.step-title{background:#C65D00}
 .wizard{border:1px solid #e6ebf7;border-radius:14px;background:#fafbff;padding:16px;padding-bottom:10px}
 #screen-invoer .wizard{padding-bottom:76px}
 .progress-text{font-size:13px;color:var(--muted);margin-bottom:6px}
