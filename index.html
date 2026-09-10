@@ -340,6 +340,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     <h2>Beheer</h2>
 
     <div class="fileblock">
+      <h3>Eenmalige rittenopschoning</h3>
+      <div class="small">Verwijdert uitsluitend de 18 vooraf vastgelegde rit-ID's. Voor het verwijderen wordt eerst gecontroleerd hoeveel daarvan aanwezig zijn.</div>
+      <div class="toolbar">
+        <button type="button" class="btn-delete" id="cleanupUnreliableTripsBtn">18 onbetrouwbare ritten verwijderen</button>
+      </div>
+      <div class="status" id="cleanupUnreliableTripsStatus" role="status" aria-live="polite">Nog niet uitgevoerd.</div>
+    </div>
+
+    <div class="fileblock">
       <h3>Standaardadressen</h3>
       <div class="small">Deze adressen verschijnen als vaste knoppen bij Van, Naar en Tussenstops.</div>
 
@@ -391,14 +400,6 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       </div>
     </div>
 
-    <div class="fileblock">
-      <h3>Eenmalige rittenopschoning</h3>
-      <div class="small">Verwijdert uitsluitend de 18 vooraf vastgelegde rit-ID's. Voor het verwijderen wordt eerst gecontroleerd hoeveel daarvan aanwezig zijn.</div>
-      <div class="toolbar">
-        <button type="button" class="btn-delete" id="cleanupUnreliableTripsBtn">18 onbetrouwbare ritten verwijderen</button>
-      </div>
-      <div class="status" id="cleanupUnreliableTripsStatus" role="status" aria-live="polite">Nog niet uitgevoerd.</div>
-    </div>
   </div>
 
   <div id="screen-ritten" class="screen">
