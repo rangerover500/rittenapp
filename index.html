@@ -390,6 +390,15 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         </table>
       </div>
     </div>
+
+    <div class="fileblock">
+      <h3>Eenmalige rittenopschoning</h3>
+      <div class="small">Verwijdert uitsluitend de 18 vooraf vastgelegde rit-ID's. Voor het verwijderen wordt eerst gecontroleerd hoeveel daarvan aanwezig zijn.</div>
+      <div class="toolbar">
+        <button type="button" class="btn-delete" id="cleanupUnreliableTripsBtn">18 onbetrouwbare ritten verwijderen</button>
+      </div>
+      <div class="status" id="cleanupUnreliableTripsStatus" role="status" aria-live="polite">Nog niet uitgevoerd.</div>
+    </div>
   </div>
 
   <div id="screen-ritten" class="screen">
@@ -539,6 +548,26 @@ const PADDLE_OCR_WORKER_URL = "https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr
 const PADDLE_OCR_WASM_PATH = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/";
 
 const mandatoryOdoPlates = ["X605VJ", "Z406BG"];
+const ONE_TIME_TRIP_CLEANUP_IDS = Object.freeze([
+  "legacy_20260303_0845_041",
+  "legacy_20260303_0950_042",
+  "legacy_20260303_1415_050",
+  "legacy_20260310_0845_068",
+  "legacy_20260310_1120_071",
+  "legacy_20260310_1145_072",
+  "legacy_20260310_1153_074",
+  "legacy_20260310_1225_076",
+  "legacy_20260310_1225_077",
+  "trip_1774016612705_cpi8j10r",
+  "legacy_20260310_1337_080",
+  "legacy_20260310_1350_081",
+  "legacy_20260310_1545_083",
+  "legacy_20260310_1600_085",
+  "legacy_20260310_1622_088",
+  "legacy_20260310_1655_089",
+  "legacy_20260310_1705_091",
+  "trip_1775737082716_n7svke6e"
+]);
 const DEFAULT_ADDRESSES = {
   "Breeland Rotterdam": "Autolettestraat 16, 3063 NP Rotterdam",
   "Breeland Dordrecht": "Mijlweg 25, 3316 BE Dordrecht",
@@ -674,6 +703,8 @@ const stdAddressValueEl = document.getElementById("stdAddressValue");
 const stdAddressTableEl = document.getElementById("stdAddressTable");
 const stdPlateInputEl = document.getElementById("stdPlateInput");
 const stdPlateTableEl = document.getElementById("stdPlateTable");
+const cleanupUnreliableTripsBtnEl = document.getElementById("cleanupUnreliableTripsBtn");
+const cleanupUnreliableTripsStatusEl = document.getElementById("cleanupUnreliableTripsStatus");
 
 function $(id){ return document.getElementById(id); }
 
@@ -735,6 +766,69 @@ function dbReplaceAll(storeName, items){
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   }));
+}
+function dbDeleteTripIds(ids){
+  return openRittenDB().then(db => new Promise((resolve, reject)=>{
+    const tx = db.transaction("ritten", "readwrite");
+    const store = tx.objectStore("ritten");
+    ids.forEach(id=>store.delete(id));
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error("Opschoning afgebroken."));
+  }));
+}
+function planOneTimeTripCleanup(storedTrips){
+  const cleanupIds = new Set(ONE_TIME_TRIP_CLEANUP_IDS);
+  const foundIds = new Set();
+  (storedTrips || []).forEach(trip=>{
+    const id = String((trip && trip.id) || "");
+    if(cleanupIds.has(id)) foundIds.add(id);
+  });
+  return {
+    beforeCount:(storedTrips || []).length,
+    foundIds:ONE_TIME_TRIP_CLEANUP_IDS.filter(id=>foundIds.has(id)),
+    notFoundIds:ONE_TIME_TRIP_CLEANUP_IDS.filter(id=>!foundIds.has(id))
+  };
+}
+async function runOneTimeTripCleanup(){
+  cleanupUnreliableTripsBtnEl.disabled = true;
+  cleanupUnreliableTripsStatusEl.classList.remove("saved-ok");
+  cleanupUnreliableTripsStatusEl.textContent = "De rittenstore wordt gecontroleerd…";
+  try{
+    const storedTrips = await dbGetAll("ritten");
+    const plan = planOneTimeTripCleanup(storedTrips);
+    if(!plan.foundIds.length){
+      cleanupUnreliableTripsStatusEl.classList.add("saved-ok");
+      cleanupUnreliableTripsStatusEl.textContent = "Gevonden: 0 · verwijderd: 0 · niet gevonden: 18 · resterend: " + plan.beforeCount + ".";
+      return;
+    }
+    const approved = confirm(
+      "Gevonden: " + plan.foundIds.length + " van de 18 vastgelegde rit-ID's.\n" +
+      "Niet gevonden: " + plan.notFoundIds.length + ".\n\n" +
+      "Alleen de gevonden exacte ID's verwijderen?"
+    );
+    if(!approved){
+      cleanupUnreliableTripsStatusEl.textContent = "Opschoning geannuleerd. Er is niets verwijderd.";
+      return;
+    }
+    await dbDeleteTripIds(plan.foundIds);
+    const remainingStoredTrips = await dbGetAll("ritten");
+    const remainingIds = new Set(remainingStoredTrips.map(trip=>String((trip && trip.id) || "")));
+    const removedCount = plan.foundIds.filter(id=>!remainingIds.has(id)).length;
+    trips = remainingStoredTrips.map(t=>normalizeTripFromAny(t, t.sourceKey || "indexedDB"));
+    sortTrips();
+    renderTrips();
+    cleanupUnreliableTripsStatusEl.classList.add("saved-ok");
+    cleanupUnreliableTripsStatusEl.textContent =
+      "Gevonden: " + plan.foundIds.length +
+      " · verwijderd: " + removedCount +
+      " · niet gevonden: " + plan.notFoundIds.length +
+      " · resterend: " + remainingStoredTrips.length + ".";
+  }catch(error){
+    cleanupUnreliableTripsStatusEl.textContent = "Opschoning mislukt. Er is geen algemene verwijderactie uitgevoerd. " + error.message;
+  }finally{
+    cleanupUnreliableTripsBtnEl.disabled = false;
+  }
 }
 function normalizeTripFromAny(t, sourceKey){
   const normalizedOriginalPlate = normalizePlate(t.originalPlate || "");
@@ -2733,6 +2827,7 @@ stopsEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSu
 
 $("addStdAddressBtn").addEventListener("click", addOrUpdateStandardAddress);
 $("addStdPlateBtn").addEventListener("click", addStandardPlate);
+cleanupUnreliableTripsBtnEl.addEventListener("click", runOneTimeTripCleanup);
 stdAddressTableEl.addEventListener("click", e=>{
   const btn = e.target.closest("button");
   if(btn && btn.dataset.addressDelete) deleteStandardAddress(btn.dataset.addressDelete);
