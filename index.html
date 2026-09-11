@@ -103,6 +103,11 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .status.saved-ok{background:#e6f7e6;border:1px solid #88c888;color:#176b17;border-radius:10px;padding:10px;font-weight:bold}
 .fileblock{margin-top:16px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fafafa}
 .dayhint{margin-bottom:12px;padding:10px 12px;border-radius:10px;background:#fff6f6;border:1px solid #f0c7cf;color:#8a1327;display:none}
+.arrival-card{margin-bottom:12px;padding:12px;border:1px solid #8fc5a6;border-radius:10px;background:#eefaf2}
+.arrival-card strong{display:block;margin-bottom:4px;font-size:18px}
+.arrival-card .btn-primary{margin-top:10px;background:#187A43}
+.geo-status{margin-top:8px;min-height:18px}
+.geo-notice{margin:-4px 0 12px;color:var(--muted)}
 .input-row{display:flex;gap:8px;align-items:stretch}
 .input-row input{flex:1;margin:0}
 .btn-voice{min-width:54px;min-height:56px;border:1px solid #d7dce8;border-radius:10px;background:#eef1f7;font-size:22px;line-height:1}
@@ -183,6 +188,13 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     <button type="button" data-screen-btn="export">Export</button>
   </div>
 
+  <section class="arrival-card" id="arrivalCard" aria-live="polite" hidden>
+    <strong>Bestemming bereikt</strong>
+    <div id="arrivalMessage"></div>
+    <button type="button" class="btn-primary" id="confirmArrivalBtn">Aangekomen - eindtijd nu</button>
+  </section>
+  <div class="small geo-notice" id="geoNotice" aria-live="polite" hidden></div>
+
   <div id="screen-invoer" class="screen active">
     <div class="dayhint" id="dayReminder"></div>
 
@@ -241,6 +253,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         <div class="toolbar">
           <button type="button" class="btn-secondary" id="clearFromBtn">Ander vertrekpunt</button>
         </div>
+        <div class="small geo-status" id="fromLocationStatus" aria-live="polite"></div>
         <div class="suggestions" id="fromSuggestions"></div>
         <div class="quick" id="fromButtons"></div>
         <div class="history-title">Eerder gebruikt</div>
@@ -551,6 +564,19 @@ const DEFAULT_ADDRESSES = {
   "Perfect Carwrapping": "Lübeck 8, 2993 LK Barendrecht",
   "ABS den Elzen": "Aploniastraat 1, 3084 CC Rotterdam"
 };
+const GEO_MATCH_RADIUS_METERS = 100;
+const GEOLOCATION_OPTIONS = {enableHighAccuracy:true,timeout:8000,maximumAge:60000};
+const ARRIVAL_CHECK_COOLDOWN_MS = 5 * 60 * 1000;
+const GOOGLE_MAPS_API_KEY_STORAGE = "rittenapp_google_maps_api_key";
+const KNOWN_LOCATION_COORDINATES = {
+  "Breeland Rotterdam": {latitude:51.91009933,longitude:4.53608711},
+  "Breeland Brielle": {latitude:51.893028,longitude:4.19510566},
+  "Breeland Dordrecht": {latitude:51.80075782,longitude:4.6484935},
+  "Breeland Den Haag": {latitude:52.07021984,longitude:4.39037868},
+  "Carwash Capelle": {latitude:51.91057277,longitude:4.56155731},
+  "Perfect Carwrapping": {latitude:51.85239892,longitude:4.51254429},
+  "ABS den Elzen": {latitude:51.86737097,longitude:4.45322657}
+};
 let standardAddresses = {...DEFAULT_ADDRESSES};
 let QUICK_LOCATIONS = Object.keys(standardAddresses);
 const ALL_STEPS = [0,1,2,3,4,5,6,7];
@@ -591,6 +617,10 @@ let addressHistory = [];
 let currentDraftSaved = false;
 let previousDestinationSuggestionPending = true;
 let lastSavedRouteEndpoint = null;
+let fromAutoFillRequestId = 0;
+let googleMapsGeocoderLoader = null;
+let arrivalTargetTripId = null;
+const arrivalCheckTimes = new Map();
 let postboxAnswer = null;
 let editingWorkdayDate = null;
 let plateScannerStream = null;
@@ -625,6 +655,10 @@ const reviewBoxEl = document.getElementById("reviewBox");
 const routeAdviceEl = document.getElementById("routeAdvice");
 const editStatusEl = document.getElementById("editStatus");
 const dayReminderEl = document.getElementById("dayReminder");
+const arrivalCardEl = document.getElementById("arrivalCard");
+const arrivalMessageEl = document.getElementById("arrivalMessage");
+const confirmArrivalBtnEl = document.getElementById("confirmArrivalBtn");
+const geoNoticeEl = document.getElementById("geoNotice");
 
 const workdayDateEl = document.getElementById("workdayDate");
 const workStartEl = document.getElementById("workStart");
@@ -640,6 +674,7 @@ const rdwInfoEl = document.getElementById("rdwInfo");
 const odoWarningEl = document.getElementById("odoWarning");
 const odometerEl = document.getElementById("odometer");
 const fromEl = document.getElementById("from");
+const fromLocationStatusEl = document.getElementById("fromLocationStatus");
 const toEl = document.getElementById("to");
 const stopsEl = document.getElementById("stops");
 const voiceStatusEl = document.getElementById("voiceStatus");
@@ -741,9 +776,14 @@ function dbReplaceAll(storeName, items){
     tx.onerror = () => reject(tx.error);
   }));
 }
+function normalizeCoordinate(value){
+  if(value === "" || value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
 function normalizeTripFromAny(t, sourceKey){
   const normalizedOriginalPlate = normalizePlate(t.originalPlate || "");
-  return {
+  const trip = {
     id: String(t.id || "").trim() || createTripId(),
     date: String(t.date || "").trim(),
     timeStart: String(t.timeStart || "").trim(),
@@ -760,6 +800,14 @@ function normalizeTripFromAny(t, sourceKey){
     averageSpeedKmh: exportAverageSpeed(t),
     sourceKey: sourceKey || ""
   };
+  const latitude = normalizeCoordinate(t.destinationLatitude);
+  const longitude = normalizeCoordinate(t.destinationLongitude);
+  if(!trip.timeEnd && latitude !== null && longitude !== null){
+    trip.destinationLabel = String(t.destinationLabel || trip.to).trim();
+    trip.destinationLatitude = latitude;
+    trip.destinationLongitude = longitude;
+  }
+  return trip;
 }
 function getLocalStorageKeysStartingWith(prefix){
   const keys = [];
@@ -915,6 +963,129 @@ function resolveMapAddress(v){
   const key = normalizeLocation(v);
   return standardAddresses[key] || String(v||"").trim();
 }
+function coordinatesForKnownLocation(label){
+  const normalized = normalizeLocation(label);
+  const coordinates = KNOWN_LOCATION_COORDINATES[normalized];
+  return coordinates ? {label:String(label||"").trim(),latitude:coordinates.latitude,longitude:coordinates.longitude} : null;
+}
+function loadGoogleMapsGeocoder(){
+  if(window.google?.maps?.Geocoder) return Promise.resolve();
+  if(googleMapsGeocoderLoader) return googleMapsGeocoderLoader;
+  let apiKey = "";
+  try{ apiKey = String(localStorage.getItem(GOOGLE_MAPS_API_KEY_STORAGE) || "").trim(); }
+  catch(_){ apiKey = ""; }
+  if(!apiKey) return Promise.reject(new Error("Geen opgeslagen Google Maps API-key beschikbaar."));
+  googleMapsGeocoderLoader = new Promise((resolve,reject)=>{
+    const callbackName = "__rittenappGoogleGeocoderReady_" + Date.now();
+    const script = document.createElement("script");
+    const timeout = setTimeout(()=>finish(new Error("Google Maps laden duurde te lang.")),10000);
+    function finish(error){
+      clearTimeout(timeout);
+      delete window[callbackName];
+      if(error){
+        script.remove();
+        googleMapsGeocoderLoader = null;
+        reject(error);
+      }else resolve();
+    }
+    window[callbackName] = ()=>finish(null);
+    script.async = true;
+    script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(apiKey) + "&callback=" + encodeURIComponent(callbackName);
+    script.onerror = ()=>finish(new Error("Google Maps kon niet worden geladen."));
+    document.head.appendChild(script);
+  });
+  return googleMapsGeocoderLoader;
+}
+async function geocodeAddressWithGoogle(address){
+  await loadGoogleMapsGeocoder();
+  return new Promise((resolve,reject)=>{
+    const timeout = setTimeout(()=>reject(new Error("Geocoding duurde te lang.")),8000);
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({address},(results,status)=>{
+      clearTimeout(timeout);
+      const location = results?.[0]?.geometry?.location;
+      if(status === "OK" && location){
+        resolve({latitude:Number(location.lat()),longitude:Number(location.lng())});
+      }else reject(new Error("Bestemming kon niet worden geocodeerd."));
+    });
+  });
+}
+async function resolveDestinationCoordinates(label,geocode=geocodeAddressWithGoogle){
+  const visibleLabel = String(label || "").trim();
+  if(!visibleLabel) return null;
+  const known = coordinatesForKnownLocation(visibleLabel);
+  if(known) return known;
+  try{
+    const result = await geocode(resolveMapAddress(visibleLabel));
+    if(!Number.isFinite(result?.latitude) || !Number.isFinite(result?.longitude)) return null;
+    return {label:visibleLabel,latitude:result.latitude,longitude:result.longitude};
+  }catch(_){
+    return null;
+  }
+}
+function applyDestinationCoordinates(trip,destination){
+  if(!destination) return trip;
+  trip.destinationLabel = destination.label;
+  trip.destinationLatitude = destination.latitude;
+  trip.destinationLongitude = destination.longitude;
+  return trip;
+}
+function clearTripDestinationCoordinates(trip){
+  delete trip.destinationLabel;
+  delete trip.destinationLatitude;
+  delete trip.destinationLongitude;
+}
+function retainOnlyActiveDestination(targetTripId){
+  trips.forEach(trip=>{
+    if(trip.id !== targetTripId) clearTripDestinationCoordinates(trip);
+  });
+}
+function storedDestinationCoordinates(trip,label){
+  if(!trip || normalizeLocation(trip.to) !== normalizeLocation(label) || !hasDestinationCoordinates(trip)) return null;
+  return {label:trip.destinationLabel || String(label || "").trim(),latitude:trip.destinationLatitude,longitude:trip.destinationLongitude};
+}
+function hasDestinationCoordinates(trip){
+  return Number.isFinite(trip?.destinationLatitude) && Number.isFinite(trip?.destinationLongitude);
+}
+function findActiveArrivalTrip(){
+  return trips.find(trip=>!String(trip.timeEnd || "").trim() && hasDestinationCoordinates(trip)) || null;
+}
+function hideArrivalCard(){
+  arrivalTargetTripId = null;
+  arrivalCardEl.hidden = true;
+  arrivalMessageEl.textContent = "";
+}
+function showArrivalCard(trip){
+  arrivalTargetTripId = trip.id;
+  arrivalMessageEl.textContent = "Je bent bij " + (trip.destinationLabel || trip.to) + ".";
+  arrivalCardEl.hidden = false;
+}
+async function checkArrivalForActiveTrip(getPosition=getCurrentPositionOnce,currentTime=Date.now()){
+  const trip = findActiveArrivalTrip();
+  if(!trip){
+    hideArrivalCard();
+    return false;
+  }
+  const previousCheck = arrivalCheckTimes.get(trip.id) || 0;
+  if(currentTime - previousCheck < ARRIVAL_CHECK_COOLDOWN_MS) return false;
+  arrivalCheckTimes.set(trip.id,currentTime);
+  try{
+    const position = await getPosition();
+    geoNoticeEl.hidden = true;
+    geoNoticeEl.textContent = "";
+    const distance = haversineDistanceMeters(Number(position?.coords?.latitude),Number(position?.coords?.longitude),trip.destinationLatitude,trip.destinationLongitude);
+    if(distance <= GEO_MATCH_RADIUS_METERS){
+      showArrivalCard(trip);
+      return true;
+    }
+    hideArrivalCard();
+  }catch(error){
+    hideArrivalCard();
+    geoNoticeEl.textContent = arrivalGeolocationFailureMessage(error);
+    geoNoticeEl.hidden = false;
+  }
+  return false;
+}
 function getRoutePointsForMaps(){
   return {
     from: resolveMapAddress(fromEl.value),
@@ -954,7 +1125,7 @@ function saveCurrentAddressesToHistory(){
 }
 function renderAddressHistoryButtons(){
   const items = addressHistory.slice(0, 20);
-  addQuickButtons("fromHistoryButtons", items, value=>{ fromEl.value = value; updateReview(); });
+  addQuickButtons("fromHistoryButtons", items, value=>{ markFromManuallyChosen(); fromEl.value = value; updateReview(); });
   addQuickButtons("toHistoryButtons", items, value=>{ toEl.value = value; updateReview(); });
   addQuickButtons("stopsHistoryButtons", items, value=>{
     const current = stopsEl.value.trim();
@@ -1003,12 +1174,79 @@ function latestSavedDestinationForDate(dateValue){
   const finalSegment = terminalSegments.length === 1 ? terminalSegments[0] : latestSegments[latestSegments.length - 1];
   return normalizeLocation(finalSegment?.to);
 }
-function suggestPreviousDestinationForNewTrip(){
+function haversineDistanceMeters(latitudeA,longitudeA,latitudeB,longitudeB){
+  const toRadians = degrees=>degrees * Math.PI / 180;
+  const earthRadius = 6371000;
+  const deltaLatitude = toRadians(latitudeB - latitudeA);
+  const deltaLongitude = toRadians(longitudeB - longitudeA);
+  const a = Math.sin(deltaLatitude/2) ** 2 + Math.cos(toRadians(latitudeA)) * Math.cos(toRadians(latitudeB)) * Math.sin(deltaLongitude/2) ** 2;
+  const clamped = Math.min(1,Math.max(0,a));
+  return earthRadius * 2 * Math.atan2(Math.sqrt(clamped),Math.sqrt(1-clamped));
+}
+function findKnownLocationNear(latitude,longitude,locations=KNOWN_LOCATION_COORDINATES,radius=GEO_MATCH_RADIUS_METERS){
+  if(!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  let nearest = null;
+  Object.entries(locations).forEach(([label,coordinates])=>{
+    const distance = haversineDistanceMeters(latitude,longitude,coordinates.latitude,coordinates.longitude);
+    if(distance <= radius && (!nearest || distance < nearest.distance)) nearest = {label,distance};
+  });
+  return nearest;
+}
+function getCurrentPositionOnce(geolocation=navigator.geolocation){
+  return new Promise((resolve,reject)=>{
+    if(!geolocation || typeof geolocation.getCurrentPosition !== "function"){
+      reject(Object.assign(new Error("Geolocatie wordt niet ondersteund."),{code:0}));
+      return;
+    }
+    geolocation.getCurrentPosition(resolve,reject,GEOLOCATION_OPTIONS);
+  });
+}
+function geolocationFailureMessage(error){
+  if(error?.code === 1) return "Locatietoegang is geweigerd. Kies het vertrekpunt handmatig.";
+  if(error?.code === 3) return "Locatie bepalen duurde te lang. Kies het vertrekpunt handmatig.";
+  return "Locatie kon niet worden bepaald. Kies het vertrekpunt handmatig.";
+}
+function arrivalGeolocationFailureMessage(error){
+  if(error?.code === 1) return "Locatietoegang is geweigerd. Automatische aankomstherkenning is niet beschikbaar.";
+  if(error?.code === 3) return "Locatie bepalen duurde te lang. Automatische aankomstherkenning is nu niet beschikbaar.";
+  return "Locatie kon niet worden bepaald. De rit blijft normaal bruikbaar.";
+}
+function markFromManuallyChosen(){
+  previousDestinationSuggestionPending = false;
+  fromAutoFillRequestId += 1;
+  fromLocationStatusEl.textContent = "";
+}
+async function suggestPreviousDestinationForNewTrip(getPosition=getCurrentPositionOnce){
   if(currentStep !== 4 || !previousDestinationSuggestionPending) return;
   previousDestinationSuggestionPending = false;
   if(editingTripId || fromEl.value.trim()) return;
+  const requestId = ++fromAutoFillRequestId;
+  fromLocationStatusEl.textContent = "📍 Locatie bepalen…";
+  let locationMessage = "";
+  try{
+    const position = await getPosition();
+    if(requestId !== fromAutoFillRequestId || editingTripId || fromEl.value.trim()) return;
+    const match = findKnownLocationNear(Number(position?.coords?.latitude),Number(position?.coords?.longitude));
+    if(match){
+      fromEl.value = match.label;
+      fromLocationStatusEl.textContent = "📍 " + match.label + " herkend";
+      updateReview();
+      return;
+    }
+    locationMessage = "Geen bekende locatie binnen " + GEO_MATCH_RADIUS_METERS + " meter herkend.";
+  }catch(error){
+    if(requestId !== fromAutoFillRequestId) return;
+    locationMessage = geolocationFailureMessage(error);
+  }
+  if(requestId !== fromAutoFillRequestId || editingTripId || fromEl.value.trim()) return;
   const destination = latestSavedDestinationForDate(dateEl.value);
-  if(destination) fromEl.value = destination;
+  if(destination){
+    fromEl.value = destination;
+    fromLocationStatusEl.textContent = locationMessage + " Vorige bestemming gebruikt.";
+    updateReview();
+  }else{
+    fromLocationStatusEl.textContent = locationMessage;
+  }
 }
 function ensureTripIds(){
   let changed = false;
@@ -1038,7 +1276,7 @@ function addQuickButtons(containerId, items, callback){
 }
 function renderStandardLocationButtons(){
   QUICK_LOCATIONS = Object.keys(standardAddresses);
-  addQuickButtons("fromButtons", QUICK_LOCATIONS, value=>{ clearDraftSavedStatus(); fromEl.value = value; updateReview(); });
+  addQuickButtons("fromButtons", QUICK_LOCATIONS, value=>{ markFromManuallyChosen(); clearDraftSavedStatus(); fromEl.value = value; updateReview(); });
   addQuickButtons("toButtons", QUICK_LOCATIONS, value=>{ clearDraftSavedStatus(); toEl.value = value; updateReview(); });
   addQuickButtons("stopsButtons", QUICK_LOCATIONS, value=>{
     clearDraftSavedStatus();
@@ -1655,6 +1893,7 @@ function startRecognition(onResult){
 }
 function applySpeechToField(el, transcript, append=false){
   const spoken = normalizeLocation(transcript);
+  if(el === fromEl) markFromManuallyChosen();
   if(append && el.value.trim()){
     const parts = el.value.split(",").map(s=>s.trim()).filter(Boolean);
     if(!parts.includes(spoken)){
@@ -1723,6 +1962,7 @@ function fillSmartRouteFromTranscript(transcript){
     alert('Ik kon de routezin niet goed herkennen. Probeer bijvoorbeeld: van Breeland Rotterdam naar Breeland Brielle via ABS den Elzen.');
     return;
   }
+  markFromManuallyChosen();
   fromEl.value = parsed.from;
   toEl.value = parsed.to;
   stopsEl.value = parsed.stops.join(", ");
@@ -2016,6 +2256,8 @@ $("saveTripBtn").addEventListener("click", async ()=>{
     alert("Vul datum, starttijd, van, naar en kenteken in.");
     return;
   }
+  const destination = trip.timeEnd ? null : (await resolveDestinationCoordinates(trip.to) || storedDestinationCoordinates(existing,trip.to));
+  applyDestinationCoordinates(trip,destination);
   savePlateToList(trip.plate);
   saveCurrentAddressesToHistory();
   if(editingTripId){
@@ -2030,6 +2272,7 @@ $("saveTripBtn").addEventListener("click", async ()=>{
   } else {
     trips.push(trip);
   }
+  if(!existing) retainOnlyActiveDestination(trip.id);
   sortTrips();
   await saveAllToDB();
   renderTrips();
@@ -2059,9 +2302,10 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
   savePlateToList(p);
   saveCurrentAddressesToHistory();
   const optionalEndTime = String(timeEndRotterdamEl.value || "").trim();
+  const finalDestination = optionalEndTime ? null : await resolveDestinationCoordinates(points[points.length - 1]);
   const newTrips = [];
   for(let i=0;i<points.length-1;i++){
-    newTrips.push({
+    const segment = {
       id: createTripId(),
       date: dateEl.value || today(),
       timeStart: timeStartEl.value,
@@ -2074,9 +2318,12 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
       vehicle: info.vehicleText || "",
       priceText: info.priceText || "",
       odometer: String(odometerEl.value || "").trim()
-    });
+    };
+    if(i === points.length - 2) applyDestinationCoordinates(segment,finalDestination);
+    newTrips.push(segment);
   }
   trips = [...newTrips, ...trips];
+  retainOnlyActiveDestination(newTrips[newTrips.length - 1].id);
   sortTrips();
   saveAll();
   const finalTrip = newTrips[newTrips.length - 1];
@@ -2096,6 +2343,8 @@ function clearForm(){
   plateEl.value = "";
   odometerEl.value = "";
   fromEl.value = "";
+  fromAutoFillRequestId += 1;
+  fromLocationStatusEl.textContent = "";
   toEl.value = "";
   stopsEl.value = "";
   rdwInfoEl.textContent = "";
@@ -2203,6 +2452,7 @@ async function saveQuickTripEdit(){
   }
   t.timeEnd = endTime;
   t.odometer = odometer;
+  if(endTime) clearTripDestinationCoordinates(t);
   try{
     await saveAllToDB();
     renderTrips();
@@ -2213,6 +2463,31 @@ async function saveQuickTripEdit(){
     alert("Opslaan mislukt: " + e.message);
   }
 }
+
+async function confirmArrivalNow(save=saveAllToDB,endTime=now()){
+  const tripIndex = trips.findIndex(item=>item.id === arrivalTargetTripId);
+  const trip = trips[tripIndex];
+  if(!trip || String(trip.timeEnd || "").trim()){
+    hideArrivalCard();
+    return false;
+  }
+  const updatedTrip = {...trip,timeEnd:endTime};
+  clearTripDestinationCoordinates(updatedTrip);
+  trips[tripIndex] = updatedTrip;
+  try{ await save(); }
+  catch(error){ trips[tripIndex] = trip; throw error; }
+  lastSavedRouteEndpoint = {id:updatedTrip.id,date:updatedTrip.date,to:updatedTrip.to};
+  renderTrips();
+  updateReview();
+  hideArrivalCard();
+  geoNoticeEl.textContent = "Aankomst bevestigd. De eindtijd is bijgewerkt.";
+  geoNoticeEl.hidden = false;
+  return true;
+}
+confirmArrivalBtnEl.addEventListener("click",async()=>{
+  try{ await confirmArrivalNow(); }
+  catch(error){ alert("Eindtijd opslaan mislukt: " + error.message); }
+});
 
 document.getElementById("quickEditCancel").addEventListener("click", closeQuickTripEdit);
 document.getElementById("quickEditSave").addEventListener("click", saveQuickTripEdit);
@@ -2367,6 +2642,8 @@ tripTableEl.addEventListener("click", e=>{
     rdwInfoEl.textContent = (t.originalPlate ? "Origineel kenteken " + t.originalPlate : (isStoredDealerTrip(t) ? "Origineel kenteken nog niet ingevuld." : (t.plate || ""))) + (t.vehicle ? " — " + t.vehicle : "") + (t.priceText ? " — Nieuwprijs: " + t.priceText : "");
     editingTripId = t.id;
     previousDestinationSuggestionPending = false;
+    fromAutoFillRequestId += 1;
+    fromLocationStatusEl.textContent = "";
     resetPostboxAnswer();
     $("cancelEditBtn").style.display = "inline-block";
     editStatusEl.textContent = "Je bewerkt nu een bestaande rit.";
@@ -2797,9 +3074,9 @@ $("scanAgainBtn").addEventListener("click", ()=>{
 });
 $("cancelPlateScannerBtn").addEventListener("click", closePlateScanner);
 plateScannerZoomSliderEl.addEventListener("input", ()=>applyPlateScannerZoom(plateScannerZoomSliderEl.value));
-fromEl.addEventListener("input", ()=>{ previousDestinationSuggestionPending = false; clearDraftSavedStatus(); updateAddressSuggestions(fromEl, fromSuggestionsEl); updateReview(); });
+fromEl.addEventListener("input", ()=>{ markFromManuallyChosen(); clearDraftSavedStatus(); updateAddressSuggestions(fromEl, fromSuggestionsEl); updateReview(); });
 $('clearFromBtn').addEventListener("click", ()=>{
-  previousDestinationSuggestionPending = false;
+  markFromManuallyChosen();
   clearDraftSavedStatus();
   fromEl.value = "";
   fromSuggestionsEl.classList.remove("visible");
@@ -2901,6 +3178,7 @@ async function bootApp(){
   renderTrips();
   renderWorkdays();
   renderStep();
+  checkArrivalForActiveTrip();
   setInterval(updateDayReminder, 60000);
 }
 bootApp().catch(err=>{
@@ -2909,7 +3187,9 @@ bootApp().catch(err=>{
 });
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden) closePlateScanner();
+  else checkArrivalForActiveTrip();
 });
+window.addEventListener("pageshow",()=>checkArrivalForActiveTrip());
 window.addEventListener("pagehide",()=>{
   closePlateScanner();
   if(plateScannerOcr && plateScannerOcr.dispose) plateScannerOcr.dispose();
