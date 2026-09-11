@@ -306,15 +306,22 @@
     const endColumn = targetAnalysis.columns[END_TIME_HEADER];
     const distanceColumn = targetAnalysis.columns[DISTANCE_HEADER];
     const speedColumn = targetAnalysis.columns[SPEED_HEADER];
-    if (startColumn < 0 || endColumn < 0 || distanceColumn < 0 || speedColumn < 0) return 0;
+    if (distanceColumn < 0 || speedColumn < 0) return 0;
     let filled = 0;
     for (const trip of targetAnalysis.trips) {
       const row = targetRows[trip.rowIndex] || [];
-      const speed = calculateAverageSpeed(row[startColumn], row[endColumn], row[distanceColumn]);
-      if (speed == null) continue;
       const address = XLSX.utils.encode_cell({ r: trip.rowIndex, c: speedColumn });
       const previous = targetWorksheet[address] || {};
-      if (!isBlank(row[speedColumn]) || previous.f) continue;
+      const speed = startColumn < 0 || endColumn < 0
+        ? null
+        : calculateAverageSpeed(row[startColumn], row[endColumn], row[distanceColumn]);
+      if (speed == null) {
+        targetWorksheet[address] = { ...previous, t: "s", v: "" };
+        delete targetWorksheet[address].f;
+        delete targetWorksheet[address].w;
+        row[speedColumn] = "";
+        continue;
+      }
       targetWorksheet[address] = { ...previous, t: "n", v: speed, z: "0.0" };
       delete targetWorksheet[address].f;
       delete targetWorksheet[address].w;

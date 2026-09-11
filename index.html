@@ -752,6 +752,7 @@ function normalizeTripFromAny(t, sourceKey){
     priceText: String(t.priceText || "").trim(),
     odometer: String(t.odometer || "").trim(),
     distanceKm: exportDistance(t),
+    averageSpeedKmh: exportAverageSpeed(t),
     sourceKey: sourceKey || ""
   };
 }
@@ -2407,6 +2408,12 @@ function exportDistance(trip){
   const number = Number(value);
   return Number.isFinite(number) ? number : "";
 }
+function exportAverageSpeed(trip){
+  const value = trip.averageSpeedKmh ?? trip.averageSpeed ?? trip["Gem. snelheid (km/u)"] ?? "";
+  if(value === "" || value === null) return "";
+  const number = Number(value);
+  return Number.isFinite(number) ? number : "";
+}
 function normalizeExportDate(value){
   const text = String(value||"").trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
@@ -2434,9 +2441,13 @@ function combineTripsForExport(currentTrips){
       if(exportDistance(existingTrip) === "" && incomingDistance !== ""){
         existingTrip.distanceKm = incomingDistance;
       }
+      const incomingAverageSpeed = exportAverageSpeed(trip||{});
+      if(exportAverageSpeed(existingTrip) === "" && incomingAverageSpeed !== ""){
+        existingTrip.averageSpeedKmh = incomingAverageSpeed;
+      }
       return;
     }
-    const exportTrip = {...trip,distanceKm:exportDistance(trip||{})};
+    const exportTrip = {...trip,distanceKm:exportDistance(trip||{}),averageSpeedKmh:exportAverageSpeed(trip||{})};
     if(id) tripsById.set(id,exportTrip);
     tripsByFallback.set(key,exportTrip);
     combined.push(exportTrip);
@@ -2446,14 +2457,15 @@ function combineTripsForExport(currentTrips){
   return combined;
 }
 function buildWorkbookFromData(exportTrips, exportDayData){
-  const headers = ["ID","Datum","Starttijd","Eindtijd","Van","Naar","Kenteken","Origineel kenteken","Auto","Nieuwprijs","Km-stand","Afstand (km)"];
+  const headers = ["ID","Datum","Starttijd","Eindtijd","Van","Naar","Kenteken","Origineel kenteken","Auto","Nieuwprijs","Km-stand","Afstand (km)","Gem. snelheid (km/u)"];
+  const speedColumn = headers.indexOf("Gem. snelheid (km/u)");
   const tripRows = [
     headers,
-    ...exportTrips.map(t=>[t.id||"",t.date||"",t.timeStart||"",t.timeEnd||"",t.from||"",t.to||"",t.plate||"",t.originalPlate||"",t.vehicle||"",t.priceText||"",t.odometer||"",exportDistance(t)])
+    ...exportTrips.map(t=>[t.id||"",t.date||"",t.timeStart||"",t.timeEnd||"",t.from||"",t.to||"",t.plate||"",t.originalPlate||"",t.vehicle||"",t.priceText||"",t.odometer||"",exportDistance(t),exportAverageSpeed(t)])
   ];
   const totalDistance = exportTrips.reduce((sum,trip)=>sum+(exportDistance(trip)===""?0:exportDistance(trip)),0);
-  tripRows.push(["","","","","","","","","","","Totaal",Math.round(totalDistance*10)/10]);
-  tripRows.push(["","","","","","","","","","","Aantal ritten",exportTrips.length]);
+  tripRows.push(["","","","","","","","","","","Totaal",Math.round(totalDistance*10)/10,""]);
+  tripRows.push(["","","","","","","","","","","Aantal ritten",exportTrips.length,""]);
 
   const workdayRows = [
     ["Datum","Aanwezig vanaf","Klaar om","Gewerkte tijd"],
@@ -2467,6 +2479,11 @@ function buildWorkbookFromData(exportTrips, exportDayData){
   ];
   const wb = XLSX.utils.book_new();
   const wsTrips = XLSX.utils.aoa_to_sheet(tripRows);
+  exportTrips.forEach((trip,index)=>{
+    if(exportAverageSpeed(trip) === "") return;
+    const speedCell = wsTrips[XLSX.utils.encode_cell({r:index+1,c:speedColumn})];
+    if(speedCell) speedCell.z = "0.0";
+  });
   wsTrips["!cols"] = calcExcelColumnWidths(tripRows);
   XLSX.utils.book_append_sheet(wb,wsTrips,"Ritten");
   const wsWork = XLSX.utils.aoa_to_sheet(workdayRows);
@@ -2497,7 +2514,8 @@ function readImportedWorkbook(file, callback){
           vehicle: String(r["Auto"]||"").trim(),
           priceText: String(r["Nieuwprijs"]||"").trim(),
           odometer: String(r["Km-stand"]||"").trim(),
-          distanceKm: exportDistance(r)
+          distanceKm: exportDistance(r),
+          averageSpeedKmh: exportAverageSpeed(r)
         })).filter(t=>t.date || t.timeStart || t.from || t.to || t.plate);
       }
       const workSheetName = wb.SheetNames.find(n=>n.toLowerCase()==="werkdagen");
@@ -2618,6 +2636,11 @@ $("importMergeBtn").addEventListener("click", ()=>{
         const importedDistance = exportDistance(trip);
         if(importedDistance !== "" && exportDistance(existingTrip) !== importedDistance){
           existingTrip.distanceKm = importedDistance;
+          changed = true;
+        }
+        const importedAverageSpeed = exportAverageSpeed(trip);
+        if(importedAverageSpeed !== "" && exportAverageSpeed(existingTrip) === ""){
+          existingTrip.averageSpeedKmh = importedAverageSpeed;
           changed = true;
         }
         if(changed) addedTrips++;
