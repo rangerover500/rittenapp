@@ -238,6 +238,9 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
           <input id="from" autocomplete="off">
           <button type="button" class="btn-voice" id="voiceFromBtn" title="Spreek van-locatie in">🎤</button>
         </div>
+        <div class="toolbar">
+          <button type="button" class="btn-secondary" id="clearFromBtn">Ander vertrekpunt</button>
+        </div>
         <div class="suggestions" id="fromSuggestions"></div>
         <div class="quick" id="fromButtons"></div>
         <div class="history-title">Eerder gebruikt</div>
@@ -586,6 +589,8 @@ let dayData = {};
 let plates = [];
 let addressHistory = [];
 let currentDraftSaved = false;
+let previousDestinationSuggestionPending = true;
+let lastSavedRouteEndpoint = null;
 let postboxAnswer = null;
 let editingWorkdayDate = null;
 let plateScannerStream = null;
@@ -981,6 +986,29 @@ function sortTrips(){
     const bk = (b.date||"") + " " + (b.timeStart||"");
     return bk.localeCompare(ak);
   });
+}
+function latestSavedDestinationForDate(dateValue){
+  const date = String(dateValue || "").trim();
+  if(!date) return "";
+  if(lastSavedRouteEndpoint && lastSavedRouteEndpoint.date === date && trips.some(trip=>trip.id === lastSavedRouteEndpoint.id)){
+    return normalizeLocation(lastSavedRouteEndpoint.to);
+  }
+  const sameDay = trips.filter(trip=>trip.date === date && String(trip.to || "").trim());
+  if(!sameDay.length) return "";
+  const latestStart = sameDay.reduce((latest,trip)=>String(trip.timeStart || "") > latest ? String(trip.timeStart || "") : latest,"");
+  const latestSegments = sameDay.filter(trip=>String(trip.timeStart || "") === latestStart);
+  if(latestSegments.length === 1) return normalizeLocation(latestSegments[0].to);
+  const segmentStarts = new Set(latestSegments.map(trip=>normalizeLocation(trip.from)).filter(Boolean));
+  const terminalSegments = latestSegments.filter(trip=>!segmentStarts.has(normalizeLocation(trip.to)));
+  const finalSegment = terminalSegments.length === 1 ? terminalSegments[0] : latestSegments[latestSegments.length - 1];
+  return normalizeLocation(finalSegment?.to);
+}
+function suggestPreviousDestinationForNewTrip(){
+  if(currentStep !== 4 || !previousDestinationSuggestionPending) return;
+  previousDestinationSuggestionPending = false;
+  if(editingTripId || fromEl.value.trim()) return;
+  const destination = latestSavedDestinationForDate(dateEl.value);
+  if(destination) fromEl.value = destination;
 }
 function ensureTripIds(){
   let changed = false;
@@ -1913,6 +1941,7 @@ function renderStep(){
   nextBtnEl.textContent = currentStep === ALL_STEPS.length - 1 ? "Klaar" : "Volgende";
   nextBtnEl.hidden = currentStep === ALL_STEPS.length - 1;
   renderPostboxChoice();
+  suggestPreviousDestinationForNewTrip();
   updateReview();
 }
 function nextStep(){
@@ -2004,6 +2033,7 @@ $("saveTripBtn").addEventListener("click", async ()=>{
   sortTrips();
   await saveAllToDB();
   renderTrips();
+  if(!existing) lastSavedRouteEndpoint = {id:trip.id,date:trip.date,to:trip.to};
   markDraftSaved(trip.isDealerPlate && !trip.originalPlate
     ? "Rit opgeslagen. Origineel kenteken nog niet ingevuld."
     : "Rit bijgewerkt en opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
@@ -2049,6 +2079,8 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
   trips = [...newTrips, ...trips];
   sortTrips();
   saveAll();
+  const finalTrip = newTrips[newTrips.length - 1];
+  lastSavedRouteEndpoint = {id:finalTrip.id,date:finalTrip.date,to:finalTrip.to};
   renderTrips();
   markDraftSaved(newTrips.some(trip=>trip.isDealerPlate && !trip.originalPlate)
     ? "Route met tussenstops opgeslagen. Origineel kenteken nog niet ingevuld."
@@ -2056,6 +2088,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
 });
 
 function clearForm(){
+  const startsNewTripAfterSave = currentDraftSaved && !editingTripId;
   clearDraftSavedStatus();
   dateEl.value = dateEl.value || today();
   timeStartEl.value = now();
@@ -2068,6 +2101,7 @@ function clearForm(){
   rdwInfoEl.textContent = "";
   resetDealerPlateState();
   editingTripId = null;
+  previousDestinationSuggestionPending = startsNewTripAfterSave;
   resetPostboxAnswer();
   $("cancelEditBtn").style.display = "none";
   updatePlateStyle();
@@ -2332,6 +2366,7 @@ tripTableEl.addEventListener("click", e=>{
     stopsEl.value = "";
     rdwInfoEl.textContent = (t.originalPlate ? "Origineel kenteken " + t.originalPlate : (isStoredDealerTrip(t) ? "Origineel kenteken nog niet ingevuld." : (t.plate || ""))) + (t.vehicle ? " — " + t.vehicle : "") + (t.priceText ? " — Nieuwprijs: " + t.priceText : "");
     editingTripId = t.id;
+    previousDestinationSuggestionPending = false;
     resetPostboxAnswer();
     $("cancelEditBtn").style.display = "inline-block";
     editStatusEl.textContent = "Je bewerkt nu een bestaande rit.";
@@ -2762,7 +2797,15 @@ $("scanAgainBtn").addEventListener("click", ()=>{
 });
 $("cancelPlateScannerBtn").addEventListener("click", closePlateScanner);
 plateScannerZoomSliderEl.addEventListener("input", ()=>applyPlateScannerZoom(plateScannerZoomSliderEl.value));
-fromEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(fromEl, fromSuggestionsEl); updateReview(); });
+fromEl.addEventListener("input", ()=>{ previousDestinationSuggestionPending = false; clearDraftSavedStatus(); updateAddressSuggestions(fromEl, fromSuggestionsEl); updateReview(); });
+$('clearFromBtn').addEventListener("click", ()=>{
+  previousDestinationSuggestionPending = false;
+  clearDraftSavedStatus();
+  fromEl.value = "";
+  fromSuggestionsEl.classList.remove("visible");
+  updateReview();
+  fromEl.focus();
+});
 toEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(toEl, toSuggestionsEl); updateReview(); });
 stopsEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSuggestions(stopsEl, stopsSuggestionsEl, true); updateReview(); });
 [timeStartEl, timeEndRotterdamEl, odometerEl].forEach(el=>el.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateReview(); }));
