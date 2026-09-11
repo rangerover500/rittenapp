@@ -68,6 +68,10 @@
   const API_KEY_STORAGE = "rittenapp_google_maps_api_key";
   const ROUTE_HEADERS = ["Datum", "Van", "Naar"];
   const DISTANCE_HEADER = "Afstand (km)";
+  const START_TIME_HEADER = "Starttijd";
+  const END_TIME_HEADER = "Eindtijd";
+  const SPEED_HEADER = "Gem. snelheid (km/u)";
+  const MAX_TRIP_DURATION_MINUTES = 12 * 60;
   const STANDARD_ADDRESSES = {
     "Breeland Rotterdam": "Autolettestraat 16, 3063 NP Rotterdam",
     "Breeland Dordrecht": "Mijlweg 25, 3316 BE Dordrecht",
@@ -107,6 +111,36 @@
     if (isBlank(value)) return null;
     const number = typeof value === "number" ? value : Number(String(value).replace(",", "."));
     return Number.isFinite(number) ? number : null;
+  }
+
+  function timeInMinutes(value) {
+    if (value instanceof Date && Number.isFinite(value.getTime())) {
+      return value.getHours() * 60 + value.getMinutes() + value.getSeconds() / 60;
+    }
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) return null;
+      if (value >= 0 && value < 1) return Math.round(value * 24 * 60) % (24 * 60);
+      if (Number.isInteger(value) && value >= 0 && value <= 23) return value * 60;
+      return null;
+    }
+    const text = String(value == null ? "" : value).trim().toLowerCase().replace(/\s*uur$/, "").trim();
+    const match = text.match(/^(\d{1,2})(?:[.:](\d{2}))?$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2] || 0);
+    if (hours > 23 || minutes > 59) return null;
+    return hours * 60 + minutes;
+  }
+
+  function calculateAverageSpeed(startTime, endTime, distance) {
+    const startMinutes = timeInMinutes(startTime);
+    const endMinutes = timeInMinutes(endTime);
+    const kilometres = numericDistance(distance);
+    if (startMinutes == null || endMinutes == null || kilometres == null || kilometres <= 0) return null;
+    let durationMinutes = endMinutes - startMinutes;
+    if (durationMinutes <= 0) durationMinutes += 24 * 60;
+    if (durationMinutes <= 0 || durationMinutes > MAX_TRIP_DURATION_MINUTES) return null;
+    return Math.round((kilometres / (durationMinutes / 60) + Number.EPSILON) * 10) / 10;
   }
 
   function normalizeStandardLocation(value) {
@@ -163,6 +197,8 @@
     if (headerRowIndex < 0) throw new Error(`De kolommen ${ROUTE_HEADERS.join(", ")} zijn niet allemaal gevonden.`);
     const headers = rows[headerRowIndex];
     const columns = Object.fromEntries(ROUTE_HEADERS.map(header => [header, headers.findIndex(cell => normalize(cell) === normalize(header))]));
+    columns[START_TIME_HEADER] = headers.findIndex(cell => normalize(cell) === normalize(START_TIME_HEADER));
+    columns[END_TIME_HEADER] = headers.findIndex(cell => normalize(cell) === normalize(END_TIME_HEADER));
     let distanceColumn = headers.findIndex(cell => normalize(cell) === normalize(DISTANCE_HEADER));
     const distanceColumnAdded = distanceColumn < 0;
     if (distanceColumnAdded) {
@@ -178,6 +214,20 @@
       }
     }
     columns[DISTANCE_HEADER] = distanceColumn;
+    let speedColumn = headers.findIndex(cell => normalize(cell) === normalize(SPEED_HEADER));
+    if (speedColumn < 0) {
+      speedColumn = rows.reduce((max, row) => Math.max(max, row.length), 0);
+      headers[speedColumn] = SPEED_HEADER;
+      if (targetWorksheet) {
+        const address = XLSX.utils.encode_cell({ r: headerRowIndex, c: speedColumn });
+        targetWorksheet[address] = { t: "s", v: SPEED_HEADER };
+        const range = XLSX.utils.decode_range(targetWorksheet["!ref"] || address);
+        range.e.c = Math.max(range.e.c, speedColumn);
+        range.e.r = Math.max(range.e.r, headerRowIndex);
+        targetWorksheet["!ref"] = XLSX.utils.encode_range(range);
+      }
+    }
+    columns[SPEED_HEADER] = speedColumn;
     const trips = [];
     const knownRoutes = new Map();
 
@@ -248,6 +298,30 @@
     sheetData[trip.rowIndex][column] = rounded;
     trip.distance = rounded;
     return true;
+  }
+
+  function updateAverageSpeeds(targetRows = sheetData, targetWorksheet = worksheet, targetAnalysis = analysis) {
+    if (!targetWorksheet || !targetAnalysis) return 0;
+    const startColumn = targetAnalysis.columns[START_TIME_HEADER];
+    const endColumn = targetAnalysis.columns[END_TIME_HEADER];
+    const distanceColumn = targetAnalysis.columns[DISTANCE_HEADER];
+    const speedColumn = targetAnalysis.columns[SPEED_HEADER];
+    if (startColumn < 0 || endColumn < 0 || distanceColumn < 0 || speedColumn < 0) return 0;
+    let filled = 0;
+    for (const trip of targetAnalysis.trips) {
+      const row = targetRows[trip.rowIndex] || [];
+      const speed = calculateAverageSpeed(row[startColumn], row[endColumn], row[distanceColumn]);
+      if (speed == null) continue;
+      const address = XLSX.utils.encode_cell({ r: trip.rowIndex, c: speedColumn });
+      const previous = targetWorksheet[address] || {};
+      if (!isBlank(row[speedColumn]) || previous.f) continue;
+      targetWorksheet[address] = { ...previous, t: "n", v: speed, z: "0.0" };
+      delete targetWorksheet[address].f;
+      delete targetWorksheet[address].w;
+      row[speedColumn] = speed;
+      filled++;
+    }
+    return filled;
   }
 
   function renderResults() {
@@ -446,6 +520,7 @@
   saveButton.addEventListener("click", () => {
     if (!workbook || !worksheet || !analysis) return;
     updateExistingTotal();
+    updateAverageSpeeds();
     removeTemporaryDistanceCheckSheet(workbook);
     XLSX.writeFile(workbook, getExportFilename(), { compression: true });
     showMessage("Het nieuwe Excelbestand is gemaakt. Het ingelezen bestand is niet gewijzigd.", "ok");
@@ -459,7 +534,7 @@
 
   loadRememberedApiKey();
 
-  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, normalizeStandardLocation, resolveGoogleLocation, routeKey, isExcelTimeFractionLocation, getRouteIssue, findHeaderRow, analyzeRows, mayRequestGoogle, roundKilometres, isGoogleEligible, requestDrivingDistance, removeTemporaryDistanceCheckSheet, loadRememberedApiKey, updateRememberedApiKey, forgetRememberedApiKey, getExportFilename, API_KEY_STORAGE, STANDARD_ADDRESSES };
+  window.__AFSTAND_AANVULLER_TEST__ = { normalize, isBlank, numericDistance, timeInMinutes, calculateAverageSpeed, normalizeStandardLocation, resolveGoogleLocation, routeKey, isExcelTimeFractionLocation, getRouteIssue, findHeaderRow, analyzeRows, updateAverageSpeeds, mayRequestGoogle, roundKilometres, isGoogleEligible, requestDrivingDistance, removeTemporaryDistanceCheckSheet, loadRememberedApiKey, updateRememberedApiKey, forgetRememberedApiKey, getExportFilename, API_KEY_STORAGE, STANDARD_ADDRESSES, START_TIME_HEADER, END_TIME_HEADER, DISTANCE_HEADER, SPEED_HEADER, MAX_TRIP_DURATION_MINUTES };
 })();
 </script>
 </body>
