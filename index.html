@@ -2420,19 +2420,26 @@ function normalizeExportDate(value){
 }
 function combineTripsForExport(currentTrips){
   const combined = HISTORICAL_EXPORT_TRIPS.map(trip=>({...trip}));
-  const seenIds = new Set(combined.map(trip=>String(trip.id||"").trim()).filter(Boolean));
-  const seenFallback = new Set(combined.map(exportFallbackKey));
+  const tripsById = new Map(combined.map(trip=>[String(trip.id||"").trim(),trip]).filter(([id])=>id));
+  const tripsByFallback = new Map(combined.map(trip=>[exportFallbackKey(trip),trip]));
 
   (currentTrips||[]).forEach(trip=>{
     const date = normalizeExportDate(trip?.date);
     if(!date) return;
     const id = String(trip?.id||"").trim();
     const key = exportFallbackKey(trip||{});
-    if(id && seenIds.has(id)) return;
-    if(seenFallback.has(key)) return;
-    if(id) seenIds.add(id);
-    seenFallback.add(key);
-    combined.push({...trip,distanceKm:exportDistance(trip||{})});
+    const existingTrip = (id && tripsById.get(id)) || tripsByFallback.get(key);
+    if(existingTrip){
+      const incomingDistance = exportDistance(trip||{});
+      if(exportDistance(existingTrip) === "" && incomingDistance !== ""){
+        existingTrip.distanceKm = incomingDistance;
+      }
+      return;
+    }
+    const exportTrip = {...trip,distanceKm:exportDistance(trip||{})};
+    if(id) tripsById.set(id,exportTrip);
+    tripsByFallback.set(key,exportTrip);
+    combined.push(exportTrip);
   });
 
   combined.sort((a,b)=>((a.date||"")+" "+(a.timeStart||"")).localeCompare((b.date||"")+" "+(b.timeStart||"")));
@@ -2535,7 +2542,18 @@ $("exportBtn").addEventListener("click", async ()=>{
   try{ dbTrips = await dbGetAll("ritten"); }
   catch(_){ alert("De actuele ritten konden niet uit de database worden gelezen."); return; }
 
-  const currentTrips = [...trips,...dbTrips];
+  let masterTrips = [];
+  const masterFile = masterFileEl.files[0];
+  if(masterFile){
+    try{
+      const masterData = await new Promise((resolve,reject)=>{
+        readImportedWorkbook(masterFile,(err,result)=>err ? reject(err) : resolve(result));
+      });
+      masterTrips = masterData.importedTrips;
+    }catch(_){ alert("Het bestaande totaalbestand kon niet worden ingelezen."); return; }
+  }
+
+  const currentTrips = [...trips,...dbTrips,...masterTrips];
   const draft = await buildCurrentDraftTripForExport();
   if(draft) currentTrips.push(draft);
   const exportTrips = combineTripsForExport(currentTrips);
