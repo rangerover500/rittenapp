@@ -103,6 +103,9 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .status.saved-ok{background:#e6f7e6;border:1px solid #88c888;color:#176b17;border-radius:10px;padding:10px;font-weight:bold}
 .fileblock{margin-top:16px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fafafa}
 .dayhint{margin-bottom:12px;padding:10px 12px;border-radius:10px;background:#fff6f6;border:1px solid #f0c7cf;color:#8a1327;display:none}
+.dayhint .btn-secondary{margin-top:8px;min-height:42px}
+#tripWizard.initializing{visibility:hidden}
+#startWorkdayBtn{max-width:210px}
 .arrival-card{margin-bottom:12px;padding:12px;border:1px solid #8fc5a6;border-radius:10px;background:#eefaf2}
 .arrival-card strong{display:block;margin-bottom:4px;font-size:18px}
 .arrival-card .btn-primary{margin-top:10px;background:#187A43}
@@ -199,9 +202,12 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
   <div class="small geo-notice" id="geoNotice" aria-live="polite" hidden></div>
 
   <div id="screen-invoer" class="screen active">
-    <div class="dayhint" id="dayReminder"></div>
+    <div class="dayhint" id="dayReminder">
+      <div id="dayReminderText"></div>
+      <button type="button" class="btn-secondary" id="openPreviousWorkdayBtn" hidden>Werkdag openen</button>
+    </div>
 
-    <div class="wizard">
+    <div class="wizard initializing" id="tripWizard">
       <div class="progress-text" id="progressText">Stap 1 van 8</div>
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 
@@ -321,6 +327,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <div class="nav">
         <button type="button" class="btn-secondary" id="prevBtn">Terug</button>
         <button type="button" class="btn-primary" id="nextBtn">Volgende</button>
+        <button type="button" class="btn-primary" id="startWorkdayBtn" hidden>Start werkdag en ga verder</button>
         <button type="button" class="btn-primary" id="saveTripBtn">Opslaan rit</button>
         <button type="button" class="btn-secondary" id="saveRouteBtn">Opslaan rit</button>
       </div>
@@ -674,12 +681,16 @@ const screens = {
 const steps = Array.from(document.querySelectorAll(".step"));
 const progressTextEl = document.getElementById("progressText");
 const progressFillEl = document.getElementById("progressFill");
+const tripWizardEl = document.getElementById("tripWizard");
 const prevBtnEl = document.getElementById("prevBtn");
 const nextBtnEl = document.getElementById("nextBtn");
+const startWorkdayBtnEl = document.getElementById("startWorkdayBtn");
 const reviewBoxEl = document.getElementById("reviewBox");
 const routeAdviceEl = document.getElementById("routeAdvice");
 const editStatusEl = document.getElementById("editStatus");
 const dayReminderEl = document.getElementById("dayReminder");
+const dayReminderTextEl = document.getElementById("dayReminderText");
+const openPreviousWorkdayBtnEl = document.getElementById("openPreviousWorkdayBtn");
 const arrivalCardEl = document.getElementById("arrivalCard");
 const arrivalMessageEl = document.getElementById("arrivalMessage");
 const confirmArrivalBtnEl = document.getElementById("confirmArrivalBtn");
@@ -974,6 +985,27 @@ function today(){ const d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth(
 function now(){ const d=new Date(); return pad(d.getHours())+":"+pad(d.getMinutes()); }
 function currentHour(){ return new Date().getHours(); }
 function isToday(dateStr){ return (dateStr || today()) === today(); }
+function isValidWorkdayDate(dateStr){
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ""));
+  if(!match) return false;
+  const date = new Date(Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3])));
+  return date.getUTCFullYear() === Number(match[1]) && date.getUTCMonth() === Number(match[2])-1 && date.getUTCDate() === Number(match[3]);
+}
+function getOpenWorkdays(){
+  return Object.keys(dayData).filter(isValidWorkdayDate).map(date=>{
+    const item = dayData[date] || {};
+    return {date,workStart:String(item.workStart || "").trim(),workEnd:String(item.workEnd || "").trim()};
+  }).filter(item=>item.workStart && !item.workEnd).sort((a,b)=>b.date.localeCompare(a.date));
+}
+function getPreviousOpenWorkdays(referenceDate=today()){
+  return getOpenWorkdays().filter(item=>item.date < referenceDate);
+}
+function getActiveWorkday(dateValue=today()){
+  const date = String(dateValue || "").trim();
+  if(date !== today() || !isValidWorkdayDate(date)) return null;
+  const openWorkdays = getOpenWorkdays();
+  return openWorkdays.length === 1 && openWorkdays[0].date === date ? openWorkdays[0] : null;
+}
 function normalizePlate(v){ return String(v||"").toUpperCase().replace(/[^A-Z0-9]/g,"").trim(); }
 function normalizeLocation(v){
   const t = String(v||"").trim().toLowerCase();
@@ -2325,17 +2357,38 @@ function fillSmartRouteFromTranscript(transcript){
 }
 
 function updateDayReminder(){
+  const previousOpenWorkdays = getPreviousOpenWorkdays();
+  if(previousOpenWorkdays.length){
+    dayReminderEl.style.display = "block";
+    dayReminderTextEl.textContent = "Vorige werkdag is nog niet afgesloten." + (previousOpenWorkdays.length > 1 ? " Er staan meerdere eerdere werkdagen open; kies onder Werkdag welke je wilt bewerken." : "");
+    openPreviousWorkdayBtnEl.hidden = false;
+    return;
+  }
+  openPreviousWorkdayBtnEl.hidden = true;
   const d = dateEl.value || today();
   const workday = dayData[d] || {};
   if(isToday(d) && currentHour() >= 17 && String(workday.workStart || "").trim() && !String(workday.workEnd || "").trim()){
     dayReminderEl.style.display = "block";
-    dayReminderEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
+    dayReminderTextEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
     editStatusEl.textContent = "⚠️ Vergeet niet je eindtijd werkdag in te vullen via Werkdag.";
   } else {
     dayReminderEl.style.display = "none";
+    dayReminderTextEl.textContent = "";
     if(!editingTripId) editStatusEl.textContent = "";
   }
 }
+function openPreviousWorkday(){
+  const previousOpenWorkdays = getPreviousOpenWorkdays();
+  if(previousOpenWorkdays.length === 1){
+    editWorkday(previousOpenWorkdays[0].date);
+    return;
+  }
+  setScreen("werkdag");
+  if(previousOpenWorkdays.length > 1){
+    dayHoursInfoEl.textContent = "Meerdere eerdere werkdagen staan nog open: " + previousOpenWorkdays.map(item=>formatWorkdayDate(item.date)).join(", ") + ". Kies bij de juiste dag Bewerken.";
+  }
+}
+openPreviousWorkdayBtnEl.addEventListener("click",openPreviousWorkday);
 function buildReviewHtml(){
   const d = dateEl.value || today();
   const wd = dayData[d] || {};
@@ -2522,30 +2575,52 @@ function updateReview(){
   $("saveRouteBtn").style.display = hasStops ? "inline-block" : "none";
   updateDayReminder();
 }
+function shouldSkipDateStep(){
+  return !editingTripId && !!getActiveWorkday(dateEl.value);
+}
+function getVisibleWizardSteps(){
+  return shouldSkipDateStep() ? ALL_STEPS.slice(1) : ALL_STEPS;
+}
+function selectedDateNeedsWorkdayStart(){
+  if(editingTripId || currentStep !== 0) return false;
+  const workday = dayData[dateEl.value] || {};
+  return !String(workday.workStart || "").trim();
+}
 function renderStep(){
   if(currentStep !== 3) closePlateScanner();
+  const visibleSteps = getVisibleWizardSteps();
+  if(!visibleSteps.includes(currentStep)) currentStep = visibleSteps[0];
   steps.forEach(step => {
     const stepNum = Number(step.dataset.step);
     step.classList.toggle("active", stepNum === currentStep);
   });
-  progressTextEl.textContent = "Stap " + (currentStep + 1) + " van " + ALL_STEPS.length;
-  progressFillEl.style.width = (((currentStep + 1)/ALL_STEPS.length) * 100) + "%";
-  prevBtnEl.disabled = currentStep === 0;
-  nextBtnEl.textContent = currentStep === ALL_STEPS.length - 1 ? "Klaar" : "Volgende";
-  nextBtnEl.hidden = currentStep === ALL_STEPS.length - 1;
+  const visibleIndex = visibleSteps.indexOf(currentStep);
+  const isLastStep = visibleIndex === visibleSteps.length - 1;
+  const needsWorkdayStart = selectedDateNeedsWorkdayStart();
+  progressTextEl.textContent = "Stap " + (visibleIndex + 1) + " van " + visibleSteps.length;
+  progressFillEl.style.width = (((visibleIndex + 1)/visibleSteps.length) * 100) + "%";
+  prevBtnEl.disabled = visibleIndex === 0;
+  nextBtnEl.textContent = isLastStep ? "Klaar" : "Volgende";
+  nextBtnEl.hidden = isLastStep || needsWorkdayStart;
+  startWorkdayBtnEl.hidden = !needsWorkdayStart;
   renderPostboxChoice();
   suggestPreviousDestinationForNewTrip();
   updateReview();
 }
 function nextStep(){
-  if(currentStep < ALL_STEPS.length - 1){
-    currentStep += 1;
+  if(selectedDateNeedsWorkdayStart()) return;
+  const visibleSteps = getVisibleWizardSteps();
+  const visibleIndex = visibleSteps.indexOf(currentStep);
+  if(visibleIndex >= 0 && visibleIndex < visibleSteps.length - 1){
+    currentStep = visibleSteps[visibleIndex + 1];
     renderStep();
   }
 }
 function prevStep(){
-  if(currentStep > 0){
-    currentStep -= 1;
+  const visibleSteps = getVisibleWizardSteps();
+  const visibleIndex = visibleSteps.indexOf(currentStep);
+  if(visibleIndex > 0){
+    currentStep = visibleSteps[visibleIndex - 1];
     renderStep();
   }
 }
@@ -2694,7 +2769,8 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
 function clearForm(){
   const startsNewTripAfterSave = currentDraftSaved && !editingTripId;
   clearDraftSavedStatus();
-  dateEl.value = dateEl.value || today();
+  const activeWorkday = getActiveWorkday();
+  dateEl.value = activeWorkday?.date || dateEl.value || today();
   timeStartEl.value = now();
   timeEndRotterdamEl.value = "";
   plateEl.value = "";
@@ -2711,11 +2787,51 @@ function clearForm(){
   resetPostboxAnswer();
   $("cancelEditBtn").style.display = "none";
   updatePlateStyle();
-  currentStep = 0;
+  currentStep = activeWorkday ? 1 : 0;
   renderStep();
 }
 $("cancelEditBtn").addEventListener("click", clearForm);
 $("clearBtn").addEventListener("click", clearForm);
+
+async function startWorkdayAndContinue(save=saveAllToDB,startTime=now()){
+  const date = String(dateEl.value || "").trim();
+  if(!isValidWorkdayDate(date)){
+    alert("Kies eerst een geldige datum.");
+    return false;
+  }
+  if(getPreviousOpenWorkdays().length){
+    updateDayReminder();
+    alert("Vorige werkdag is nog niet afgesloten.");
+    return false;
+  }
+  const existing = dayData[date] || {};
+  const existingStart = String(existing.workStart || "").trim();
+  const existingEnd = String(existing.workEnd || "").trim();
+  if(!existingStart && existingEnd){
+    alert("Deze werkdag heeft al een eindtijd maar geen starttijd. Open de werkdag om dit te corrigeren.");
+    editWorkday(date);
+    return false;
+  }
+  if(!existingStart){
+    const hadExisting = Object.prototype.hasOwnProperty.call(dayData,date);
+    dayData[date] = {workStart:startTime,workEnd:""};
+    try{ await save(); }
+    catch(error){
+      if(hadExisting) dayData[date] = existing;
+      else delete dayData[date];
+      alert("Werkdag starten mislukt: " + error.message);
+      return false;
+    }
+    loadWorkdayForm(date);
+    renderWorkdays();
+    updateDayReminder();
+    updateReview();
+  }
+  currentStep = 1;
+  renderStep();
+  return true;
+}
+startWorkdayBtnEl.addEventListener("click",()=>startWorkdayAndContinue());
 
 function loadWorkdayForm(dateStr){
   const d = dateStr || today();
@@ -2744,6 +2860,7 @@ async function saveWorkdayFromForm(){
   renderWorkdays();
   updateDayReminder();
   updateReview();
+  renderStep();
   return true;
 }
 $("saveWorkdayBtn").addEventListener("click", async ()=>{
@@ -3233,7 +3350,13 @@ function getTimestampedFilename(dateValue){
   const d = dateValue instanceof Date ? dateValue : new Date();
   return "Ritten_"+d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+".xlsx";
 }
+function ensureWorkdayClosedBeforeExport(){
+  if(!getOpenWorkdays().length) return true;
+  alert("Werkdag nog niet afgesloten. Vul eerst de eindtijd in.");
+  return false;
+}
 $("exportBtn").addEventListener("click", async ()=>{
+  if(!ensureWorkdayClosedBeforeExport()) return;
   let dbTrips;
   try{ dbTrips = await dbGetAll("ritten"); }
   catch(_){ alert("De actuele ritten konden niet uit de database worden gelezen."); return; }
@@ -3381,7 +3504,7 @@ renderStandardLocationButtons();
 renderPlateButtons();
 renderAddressHistoryButtons();
 
-dateEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateReview(); });
+dateEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); renderStep(); });
 plateEl.addEventListener("input", ()=>{
   if(dealerPlate && normalizePlate(plateEl.value) !== dealerPlate) resetDealerPlateState();
   clearDraftSavedStatus(); updatePlateStyle(); lookupPlate();
@@ -3543,6 +3666,11 @@ async function bootApp(){
   ensureTripIds();
   sortTrips();
   await saveAllToDB();
+  const activeWorkday = getActiveWorkday();
+  if(activeWorkday){
+    dateEl.value = activeWorkday.date;
+    currentStep = 1;
+  }
 
   loadWorkdayForm(today());
   updatePlateStyle();
@@ -3554,6 +3682,7 @@ async function bootApp(){
   renderTrips();
   renderWorkdays();
   renderStep();
+  tripWizardEl.classList.remove("initializing");
   refreshArrivalMonitoring();
   setInterval(updateDayReminder, 60000);
 }
