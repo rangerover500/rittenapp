@@ -583,7 +583,7 @@ const DEFAULT_ADDRESSES = {
 };
 const GEO_MATCH_RADIUS_METERS = 100;
 const GEOLOCATION_OPTIONS = {enableHighAccuracy:true,timeout:8000,maximumAge:60000};
-const ARRIVAL_CHECK_COOLDOWN_MS = 5 * 60 * 1000;
+const ARRIVAL_CHECK_INTERVAL_MS = 10000;
 const GOOGLE_MAPS_API_KEY_STORAGE = "rittenapp_google_maps_api_key";
 const GEOCODE_CACHE_STORAGE = "rittenapp_geocode_cache_v1";
 const GEOCODE_CACHE_MAX_ENTRIES = 500;
@@ -641,7 +641,11 @@ let googleMapsGeocoderLoader = null;
 let geocodeCache = [];
 let lastForwardGeocodeDiagnostic = "";
 let arrivalTargetTripId = null;
-const arrivalCheckTimes = new Map();
+let arrivalPollingTimer = null;
+let arrivalPollingTripId = null;
+let arrivalCheckInProgress = false;
+let arrivalSpeechTripId = null;
+let arrivalSpeechAnnounced = false;
 let postboxAnswer = null;
 let editingWorkdayDate = null;
 let plateScannerStream = null;
@@ -1272,8 +1276,54 @@ function showArrivalCard(trip){
   arrivalMessageEl.textContent = "Je bent bij " + (trip.destinationLabel || trip.to) + ".";
   arrivalCardEl.hidden = false;
 }
-async function checkArrivalForActiveTrip(getPosition=getCurrentPositionOnce,currentTime=Date.now(),resolveDestination=resolveDestinationCoordinates,save=saveAllToDB){
+function syncArrivalSpeechState(trip){
+  const tripId = trip?.id || null;
+  if(tripId === arrivalSpeechTripId) return;
+  if(arrivalTargetTripId && arrivalTargetTripId !== tripId) hideArrivalCard();
+  arrivalSpeechTripId = tripId;
+  arrivalSpeechAnnounced = false;
+}
+function speakArrivalOnce(trip,synthesis=window.speechSynthesis,Utterance=window.SpeechSynthesisUtterance){
+  syncArrivalSpeechState(trip);
+  if(arrivalSpeechAnnounced) return false;
+  arrivalSpeechAnnounced = true;
+  if(!synthesis || typeof synthesis.speak !== "function" || typeof Utterance !== "function") return false;
+  try{
+    const message = new Utterance("Bestemming bereikt.");
+    message.lang = "nl-NL";
+    synthesis.speak(message);
+    return true;
+  }catch(_){
+    return false;
+  }
+}
+function isArrivalDocumentVisible(){
+  return document.visibilityState === "visible";
+}
+function stopArrivalPolling(){
+  if(arrivalPollingTimer !== null) clearInterval(arrivalPollingTimer);
+  arrivalPollingTimer = null;
+  arrivalPollingTripId = null;
+}
+function ensureArrivalPolling(){
   const trip = findActiveArrivalTrip();
+  syncArrivalSpeechState(trip);
+  if(!trip || !hasDestinationCoordinates(trip) || !isArrivalDocumentVisible()){
+    stopArrivalPolling();
+    return false;
+  }
+  if(arrivalPollingTimer !== null && arrivalPollingTripId === trip.id) return true;
+  stopArrivalPolling();
+  arrivalPollingTripId = trip.id;
+  arrivalPollingTimer = setInterval(()=>{
+    runArrivalCheck({periodic:true,silentGpsErrors:true});
+  },ARRIVAL_CHECK_INTERVAL_MS);
+  return true;
+}
+async function checkArrivalForActiveTrip(getPosition=getCurrentPositionOnce,_currentTime=Date.now(),resolveDestination=resolveDestinationCoordinates,save=saveAllToDB,options={}){
+  const {silentGpsErrors=false,synthesis=window.speechSynthesis,Utterance=window.SpeechSynthesisUtterance} = options;
+  const trip = findActiveArrivalTrip();
+  syncArrivalSpeechState(trip);
   if(!trip){
     hideArrivalCard();
     return false;
@@ -1290,25 +1340,60 @@ async function checkArrivalForActiveTrip(getPosition=getCurrentPositionOnce,curr
     try{ await save(); }
     catch(_){ /* De aankomstcontrole blijft bruikbaar in de huidige sessie. */ }
   }
-  const previousCheck = arrivalCheckTimes.get(trip.id) || 0;
-  if(currentTime - previousCheck < ARRIVAL_CHECK_COOLDOWN_MS) return false;
-  arrivalCheckTimes.set(trip.id,currentTime);
   try{
     const position = await getPosition();
+    const currentTrip = findActiveArrivalTrip();
+    if(!isArrivalDocumentVisible() || currentTrip?.id !== trip.id) return false;
     geoNoticeEl.hidden = true;
     geoNoticeEl.textContent = "";
     const distance = haversineDistanceMeters(Number(position?.coords?.latitude),Number(position?.coords?.longitude),trip.destinationLatitude,trip.destinationLongitude);
     if(distance <= GEO_MATCH_RADIUS_METERS){
       showArrivalCard(trip);
+      speakArrivalOnce(trip,synthesis,Utterance);
       return true;
     }
-    hideArrivalCard();
+    if(arrivalSpeechTripId === trip.id && arrivalSpeechAnnounced) showArrivalCard(trip);
+    else hideArrivalCard();
   }catch(error){
-    hideArrivalCard();
-    geoNoticeEl.textContent = arrivalGeolocationFailureMessage(error);
-    geoNoticeEl.hidden = false;
+    if(!(arrivalSpeechTripId === trip.id && arrivalSpeechAnnounced)) hideArrivalCard();
+    if(!silentGpsErrors && isArrivalDocumentVisible()){
+      geoNoticeEl.textContent = arrivalGeolocationFailureMessage(error);
+      geoNoticeEl.hidden = false;
+    }
   }
   return false;
+}
+async function runArrivalCheck({periodic=false,silentGpsErrors=false,getPosition=getCurrentPositionOnce,synthesis=window.speechSynthesis,Utterance=window.SpeechSynthesisUtterance}={}){
+  if(arrivalCheckInProgress || !isArrivalDocumentVisible()) return false;
+  const trip = findActiveArrivalTrip();
+  syncArrivalSpeechState(trip);
+  if(!trip || (periodic && !hasDestinationCoordinates(trip))){
+    if(!trip) hideArrivalCard();
+    ensureArrivalPolling();
+    return false;
+  }
+  arrivalCheckInProgress = true;
+  try{
+    return await checkArrivalForActiveTrip(getPosition,Date.now(),resolveDestinationCoordinates,saveAllToDB,{silentGpsErrors,synthesis,Utterance});
+  }finally{
+    arrivalCheckInProgress = false;
+    ensureArrivalPolling();
+  }
+}
+function refreshArrivalMonitoring(checkImmediately=true){
+  if(!isArrivalDocumentVisible()){
+    stopArrivalPolling();
+    return Promise.resolve(false);
+  }
+  const trip = findActiveArrivalTrip();
+  syncArrivalSpeechState(trip);
+  if(!trip){
+    hideArrivalCard();
+    stopArrivalPolling();
+    return Promise.resolve(false);
+  }
+  if(checkImmediately) return runArrivalCheck();
+  return Promise.resolve(ensureArrivalPolling());
 }
 function getRoutePointsForMaps(){
   return {
@@ -2545,6 +2630,7 @@ $("saveTripBtn").addEventListener("click", async ()=>{
   sortTrips();
   await saveAllToDB();
   renderTrips();
+  ensureArrivalPolling();
   if(!existing) lastSavedRouteEndpoint = {id:trip.id,date:trip.date,to:trip.to};
   markDraftSaved(trip.isDealerPlate && !trip.originalPlate
     ? "Rit opgeslagen. Origineel kenteken nog niet ingevuld."
@@ -2599,6 +2685,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
   const finalTrip = newTrips[newTrips.length - 1];
   lastSavedRouteEndpoint = {id:finalTrip.id,date:finalTrip.date,to:finalTrip.to};
   renderTrips();
+  ensureArrivalPolling();
   markDraftSaved(newTrips.some(trip=>trip.isDealerPlate && !trip.originalPlate)
     ? "Route met tussenstops opgeslagen. Origineel kenteken nog niet ingevuld."
     : "Route met tussenstops opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
@@ -2726,6 +2813,7 @@ async function saveQuickTripEdit(){
   try{
     await saveAllToDB();
     renderTrips();
+    ensureArrivalPolling();
     editStatusEl.classList.add("saved-ok");
     editStatusEl.textContent = "Eindtijd en km-stand bijgewerkt zonder een nieuwe rit aan te maken.";
     closeQuickTripEdit();
@@ -2739,17 +2827,24 @@ async function confirmArrivalNow(save=saveAllToDB,endTime=now()){
   const trip = trips[tripIndex];
   if(!trip || String(trip.timeEnd || "").trim()){
     hideArrivalCard();
+    ensureArrivalPolling();
     return false;
   }
+  stopArrivalPolling();
   const updatedTrip = {...trip,timeEnd:endTime};
   clearTripDestinationCoordinates(updatedTrip);
   trips[tripIndex] = updatedTrip;
   try{ await save(); }
-  catch(error){ trips[tripIndex] = trip; throw error; }
+  catch(error){
+    trips[tripIndex] = trip;
+    ensureArrivalPolling();
+    throw error;
+  }
   lastSavedRouteEndpoint = {id:updatedTrip.id,date:updatedTrip.date,to:updatedTrip.to};
   renderTrips();
   updateReview();
   hideArrivalCard();
+  syncArrivalSpeechState(null);
   geoNoticeEl.textContent = "Aankomst bevestigd. De eindtijd is bijgewerkt.";
   geoNoticeEl.hidden = false;
   return true;
@@ -2928,6 +3023,7 @@ tripTableEl.addEventListener("click", e=>{
     trips = trips.filter(x=>x.id !== id);
     saveAll();
     renderTrips();
+    ensureArrivalPolling();
   }
 });
 async function deleteWorkday(dateStr){
@@ -3193,6 +3289,7 @@ $("importReplaceBtn").addEventListener("click", ()=>{
     renderWorkdays();
     renderPlateButtons();
     clearForm();
+    ensureArrivalPolling();
     loadWorkdayForm(today());
     alert("Import gelukt. De huidige gegevens zijn vervangen.");
   });
@@ -3245,6 +3342,7 @@ $("importMergeBtn").addEventListener("click", ()=>{
     renderWorkdays();
     renderPlateButtons();
     clearForm();
+    ensureArrivalPolling();
     loadWorkdayForm(today());
     alert("Samenvoegen gelukt. Toegevoegd/gewijzigd: " + addedTrips + " ritten en " + addedDays + " werkdagen.");
   });
@@ -3259,6 +3357,7 @@ $("wipeBtn").addEventListener("click", ()=>{
   renderWorkdays();
   renderPlateButtons();
   clearForm();
+  ensureArrivalPolling();
   loadWorkdayForm(today());
 });
 function rebuildPlateListFromTrips(){
@@ -3455,7 +3554,7 @@ async function bootApp(){
   renderTrips();
   renderWorkdays();
   renderStep();
-  checkArrivalForActiveTrip();
+  refreshArrivalMonitoring();
   setInterval(updateDayReminder, 60000);
 }
 bootApp().catch(err=>{
@@ -3463,12 +3562,15 @@ bootApp().catch(err=>{
   console.error(err);
 });
 document.addEventListener("visibilitychange",()=>{
-  if(document.hidden) closePlateScanner();
-  else checkArrivalForActiveTrip();
+  if(document.visibilityState !== "visible"){
+    closePlateScanner();
+    stopArrivalPolling();
+  } else refreshArrivalMonitoring();
 });
-window.addEventListener("pageshow",()=>checkArrivalForActiveTrip());
+window.addEventListener("pageshow",()=>refreshArrivalMonitoring());
 window.addEventListener("pagehide",()=>{
   closePlateScanner();
+  stopArrivalPolling();
   if(plateScannerOcr && plateScannerOcr.dispose) plateScannerOcr.dispose();
   plateScannerOcr = null;
   plateScannerInitPromise = null;
