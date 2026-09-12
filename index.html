@@ -108,6 +108,9 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .arrival-card .btn-primary{margin-top:10px;background:#187A43}
 .geo-status{margin-top:8px;min-height:18px}
 .geo-notice{margin:-4px 0 12px;color:var(--muted)}
+.api-key-row{display:flex;gap:8px;align-items:stretch;margin-top:10px}
+.api-key-row input{flex:1;min-width:0}
+.api-key-row button{flex:0 0 auto}
 .input-row{display:flex;gap:8px;align-items:stretch}
 .input-row input{flex:1;margin:0}
 .btn-voice{min-width:54px;min-height:56px;border:1px solid #d7dce8;border-radius:10px;background:#eef1f7;font-size:22px;line-height:1}
@@ -406,6 +409,20 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
         </table>
       </div>
     </div>
+
+    <div class="fileblock">
+      <h3>Google Maps API-key</h3>
+      <div class="small">Nodig voor algemene adresherkenning en aankomstcontrole. De key wordt alleen op dit apparaat in deze browser/app opgeslagen.</div>
+      <label style="margin-top:12px;" for="googleMapsApiKey">API-key</label>
+      <div class="api-key-row">
+        <input id="googleMapsApiKey" type="password" autocomplete="off" spellcheck="false" aria-describedby="googleMapsApiKeyStatus">
+        <button type="button" class="btn-primary" id="saveGoogleMapsApiKeyBtn">Opslaan</button>
+      </div>
+      <div class="toolbar">
+        <button type="button" class="btn-secondary" id="forgetGoogleMapsApiKeyBtn">API-key vergeten</button>
+      </div>
+      <div class="small status" id="googleMapsApiKeyStatus" aria-live="polite"></div>
+    </div>
   </div>
 
   <div id="screen-ritten" class="screen">
@@ -568,6 +585,8 @@ const GEO_MATCH_RADIUS_METERS = 100;
 const GEOLOCATION_OPTIONS = {enableHighAccuracy:true,timeout:8000,maximumAge:60000};
 const ARRIVAL_CHECK_COOLDOWN_MS = 5 * 60 * 1000;
 const GOOGLE_MAPS_API_KEY_STORAGE = "rittenapp_google_maps_api_key";
+const GEOCODE_CACHE_STORAGE = "rittenapp_geocode_cache_v1";
+const GEOCODE_CACHE_MAX_ENTRIES = 500;
 const KNOWN_LOCATION_COORDINATES = {
   "Breeland Rotterdam": {latitude:51.91009933,longitude:4.53608711},
   "Breeland Brielle": {latitude:51.893028,longitude:4.19510566},
@@ -619,6 +638,7 @@ let previousDestinationSuggestionPending = true;
 let lastSavedRouteEndpoint = null;
 let fromAutoFillRequestId = 0;
 let googleMapsGeocoderLoader = null;
+let geocodeCache = [];
 let arrivalTargetTripId = null;
 const arrivalCheckTimes = new Map();
 let postboxAnswer = null;
@@ -659,6 +679,8 @@ const arrivalCardEl = document.getElementById("arrivalCard");
 const arrivalMessageEl = document.getElementById("arrivalMessage");
 const confirmArrivalBtnEl = document.getElementById("confirmArrivalBtn");
 const geoNoticeEl = document.getElementById("geoNotice");
+const googleMapsApiKeyEl = document.getElementById("googleMapsApiKey");
+const googleMapsApiKeyStatusEl = document.getElementById("googleMapsApiKeyStatus");
 
 const workdayDateEl = document.getElementById("workdayDate");
 const workStartEl = document.getElementById("workStart");
@@ -904,7 +926,7 @@ async function loadAllFromDB(){
       if(w && w.date) dayData[w.date] = {workStart:w.workStart || "", workEnd:w.workEnd || ""};
     });
     plates = dbPlates.map(p=>normalizePlate(p.plate || p)).filter(Boolean);
-    addressHistory = dbAddresses.map(a=>normalizeLocation(a.label || a)).filter(Boolean);
+    addressHistory = dbAddresses.map(a=>normalizeLocation(a.label || a)).filter(Boolean).slice(0, 500);
   }catch(e){
     alert("Database laden mislukt: " + e.message);
     trips = [];
@@ -933,7 +955,7 @@ async function migrateLocalStorageIfDatabaseEmpty(){
   trips = mig.foundTrips;
   dayData = mig.foundDayData;
   plates = mig.foundPlates;
-  addressHistory = mig.foundAddresses.slice(0, 50);
+  addressHistory = mig.foundAddresses.slice(0, 500);
   sortTrips();
   await saveAllToDB();
   editStatusEl.classList.add("saved-ok");
@@ -960,20 +982,65 @@ function normalizeLocation(v){
   return String(v||"").trim();
 }
 function resolveMapAddress(v){
-  const key = normalizeLocation(v);
-  return standardAddresses[key] || String(v||"").trim();
+  const value = String(v || "").trim();
+  const key = Object.keys(standardAddresses).find(label=>label.toLowerCase() === value.toLowerCase());
+  return key ? standardAddresses[key] : value;
 }
 function coordinatesForKnownLocation(label){
-  const normalized = normalizeLocation(label);
-  const coordinates = KNOWN_LOCATION_COORDINATES[normalized];
+  const value = String(label || "").trim().toLowerCase();
+  const knownLabel = Object.keys(KNOWN_LOCATION_COORDINATES).find(name=>name.toLowerCase() === value);
+  const coordinates = KNOWN_LOCATION_COORDINATES[knownLabel];
   return coordinates ? {label:String(label||"").trim(),latitude:coordinates.latitude,longitude:coordinates.longitude} : null;
+}
+function getGoogleMapsApiKey(){
+  try{ return String(localStorage.getItem(GOOGLE_MAPS_API_KEY_STORAGE) || "").trim(); }
+  catch(_){ return ""; }
+}
+function normalizeGeocodeCacheKey(value){
+  return String(resolveMapAddress(value) || "").trim().replace(/\s+/g," ").toLowerCase();
+}
+function loadGeocodeCache(){
+  let parsed = [];
+  try{ parsed = JSON.parse(localStorage.getItem(GEOCODE_CACHE_STORAGE) || "[]"); }
+  catch(_){ parsed = []; }
+  geocodeCache = Array.isArray(parsed) ? parsed.filter(entry=>
+    entry && entry.key && entry.address && Number.isFinite(Number(entry.latitude)) && Number.isFinite(Number(entry.longitude))
+  ).map(entry=>({
+    key:String(entry.key),
+    address:String(entry.address),
+    latitude:Number(entry.latitude),
+    longitude:Number(entry.longitude),
+    lastUsed:Number(entry.lastUsed) || 0
+  })).sort((a,b)=>b.lastUsed-a.lastUsed).slice(0,GEOCODE_CACHE_MAX_ENTRIES) : [];
+  persistGeocodeCache();
+}
+function persistGeocodeCache(){
+  try{ localStorage.setItem(GEOCODE_CACHE_STORAGE,JSON.stringify(geocodeCache.slice(0,GEOCODE_CACHE_MAX_ENTRIES))); }
+  catch(_){ /* Cache is alleen een optimalisatie; de app blijft zonder cache werken. */ }
+}
+function cachedGeocode(address){
+  const key = normalizeGeocodeCacheKey(address);
+  const index = geocodeCache.findIndex(entry=>entry.key === key);
+  if(index < 0) return null;
+  const entry = {...geocodeCache[index],lastUsed:Date.now()};
+  geocodeCache.splice(index,1);
+  geocodeCache.unshift(entry);
+  persistGeocodeCache();
+  return {latitude:entry.latitude,longitude:entry.longitude};
+}
+function rememberGeocode(address,coordinates){
+  const visibleAddress = String(address || "").trim();
+  const key = normalizeGeocodeCacheKey(visibleAddress);
+  if(!key || !Number.isFinite(coordinates?.latitude) || !Number.isFinite(coordinates?.longitude)) return;
+  geocodeCache = geocodeCache.filter(entry=>entry.key !== key);
+  geocodeCache.unshift({key,address:visibleAddress,latitude:coordinates.latitude,longitude:coordinates.longitude,lastUsed:Date.now()});
+  geocodeCache = geocodeCache.slice(0,GEOCODE_CACHE_MAX_ENTRIES);
+  persistGeocodeCache();
 }
 function loadGoogleMapsGeocoder(){
   if(window.google?.maps?.Geocoder) return Promise.resolve();
   if(googleMapsGeocoderLoader) return googleMapsGeocoderLoader;
-  let apiKey = "";
-  try{ apiKey = String(localStorage.getItem(GOOGLE_MAPS_API_KEY_STORAGE) || "").trim(); }
-  catch(_){ apiKey = ""; }
+  const apiKey = getGoogleMapsApiKey();
   if(!apiKey) return Promise.reject(new Error("Geen opgeslagen Google Maps API-key beschikbaar."));
   googleMapsGeocoderLoader = new Promise((resolve,reject)=>{
     const callbackName = "__rittenappGoogleGeocoderReady_" + Date.now();
@@ -990,23 +1057,60 @@ function loadGoogleMapsGeocoder(){
     }
     window[callbackName] = ()=>finish(null);
     script.async = true;
-    script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(apiKey) + "&callback=" + encodeURIComponent(callbackName);
+    script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(apiKey) + "&language=nl&region=NL&callback=" + encodeURIComponent(callbackName);
     script.onerror = ()=>finish(new Error("Google Maps kon niet worden geladen."));
     document.head.appendChild(script);
   });
   return googleMapsGeocoderLoader;
 }
 async function geocodeAddressWithGoogle(address){
+  const cached = cachedGeocode(address);
+  if(cached) return cached;
   await loadGoogleMapsGeocoder();
   return new Promise((resolve,reject)=>{
     const timeout = setTimeout(()=>reject(new Error("Geocoding duurde te lang.")),8000);
     const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({address},(results,status)=>{
+    geocoder.geocode({address,region:"nl"},(results,status)=>{
       clearTimeout(timeout);
       const location = results?.[0]?.geometry?.location;
       if(status === "OK" && location){
-        resolve({latitude:Number(location.lat()),longitude:Number(location.lng())});
+        const coordinates = {latitude:Number(location.lat()),longitude:Number(location.lng())};
+        rememberGeocode(address,coordinates);
+        resolve(coordinates);
       }else reject(new Error("Bestemming kon niet worden geocodeerd."));
+    });
+  });
+}
+function geocoderAddressComponent(result,type){
+  return result?.address_components?.find(component=>component.types?.includes(type))?.long_name || "";
+}
+function formatDutchGeocoderAddress(result){
+  const street = geocoderAddressComponent(result,"route");
+  const number = geocoderAddressComponent(result,"street_number");
+  const city = geocoderAddressComponent(result,"locality") || geocoderAddressComponent(result,"postal_town") || geocoderAddressComponent(result,"sublocality");
+  const streetAddress = [street,number].filter(Boolean).join(" ");
+  if(streetAddress && city) return streetAddress + ", " + city;
+  if(streetAddress) return streetAddress;
+  return String(result?.formatted_address || "").replace(/,\s*Nederland\s*$/i,"").trim();
+}
+async function reverseGeocodeWithGoogle(latitude,longitude){
+  await loadGoogleMapsGeocoder();
+  return new Promise((resolve,reject)=>{
+    const timeout = setTimeout(()=>reject(new Error("Reverse geocoding duurde te lang.")),8000);
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({location:{lat:latitude,lng:longitude},region:"nl"},(results,status)=>{
+      clearTimeout(timeout);
+      const result = results?.find(item=>item.types?.includes("street_address")) || results?.[0];
+      const location = result?.geometry?.location;
+      const label = formatDutchGeocoderAddress(result);
+      if(status === "OK" && result && label){
+        const coordinates = {
+          latitude:location ? Number(location.lat()) : latitude,
+          longitude:location ? Number(location.lng()) : longitude
+        };
+        rememberGeocode(label,coordinates);
+        resolve({label,...coordinates});
+      }else reject(new Error("Adres bij huidige locatie kon niet worden opgehaald."));
     });
   });
 }
@@ -1022,6 +1126,17 @@ async function resolveDestinationCoordinates(label,geocode=geocodeAddressWithGoo
   }catch(_){
     return null;
   }
+}
+function showDestinationGeocodingStatus(destination,needsDestination=true){
+  if(!needsDestination || destination){
+    geoNoticeEl.textContent = "";
+    geoNoticeEl.hidden = true;
+    return;
+  }
+  geoNoticeEl.textContent = getGoogleMapsApiKey()
+    ? "De bestemming kon niet worden geocodeerd. De rit blijft bruikbaar; automatische aankomstherkenning is niet beschikbaar."
+    : "Geen Google Maps API-key beschikbaar. De rit blijft bruikbaar; stel de key via Beheer in voor automatische aankomstherkenning.";
+  geoNoticeEl.hidden = false;
 }
 function applyDestinationCoordinates(trip,destination){
   if(!destination) return trip;
@@ -1041,14 +1156,26 @@ function retainOnlyActiveDestination(targetTripId){
   });
 }
 function storedDestinationCoordinates(trip,label){
-  if(!trip || normalizeLocation(trip.to) !== normalizeLocation(label) || !hasDestinationCoordinates(trip)) return null;
+  if(!trip || normalizeGeocodeCacheKey(trip.to) !== normalizeGeocodeCacheKey(label) || !hasDestinationCoordinates(trip)) return null;
   return {label:trip.destinationLabel || String(label || "").trim(),latitude:trip.destinationLatitude,longitude:trip.destinationLongitude};
 }
 function hasDestinationCoordinates(trip){
   return Number.isFinite(trip?.destinationLatitude) && Number.isFinite(trip?.destinationLongitude);
 }
 function findActiveArrivalTrip(){
-  return trips.find(trip=>!String(trip.timeEnd || "").trim() && hasDestinationCoordinates(trip)) || null;
+  const todayValue = today();
+  const unfinished = trips.filter(trip=>trip.date === todayValue && !String(trip.timeEnd || "").trim() && String(trip.to || "").trim());
+  const storedTarget = unfinished.find(hasDestinationCoordinates);
+  if(storedTarget) return storedTarget;
+  if(!unfinished.length) return null;
+  const latestKey = unfinished.reduce((latest,trip)=>{
+    const key = String(trip.date || "") + " " + String(trip.timeStart || "");
+    return key > latest ? key : latest;
+  },"");
+  const latestTrips = unfinished.filter(trip=>(String(trip.date || "") + " " + String(trip.timeStart || "")) === latestKey);
+  const routeStarts = new Set(latestTrips.map(trip=>normalizeGeocodeCacheKey(trip.from)).filter(Boolean));
+  const terminalTrips = latestTrips.filter(trip=>!routeStarts.has(normalizeGeocodeCacheKey(trip.to)));
+  return terminalTrips.length === 1 ? terminalTrips[0] : latestTrips[latestTrips.length - 1];
 }
 function hideArrivalCard(){
   arrivalTargetTripId = null;
@@ -1060,11 +1187,23 @@ function showArrivalCard(trip){
   arrivalMessageEl.textContent = "Je bent bij " + (trip.destinationLabel || trip.to) + ".";
   arrivalCardEl.hidden = false;
 }
-async function checkArrivalForActiveTrip(getPosition=getCurrentPositionOnce,currentTime=Date.now()){
+async function checkArrivalForActiveTrip(getPosition=getCurrentPositionOnce,currentTime=Date.now(),resolveDestination=resolveDestinationCoordinates,save=saveAllToDB){
   const trip = findActiveArrivalTrip();
   if(!trip){
     hideArrivalCard();
     return false;
+  }
+  if(!hasDestinationCoordinates(trip)){
+    const destination = await resolveDestination(trip.to);
+    if(!destination){
+      hideArrivalCard();
+      showDestinationGeocodingStatus(null,true);
+      return false;
+    }
+    applyDestinationCoordinates(trip,destination);
+    retainOnlyActiveDestination(trip.id);
+    try{ await save(); }
+    catch(_){ /* De aankomstcontrole blijft bruikbaar in de huidige sessie. */ }
   }
   const previousCheck = arrivalCheckTimes.get(trip.id) || 0;
   if(currentTime - previousCheck < ARRIVAL_CHECK_COOLDOWN_MS) return false;
@@ -1216,7 +1355,35 @@ function markFromManuallyChosen(){
   fromAutoFillRequestId += 1;
   fromLocationStatusEl.textContent = "";
 }
-async function suggestPreviousDestinationForNewTrip(getPosition=getCurrentPositionOnce){
+function renderGoogleMapsApiKeyStatus(message=""){
+  const hasKey = !!getGoogleMapsApiKey();
+  googleMapsApiKeyEl.value = "";
+  googleMapsApiKeyEl.placeholder = hasKey ? "API-key is opgeslagen" : "Voer Google Maps API-key in";
+  googleMapsApiKeyStatusEl.textContent = message || (hasKey
+    ? "API-key beschikbaar in deze browser/app."
+    : "Geen API-key opgeslagen in deze browser/app.");
+}
+function saveGoogleMapsApiKey(){
+  const apiKey = String(googleMapsApiKeyEl.value || "").trim();
+  if(!apiKey){
+    renderGoogleMapsApiKeyStatus("Vul eerst een API-key in.");
+    return;
+  }
+  try{
+    localStorage.setItem(GOOGLE_MAPS_API_KEY_STORAGE,apiKey);
+    googleMapsGeocoderLoader = null;
+    renderGoogleMapsApiKeyStatus("API-key opgeslagen op dit apparaat in deze browser/app.");
+  }catch(_){
+    renderGoogleMapsApiKeyStatus("API-key kon niet lokaal worden opgeslagen.");
+  }
+}
+function forgetGoogleMapsApiKey(){
+  try{ localStorage.removeItem(GOOGLE_MAPS_API_KEY_STORAGE); }
+  catch(_){ /* De status hieronder blijft duidelijk. */ }
+  googleMapsGeocoderLoader = null;
+  renderGoogleMapsApiKeyStatus("API-key is uit deze browser/app verwijderd.");
+}
+async function suggestPreviousDestinationForNewTrip(getPosition=getCurrentPositionOnce,reverseGeocode=reverseGeocodeWithGoogle){
   if(currentStep !== 4 || !previousDestinationSuggestionPending) return;
   previousDestinationSuggestionPending = false;
   if(editingTripId || fromEl.value.trim()) return;
@@ -1233,7 +1400,22 @@ async function suggestPreviousDestinationForNewTrip(getPosition=getCurrentPositi
       updateReview();
       return;
     }
-    locationMessage = "Geen bekende locatie binnen " + GEO_MATCH_RADIUS_METERS + " meter herkend.";
+    try{
+      const address = await reverseGeocode(Number(position?.coords?.latitude),Number(position?.coords?.longitude));
+      if(requestId !== fromAutoFillRequestId || editingTripId || fromEl.value.trim()) return;
+      if(address?.label){
+        fromEl.value = address.label;
+        fromLocationStatusEl.textContent = "📍 Huidige locatie herkend: " + address.label;
+        updateReview();
+        return;
+      }
+      locationMessage = "Adres bij huidige locatie kon niet worden opgehaald.";
+    }catch(error){
+      if(requestId !== fromAutoFillRequestId) return;
+      locationMessage = getGoogleMapsApiKey()
+        ? "Adres bij huidige locatie kon niet worden opgehaald."
+        : "Geen Google Maps API-key beschikbaar voor adresherkenning. Stel deze in via Beheer.";
+    }
   }catch(error){
     if(requestId !== fromAutoFillRequestId) return;
     locationMessage = geolocationFailureMessage(error);
@@ -2257,6 +2439,7 @@ $("saveTripBtn").addEventListener("click", async ()=>{
     return;
   }
   const destination = trip.timeEnd ? null : (await resolveDestinationCoordinates(trip.to) || storedDestinationCoordinates(existing,trip.to));
+  showDestinationGeocodingStatus(destination,!trip.timeEnd);
   applyDestinationCoordinates(trip,destination);
   savePlateToList(trip.plate);
   saveCurrentAddressesToHistory();
@@ -2303,6 +2486,7 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
   saveCurrentAddressesToHistory();
   const optionalEndTime = String(timeEndRotterdamEl.value || "").trim();
   const finalDestination = optionalEndTime ? null : await resolveDestinationCoordinates(points[points.length - 1]);
+  showDestinationGeocodingStatus(finalDestination,!optionalEndTime);
   const newTrips = [];
   for(let i=0;i<points.length-1;i++){
     const segment = {
@@ -3094,6 +3278,11 @@ stopsEl.addEventListener("input", ()=>{ clearDraftSavedStatus(); updateAddressSu
 
 $("addStdAddressBtn").addEventListener("click", addOrUpdateStandardAddress);
 $("addStdPlateBtn").addEventListener("click", addStandardPlate);
+$("saveGoogleMapsApiKeyBtn").addEventListener("click", saveGoogleMapsApiKey);
+$("forgetGoogleMapsApiKeyBtn").addEventListener("click", forgetGoogleMapsApiKey);
+googleMapsApiKeyEl.addEventListener("keydown",event=>{
+  if(event.key === "Enter") saveGoogleMapsApiKey();
+});
 stdAddressTableEl.addEventListener("click", e=>{
   const btn = e.target.closest("button");
   if(btn && btn.dataset.addressDelete) deleteStandardAddress(btn.dataset.addressDelete);
@@ -3161,6 +3350,8 @@ async function bootApp(){
   timeEndRotterdamEl.value = "";
   workdayDateEl.value = today();
 
+  loadGeocodeCache();
+  renderGoogleMapsApiKeyStatus();
   await loadAllFromDB();
   await migrateLocalStorageIfDatabaseEmpty();
 
