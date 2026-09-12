@@ -639,6 +639,7 @@ let lastSavedRouteEndpoint = null;
 let fromAutoFillRequestId = 0;
 let googleMapsGeocoderLoader = null;
 let geocodeCache = [];
+let lastForwardGeocodeDiagnostic = "";
 let arrivalTargetTripId = null;
 const arrivalCheckTimes = new Map();
 let postboxAnswer = null;
@@ -1037,28 +1038,55 @@ function rememberGeocode(address,coordinates){
   geocodeCache = geocodeCache.slice(0,GEOCODE_CACHE_MAX_ENTRIES);
   persistGeocodeCache();
 }
+function geocodeDiagnosticError(stage,code,message){
+  const error = new Error(message || "Geocoding is mislukt.");
+  error.geocodeStage = stage;
+  error.geocodeCode = code;
+  return error;
+}
+function safeGeocodeDiagnosticValue(value){
+  let text = String(value || "").trim();
+  const apiKey = getGoogleMapsApiKey();
+  if(apiKey) text = text.split(apiKey).join("[API-key verborgen]");
+  return text.replace(/([?&]key=)[^&\s]+/gi,"$1[API-key verborgen]").slice(0,300);
+}
+function describeGeocodeError(kind,error){
+  const code = safeGeocodeDiagnosticValue(error?.geocodeCode || error?.code || error?.name || "ONBEKENDE_FOUT");
+  const message = safeGeocodeDiagnosticValue(error?.message || "Geen verdere foutinformatie beschikbaar.");
+  return kind + " mislukt. Foutcode: " + code + ". " + message;
+}
 function loadGoogleMapsGeocoder(){
-  if(window.google?.maps?.Geocoder) return Promise.resolve();
+  if(typeof window.google?.maps?.Geocoder === "function") return Promise.resolve();
   if(googleMapsGeocoderLoader) return googleMapsGeocoderLoader;
   const apiKey = getGoogleMapsApiKey();
-  if(!apiKey) return Promise.reject(new Error("Geen opgeslagen Google Maps API-key beschikbaar."));
+  if(!apiKey) return Promise.reject(geocodeDiagnosticError("api-key","API_KEY_ONTBREEKT","Geen opgeslagen Google Maps API-key beschikbaar."));
   googleMapsGeocoderLoader = new Promise((resolve,reject)=>{
     const callbackName = "__rittenappGoogleGeocoderReady_" + Date.now();
     const script = document.createElement("script");
-    const timeout = setTimeout(()=>finish(new Error("Google Maps laden duurde te lang.")),10000);
+    const previousAuthFailure = window.gm_authFailure;
+    const timeout = setTimeout(()=>finish(geocodeDiagnosticError("api-load","GOOGLE_MAPS_LAAD_TIMEOUT","Google Maps JavaScript API laden duurde te lang.")),10000);
     function finish(error){
       clearTimeout(timeout);
       delete window[callbackName];
+      if(previousAuthFailure === undefined) delete window.gm_authFailure;
+      else window.gm_authFailure = previousAuthFailure;
       if(error){
         script.remove();
         googleMapsGeocoderLoader = null;
         reject(error);
+      }else if(typeof window.google?.maps?.Geocoder !== "function"){
+        googleMapsGeocoderLoader = null;
+        reject(geocodeDiagnosticError("geocoder","GEOCODER_NIET_BESCHIKBAAR","Google Maps is geladen, maar google.maps.Geocoder is niet beschikbaar."));
       }else resolve();
     }
     window[callbackName] = ()=>finish(null);
+    window.gm_authFailure = ()=>finish(geocodeDiagnosticError("api-load","GOOGLE_MAPS_AUTHENTICATIE_MISLUKT","Google Maps weigerde de API-key, facturering of websitebeperking."));
     script.async = true;
     script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(apiKey) + "&language=nl&region=NL&callback=" + encodeURIComponent(callbackName);
-    script.onerror = ()=>finish(new Error("Google Maps kon niet worden geladen."));
+    script.onerror = event=>{
+      const browserDetail = safeGeocodeDiagnosticValue(event?.message || event?.type || "geen browserdetail");
+      finish(geocodeDiagnosticError("api-load","GOOGLE_MAPS_LAADFOUT","Google Maps JavaScript API kon niet worden geladen. Browserdetail: " + browserDetail + ". Controleer netwerk, CSP en websitebeperkingen."));
+    };
     document.head.appendChild(script);
   });
   return googleMapsGeocoderLoader;
@@ -1068,17 +1096,40 @@ async function geocodeAddressWithGoogle(address){
   if(cached) return cached;
   await loadGoogleMapsGeocoder();
   return new Promise((resolve,reject)=>{
-    const timeout = setTimeout(()=>reject(new Error("Geocoding duurde te lang.")),8000);
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({address,region:"nl"},(results,status)=>{
+    const timeout = setTimeout(()=>reject(geocodeDiagnosticError("geocoder","GEOCODER_TIMEOUT","Google Geocoder reageerde niet binnen acht seconden.")),8000);
+    if(typeof window.google?.maps?.Geocoder !== "function"){
       clearTimeout(timeout);
-      const location = results?.[0]?.geometry?.location;
-      if(status === "OK" && location){
+      reject(geocodeDiagnosticError("geocoder","GEOCODER_NIET_BESCHIKBAAR","google.maps.Geocoder is niet beschikbaar."));
+      return;
+    }
+    let geocoder;
+    try{ geocoder = new google.maps.Geocoder(); }
+    catch(error){
+      clearTimeout(timeout);
+      reject(geocodeDiagnosticError("geocoder","GEOCODER_STARTFOUT",safeGeocodeDiagnosticValue(error?.message || "Google Geocoder kon niet worden gestart.")));
+      return;
+    }
+    try{
+      geocoder.geocode({address,region:"nl"},(results,status)=>{
+        clearTimeout(timeout);
+        const googleStatus = safeGeocodeDiagnosticValue(status || "GEEN_STATUS");
+        if(googleStatus !== "OK"){
+          reject(geocodeDiagnosticError("geocoder",googleStatus,"Google Geocoder gaf status " + googleStatus + "."));
+          return;
+        }
+        const location = results?.[0]?.geometry?.location;
+        if(!location){
+          reject(geocodeDiagnosticError("resultaat","GEEN_BRUIKBARE_COORDINATEN","Google Geocoder gaf geen bruikbare coördinaten terug."));
+          return;
+        }
         const coordinates = {latitude:Number(location.lat()),longitude:Number(location.lng())};
         rememberGeocode(address,coordinates);
         resolve(coordinates);
-      }else reject(new Error("Bestemming kon niet worden geocodeerd."));
-    });
+      });
+    }catch(error){
+      clearTimeout(timeout);
+      reject(geocodeDiagnosticError("geocoder","GEOCODER_AANROEPFOUT",safeGeocodeDiagnosticValue(error?.message || "Google Geocoder kon niet worden aangeroepen.")));
+    }
   });
 }
 function geocoderAddressComponent(result,type){
@@ -1096,46 +1147,80 @@ function formatDutchGeocoderAddress(result){
 async function reverseGeocodeWithGoogle(latitude,longitude){
   await loadGoogleMapsGeocoder();
   return new Promise((resolve,reject)=>{
-    const timeout = setTimeout(()=>reject(new Error("Reverse geocoding duurde te lang.")),8000);
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({location:{lat:latitude,lng:longitude},region:"nl"},(results,status)=>{
+    const timeout = setTimeout(()=>reject(geocodeDiagnosticError("geocoder","GEOCODER_TIMEOUT","Google Geocoder reageerde niet binnen acht seconden.")),8000);
+    if(typeof window.google?.maps?.Geocoder !== "function"){
       clearTimeout(timeout);
-      const result = results?.find(item=>item.types?.includes("street_address")) || results?.[0];
-      const location = result?.geometry?.location;
-      const label = formatDutchGeocoderAddress(result);
-      if(status === "OK" && result && label){
+      reject(geocodeDiagnosticError("geocoder","GEOCODER_NIET_BESCHIKBAAR","google.maps.Geocoder is niet beschikbaar."));
+      return;
+    }
+    let geocoder;
+    try{ geocoder = new google.maps.Geocoder(); }
+    catch(error){
+      clearTimeout(timeout);
+      reject(geocodeDiagnosticError("geocoder","GEOCODER_STARTFOUT",safeGeocodeDiagnosticValue(error?.message || "Google Geocoder kon niet worden gestart.")));
+      return;
+    }
+    try{
+      geocoder.geocode({location:{lat:latitude,lng:longitude},region:"nl"},(results,status)=>{
+        clearTimeout(timeout);
+        const googleStatus = safeGeocodeDiagnosticValue(status || "GEEN_STATUS");
+        if(googleStatus !== "OK"){
+          reject(geocodeDiagnosticError("geocoder",googleStatus,"Google Geocoder gaf status " + googleStatus + "."));
+          return;
+        }
+        const result = results?.find(item=>item.types?.includes("street_address")) || results?.[0];
+        const location = result?.geometry?.location;
+        const label = formatDutchGeocoderAddress(result);
+        if(!result || !label){
+          reject(geocodeDiagnosticError("resultaat","GEEN_BRUIKBAAR_ADRES","Google Geocoder gaf geen bruikbaar adres terug."));
+          return;
+        }
         const coordinates = {
           latitude:location ? Number(location.lat()) : latitude,
           longitude:location ? Number(location.lng()) : longitude
         };
         rememberGeocode(label,coordinates);
         resolve({label,...coordinates});
-      }else reject(new Error("Adres bij huidige locatie kon niet worden opgehaald."));
-    });
+      });
+    }catch(error){
+      clearTimeout(timeout);
+      reject(geocodeDiagnosticError("geocoder","GEOCODER_AANROEPFOUT",safeGeocodeDiagnosticValue(error?.message || "Google Geocoder kon niet worden aangeroepen.")));
+    }
   });
 }
 async function resolveDestinationCoordinates(label,geocode=geocodeAddressWithGoogle){
   const visibleLabel = String(label || "").trim();
-  if(!visibleLabel) return null;
+  if(!visibleLabel){
+    lastForwardGeocodeDiagnostic = "Forward geocoding Naar niet gestart: bestemming is leeg.";
+    return null;
+  }
   const known = coordinatesForKnownLocation(visibleLabel);
-  if(known) return known;
+  if(known){
+    lastForwardGeocodeDiagnostic = "Forward geocoding Naar niet nodig: vaste locatie herkend.";
+    return known;
+  }
   try{
     const result = await geocode(resolveMapAddress(visibleLabel));
-    if(!Number.isFinite(result?.latitude) || !Number.isFinite(result?.longitude)) return null;
+    if(!Number.isFinite(result?.latitude) || !Number.isFinite(result?.longitude)){
+      lastForwardGeocodeDiagnostic = "Forward geocoding Naar mislukt. Foutcode: GEEN_BRUIKBARE_COORDINATEN. De geocoder gaf geen bruikbare coördinaten terug.";
+      return null;
+    }
+    lastForwardGeocodeDiagnostic = "Forward geocoding Naar geslaagd: bruikbare bestemmingscoördinaten ontvangen.";
     return {label:visibleLabel,latitude:result.latitude,longitude:result.longitude};
-  }catch(_){
+  }catch(error){
+    lastForwardGeocodeDiagnostic = describeGeocodeError("Forward geocoding Naar",error);
     return null;
   }
 }
 function showDestinationGeocodingStatus(destination,needsDestination=true){
-  if(!needsDestination || destination){
+  if(!needsDestination){
     geoNoticeEl.textContent = "";
     geoNoticeEl.hidden = true;
     return;
   }
-  geoNoticeEl.textContent = getGoogleMapsApiKey()
-    ? "De bestemming kon niet worden geocodeerd. De rit blijft bruikbaar; automatische aankomstherkenning is niet beschikbaar."
-    : "Geen Google Maps API-key beschikbaar. De rit blijft bruikbaar; stel de key via Beheer in voor automatische aankomstherkenning.";
+  geoNoticeEl.textContent = lastForwardGeocodeDiagnostic || (destination
+    ? "Forward geocoding Naar geslaagd."
+    : "Forward geocoding Naar mislukt zonder verdere foutinformatie. De rit blijft normaal bruikbaar.");
   geoNoticeEl.hidden = false;
 }
 function applyDestinationCoordinates(trip,destination){
@@ -1341,14 +1426,16 @@ function getCurrentPositionOnce(geolocation=navigator.geolocation){
   });
 }
 function geolocationFailureMessage(error){
-  if(error?.code === 1) return "Locatietoegang is geweigerd. Kies het vertrekpunt handmatig.";
-  if(error?.code === 3) return "Locatie bepalen duurde te lang. Kies het vertrekpunt handmatig.";
-  return "Locatie kon niet worden bepaald. Kies het vertrekpunt handmatig.";
+  if(error?.code === 1) return "GPS mislukt. Foutcode: PERMISSION_DENIED (1). Locatietoegang is geweigerd. Kies het vertrekpunt handmatig.";
+  if(error?.code === 3) return "GPS timeout. Foutcode: TIMEOUT (3). Locatie bepalen duurde te lang. Kies het vertrekpunt handmatig.";
+  if(error?.code === 2) return "GPS mislukt. Foutcode: POSITION_UNAVAILABLE (2). De actuele locatie is niet beschikbaar. Kies het vertrekpunt handmatig.";
+  return "GPS mislukt. Foutcode: " + safeGeocodeDiagnosticValue(error?.code || "ONBEKEND") + ". Locatie kon niet worden bepaald. Kies het vertrekpunt handmatig.";
 }
 function arrivalGeolocationFailureMessage(error){
-  if(error?.code === 1) return "Locatietoegang is geweigerd. Automatische aankomstherkenning is niet beschikbaar.";
-  if(error?.code === 3) return "Locatie bepalen duurde te lang. Automatische aankomstherkenning is nu niet beschikbaar.";
-  return "Locatie kon niet worden bepaald. De rit blijft normaal bruikbaar.";
+  if(error?.code === 1) return "GPS aankomstcontrole mislukt. Foutcode: PERMISSION_DENIED (1). Locatietoegang is geweigerd.";
+  if(error?.code === 3) return "GPS aankomstcontrole timeout. Foutcode: TIMEOUT (3).";
+  if(error?.code === 2) return "GPS aankomstcontrole mislukt. Foutcode: POSITION_UNAVAILABLE (2).";
+  return "GPS aankomstcontrole mislukt. Foutcode: " + safeGeocodeDiagnosticValue(error?.code || "ONBEKEND") + ". De rit blijft normaal bruikbaar.";
 }
 function markFromManuallyChosen(){
   previousDestinationSuggestionPending = false;
@@ -1400,21 +1487,20 @@ async function suggestPreviousDestinationForNewTrip(getPosition=getCurrentPositi
       updateReview();
       return;
     }
+    fromLocationStatusEl.textContent = "GPS geslaagd. Reverse geocoding: Google Maps laden en adres opvragen…";
     try{
       const address = await reverseGeocode(Number(position?.coords?.latitude),Number(position?.coords?.longitude));
       if(requestId !== fromAutoFillRequestId || editingTripId || fromEl.value.trim()) return;
       if(address?.label){
         fromEl.value = address.label;
-        fromLocationStatusEl.textContent = "📍 Huidige locatie herkend: " + address.label;
+        fromLocationStatusEl.textContent = "Reverse geocoding geslaagd. 📍 " + address.label;
         updateReview();
         return;
       }
-      locationMessage = "Adres bij huidige locatie kon niet worden opgehaald.";
+      locationMessage = "Reverse geocoding mislukt. Foutcode: GEEN_BRUIKBAAR_ADRES. Geen bruikbaar adres ontvangen.";
     }catch(error){
       if(requestId !== fromAutoFillRequestId) return;
-      locationMessage = getGoogleMapsApiKey()
-        ? "Adres bij huidige locatie kon niet worden opgehaald."
-        : "Geen Google Maps API-key beschikbaar voor adresherkenning. Stel deze in via Beheer.";
+      locationMessage = describeGeocodeError("Reverse geocoding",error);
     }
   }catch(error){
     if(requestId !== fromAutoFillRequestId) return;
