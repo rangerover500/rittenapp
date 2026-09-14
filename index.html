@@ -607,7 +607,7 @@ const KNOWN_LOCATION_COORDINATES = {
 };
 let standardAddresses = {...DEFAULT_ADDRESSES};
 let QUICK_LOCATIONS = Object.keys(standardAddresses);
-const ALL_STEPS = [0,1,2,3,4,5,6,7];
+const ALL_STEPS = [0,3,4,5,6,2,1,7];
 
 const KNOWN_ROUTES = [
   {route:["Rotterdam","Den Haag"],mainRoute:"Nieuwe A16 → A13",checks:{"Rotterdam":["Den Haag"]}},
@@ -2861,7 +2861,7 @@ function clearForm(){
   resetPostboxAnswer();
   $("cancelEditBtn").style.display = "none";
   updatePlateStyle();
-  currentStep = activeWorkday ? 1 : 0;
+  currentStep = activeWorkday ? 3 : 0;
   renderStep();
 }
 $("cancelEditBtn").addEventListener("click", clearForm);
@@ -2901,7 +2901,7 @@ async function startWorkdayAndContinue(save=saveAllToDB,startTime=now()){
     updateDayReminder();
     updateReview();
   }
-  currentStep = 1;
+  currentStep = 3;
   renderStep();
   return true;
 }
@@ -3750,7 +3750,7 @@ async function bootApp(){
   const activeWorkday = getActiveWorkday();
   if(activeWorkday){
     dateEl.value = activeWorkday.date;
-    currentStep = 1;
+    currentStep = 3;
   }
 
   loadWorkdayForm(today());
