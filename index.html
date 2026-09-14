@@ -109,6 +109,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .arrival-card{margin-bottom:12px;padding:12px;border:1px solid #8fc5a6;border-radius:10px;background:#eefaf2}
 .arrival-card strong{display:block;margin-bottom:4px;font-size:18px}
 .arrival-card .btn-primary{margin-top:10px;background:#187A43}
+.wake-lock-status{margin:-4px 0 12px;color:#187A43}
 .geo-status{margin-top:8px;min-height:18px}
 .geo-notice{margin:-4px 0 12px;color:var(--muted)}
 .api-key-row{display:flex;gap:8px;align-items:stretch;margin-top:10px}
@@ -199,6 +200,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
     <div id="arrivalMessage"></div>
     <button type="button" class="btn-primary" id="confirmArrivalBtn">Aangekomen - eindtijd nu</button>
   </section>
+  <div class="small wake-lock-status" id="wakeLockStatus" aria-live="polite" hidden>Scherm blijft aan tijdens deze rit</div>
   <div class="small geo-notice" id="geoNotice" aria-live="polite" hidden></div>
 
   <div id="screen-invoer" class="screen active">
@@ -653,6 +655,10 @@ let arrivalPollingTripId = null;
 let arrivalCheckInProgress = false;
 let arrivalSpeechTripId = null;
 let arrivalSpeechAnnounced = false;
+let screenWakeLock = null;
+let screenWakeLockTripId = null;
+let screenWakeLockRequest = null;
+let screenWakeLockRequestVersion = 0;
 let postboxAnswer = null;
 let editingWorkdayDate = null;
 let plateScannerStream = null;
@@ -694,6 +700,7 @@ const openPreviousWorkdayBtnEl = document.getElementById("openPreviousWorkdayBtn
 const arrivalCardEl = document.getElementById("arrivalCard");
 const arrivalMessageEl = document.getElementById("arrivalMessage");
 const confirmArrivalBtnEl = document.getElementById("confirmArrivalBtn");
+const wakeLockStatusEl = document.getElementById("wakeLockStatus");
 const geoNoticeEl = document.getElementById("geoNotice");
 const googleMapsApiKeyEl = document.getElementById("googleMapsApiKey");
 const googleMapsApiKeyStatusEl = document.getElementById("googleMapsApiKeyStatus");
@@ -1331,6 +1338,71 @@ function speakArrivalOnce(trip,synthesis=window.speechSynthesis,Utterance=window
 }
 function isArrivalDocumentVisible(){
   return document.visibilityState === "visible";
+}
+function showScreenWakeLockStatus(active){
+  wakeLockStatusEl.hidden = !active;
+}
+function handleScreenWakeLockRelease(event){
+  if(screenWakeLock !== event.currentTarget) return;
+  screenWakeLock = null;
+  screenWakeLockTripId = null;
+  showScreenWakeLockStatus(false);
+}
+async function releaseScreenWakeLock(){
+  screenWakeLockRequestVersion += 1;
+  screenWakeLockRequest = null;
+  const lock = screenWakeLock;
+  screenWakeLock = null;
+  screenWakeLockTripId = null;
+  showScreenWakeLockStatus(false);
+  if(lock && !lock.released){
+    try{ await lock.release(); }
+    catch(_){ /* De rittenapp blijft normaal werken als vrijgeven al door de browser is afgehandeld. */ }
+  }
+  return true;
+}
+async function requestScreenWakeLock(trip){
+  if(!trip || !isArrivalDocumentVisible() || !("wakeLock" in navigator) || typeof navigator.wakeLock?.request !== "function"){
+    if(screenWakeLock) await releaseScreenWakeLock();
+    return false;
+  }
+  if(screenWakeLock && !screenWakeLock.released){
+    screenWakeLockTripId = trip.id;
+    showScreenWakeLockStatus(true);
+    return true;
+  }
+  if(screenWakeLockRequest) return screenWakeLockRequest;
+  const requestVersion = screenWakeLockRequestVersion;
+  const request = (async()=>{
+    try{
+      const lock = await navigator.wakeLock.request("screen");
+      const activeTrip = findActiveArrivalTrip();
+      if(requestVersion !== screenWakeLockRequestVersion || !isArrivalDocumentVisible() || activeTrip?.id !== trip.id){
+        try{ await lock.release(); }catch(_){}
+        return false;
+      }
+      screenWakeLock = lock;
+      screenWakeLockTripId = trip.id;
+      lock.addEventListener("release",handleScreenWakeLockRelease);
+      showScreenWakeLockStatus(true);
+      return true;
+    }catch(_){
+      showScreenWakeLockStatus(false);
+      return false;
+    }finally{
+      if(screenWakeLockRequest === request) screenWakeLockRequest = null;
+    }
+  })();
+  screenWakeLockRequest = request;
+  return request;
+}
+async function syncScreenWakeLock(){
+  const trip = findActiveArrivalTrip();
+  if(!trip || !isArrivalDocumentVisible()){
+    await releaseScreenWakeLock();
+    return false;
+  }
+  return requestScreenWakeLock(trip);
 }
 function stopArrivalPolling(){
   if(arrivalPollingTimer !== null) clearInterval(arrivalPollingTimer);
@@ -2705,6 +2777,7 @@ $("saveTripBtn").addEventListener("click", async ()=>{
   sortTrips();
   await saveAllToDB();
   renderTrips();
+  await syncScreenWakeLock();
   ensureArrivalPolling();
   if(!existing) lastSavedRouteEndpoint = {id:trip.id,date:trip.date,to:trip.to};
   markDraftSaved(trip.isDealerPlate && !trip.originalPlate
@@ -2756,10 +2829,11 @@ $("saveRouteBtn").addEventListener("click", async ()=>{
   trips = [...newTrips, ...trips];
   retainOnlyActiveDestination(newTrips[newTrips.length - 1].id);
   sortTrips();
-  saveAll();
+  await saveAllToDB();
   const finalTrip = newTrips[newTrips.length - 1];
   lastSavedRouteEndpoint = {id:finalTrip.id,date:finalTrip.date,to:finalTrip.to};
   renderTrips();
+  await syncScreenWakeLock();
   ensureArrivalPolling();
   markDraftSaved(newTrips.some(trip=>trip.isDealerPlate && !trip.originalPlate)
     ? "Route met tussenstops opgeslagen. Origineel kenteken nog niet ingevuld."
@@ -2930,6 +3004,7 @@ async function saveQuickTripEdit(){
   try{
     await saveAllToDB();
     renderTrips();
+    await syncScreenWakeLock();
     ensureArrivalPolling();
     editStatusEl.classList.add("saved-ok");
     editStatusEl.textContent = "Eindtijd en km-stand bijgewerkt zonder een nieuwe rit aan te maken.";
@@ -2951,9 +3026,11 @@ async function confirmArrivalNow(save=saveAllToDB,endTime=now()){
   const updatedTrip = {...trip,timeEnd:endTime};
   clearTripDestinationCoordinates(updatedTrip);
   trips[tripIndex] = updatedTrip;
+  await releaseScreenWakeLock();
   try{ await save(); }
   catch(error){
     trips[tripIndex] = trip;
+    await syncScreenWakeLock();
     ensureArrivalPolling();
     throw error;
   }
@@ -3140,6 +3217,7 @@ tripTableEl.addEventListener("click", e=>{
     trips = trips.filter(x=>x.id !== id);
     saveAll();
     renderTrips();
+    syncScreenWakeLock();
     ensureArrivalPolling();
   }
 });
@@ -3412,6 +3490,7 @@ $("importReplaceBtn").addEventListener("click", ()=>{
     renderWorkdays();
     renderPlateButtons();
     clearForm();
+    syncScreenWakeLock();
     ensureArrivalPolling();
     loadWorkdayForm(today());
     alert("Import gelukt. De huidige gegevens zijn vervangen.");
@@ -3465,6 +3544,7 @@ $("importMergeBtn").addEventListener("click", ()=>{
     renderWorkdays();
     renderPlateButtons();
     clearForm();
+    syncScreenWakeLock();
     ensureArrivalPolling();
     loadWorkdayForm(today());
     alert("Samenvoegen gelukt. Toegevoegd/gewijzigd: " + addedTrips + " ritten en " + addedDays + " werkdagen.");
@@ -3480,6 +3560,7 @@ $("wipeBtn").addEventListener("click", ()=>{
   renderWorkdays();
   renderPlateButtons();
   clearForm();
+  syncScreenWakeLock();
   ensureArrivalPolling();
   loadWorkdayForm(today());
 });
@@ -3683,6 +3764,7 @@ async function bootApp(){
   renderWorkdays();
   renderStep();
   tripWizardEl.classList.remove("initializing");
+  syncScreenWakeLock();
   refreshArrivalMonitoring();
   setInterval(updateDayReminder, 60000);
 }
@@ -3694,12 +3776,20 @@ document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState !== "visible"){
     closePlateScanner();
     stopArrivalPolling();
-  } else refreshArrivalMonitoring();
+    releaseScreenWakeLock();
+  } else {
+    syncScreenWakeLock();
+    refreshArrivalMonitoring();
+  }
 });
-window.addEventListener("pageshow",()=>refreshArrivalMonitoring());
+window.addEventListener("pageshow",()=>{
+  syncScreenWakeLock();
+  refreshArrivalMonitoring();
+});
 window.addEventListener("pagehide",()=>{
   closePlateScanner();
   stopArrivalPolling();
+  releaseScreenWakeLock();
   if(plateScannerOcr && plateScannerOcr.dispose) plateScannerOcr.dispose();
   plateScannerOcr = null;
   plateScannerInitPromise = null;
