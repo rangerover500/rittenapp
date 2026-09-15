@@ -664,8 +664,13 @@ let arrivalPollingTimer = null;
 let arrivalPollingTripId = null;
 let arrivalCheckInProgress = false;
 let arrivalSpeechTripId = null;
-let arrivalSpeechAnnounced = false;
-let automaticSpeechDiagnosticTripId = null;
+let arrivalReachedAnnounced = false;
+let arrivalSpeechAttempted = false;
+let arrivalSpeechStarted = false;
+let arrivalSpeechFinished = false;
+let arrivalSpeechError = "";
+let retainedSpeechUtterance = null;
+let preferredDutchSpeechVoice = null;
 let screenWakeLock = null;
 let screenWakeLockTripId = null;
 let screenWakeLockRequest = null;
@@ -1335,21 +1340,18 @@ function syncArrivalSpeechState(trip){
   if(tripId === arrivalSpeechTripId) return;
   if(arrivalTargetTripId && arrivalTargetTripId !== tripId) hideArrivalCard();
   arrivalSpeechTripId = tripId;
-  arrivalSpeechAnnounced = false;
+  arrivalReachedAnnounced = false;
+  arrivalSpeechAttempted = false;
+  arrivalSpeechStarted = false;
+  arrivalSpeechFinished = false;
+  arrivalSpeechError = "";
+  if(!tripId) retainedSpeechUtterance = null;
 }
 function speakArrivalOnce(trip,synthesis=window.speechSynthesis,Utterance=window.SpeechSynthesisUtterance){
   syncArrivalSpeechState(trip);
-  if(arrivalSpeechAnnounced) return false;
-  arrivalSpeechAnnounced = true;
-  if(!synthesis || typeof synthesis.speak !== "function" || typeof Utterance !== "function") return false;
-  try{
-    const message = new Utterance("Bestemming bereikt.");
-    message.lang = "nl-NL";
-    synthesis.speak(message);
-    return true;
-  }catch(_){
-    return false;
-  }
+  if(arrivalSpeechAttempted) return false;
+  arrivalSpeechAttempted = true;
+  return speakDestinationReached({source:"automatic",trip,synthesis,Utterance});
 }
 function getSpeechVoiceDetails(synthesis=window.speechSynthesis){
   let voices = [];
@@ -1366,19 +1368,73 @@ function getSpeechVoiceDetails(synthesis=window.speechSynthesis){
 }
 function updateSpeechVoiceStatus(){
   if(!window.speechSynthesis){
+    preferredDutchSpeechVoice = null;
     speechVoiceStatusEl.textContent = "Aantal beschikbare stemmen: 0. Nederlandse stem: nee.";
     return;
   }
   const details = getSpeechVoiceDetails();
+  preferredDutchSpeechVoice = details.dutchVoice;
   speechVoiceStatusEl.textContent = "Aantal beschikbare stemmen: " + details.voices.length + ". Nederlandse stem: " + (details.dutchVoice ? "ja" : "nee") + ".";
 }
-function recordAutomaticSpeechAttempt(trip,started){
-  const tripId = trip?.id || null;
-  if(!tripId || automaticSpeechDiagnosticTripId === tripId) return;
-  automaticSpeechDiagnosticTripId = tripId;
-  automaticSpeechStatusEl.textContent = started
-    ? "Automatische aankomstspraak: spreekopdracht gestart."
-    : "Automatische aankomstspraak: geen spreekopdracht gestart.";
+function prepareArrivalSpeechForUserAction(synthesis=window.speechSynthesis){
+  updateSpeechVoiceStatus();
+  if(!synthesis || typeof synthesis.speak !== "function" || typeof window.SpeechSynthesisUtterance !== "function") return false;
+  try{
+    if(synthesis.paused && !synthesis.pending && !synthesis.speaking && typeof synthesis.resume === "function") synthesis.resume();
+    automaticSpeechStatusEl.textContent = "Automatische aankomstspraak: voorbereid via Opslaan rit.";
+    return true;
+  }catch(error){
+    automaticSpeechStatusEl.textContent = "Automatische aankomstspraak voorbereiden mislukt: " + String(error?.name || "Error") + ".";
+    return false;
+  }
+}
+function speakDestinationReached({source="manual",trip=null,synthesis=window.speechSynthesis,Utterance=window.SpeechSynthesisUtterance}={}){
+  const automatic = source === "automatic";
+  const statusEl = automatic ? automaticSpeechStatusEl : speechTestStatusEl;
+  const prefix = automatic ? "Automatische aankomst" : "Handmatige test";
+  const events = [];
+  const showEvent = message=>{
+    events.push(message);
+    statusEl.textContent = prefix + ": " + events.join(" · ");
+  };
+  if(!synthesis || typeof synthesis.speak !== "function" || typeof Utterance !== "function"){
+    showEvent("Speech Synthesis niet beschikbaar");
+    return false;
+  }
+  let message = null;
+  try{
+    message = new Utterance("Bestemming bereikt.");
+    message.lang = "nl-NL";
+    const {dutchVoice} = getSpeechVoiceDetails(synthesis);
+    const selectedVoice = dutchVoice || preferredDutchSpeechVoice;
+    if(selectedVoice) message.voice = selectedVoice;
+    message.onstart = ()=>{
+      if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechStarted = true;
+      showEvent("onstart ontvangen");
+    };
+    message.onend = ()=>{
+      if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechFinished = true;
+      if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
+      showEvent("onend ontvangen");
+    };
+    message.onerror = event=>{
+      const errorCode = String(event?.error || "onbekend");
+      if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechError = errorCode;
+      if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
+      showEvent("onerror ontvangen: " + errorCode);
+    };
+    retainedSpeechUtterance = message;
+    showEvent("speak() aangeroepen");
+    synthesis.speak(message);
+    return true;
+  }catch(error){
+    if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
+    const name = String(error?.name || "Error");
+    const detail = String(error?.message || error || "onbekende fout");
+    showEvent("exception: " + name + ": " + detail);
+    if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechError = name;
+    return false;
+  }
 }
 function isArrivalDocumentVisible(){
   return document.visibilityState === "visible";
@@ -1497,14 +1553,14 @@ async function checkArrivalForActiveTrip(getPosition=getCurrentPositionOnce,_cur
     const distance = haversineDistanceMeters(Number(position?.coords?.latitude),Number(position?.coords?.longitude),trip.destinationLatitude,trip.destinationLongitude);
     if(distance <= GEO_MATCH_RADIUS_METERS){
       showArrivalCard(trip);
-      const speechStarted = speakArrivalOnce(trip,synthesis,Utterance);
-      recordAutomaticSpeechAttempt(trip,speechStarted);
+      arrivalReachedAnnounced = true;
+      speakArrivalOnce(trip,synthesis,Utterance);
       return true;
     }
-    if(arrivalSpeechTripId === trip.id && arrivalSpeechAnnounced) showArrivalCard(trip);
+    if(arrivalSpeechTripId === trip.id && arrivalReachedAnnounced) showArrivalCard(trip);
     else hideArrivalCard();
   }catch(error){
-    if(!(arrivalSpeechTripId === trip.id && arrivalSpeechAnnounced)) hideArrivalCard();
+    if(!(arrivalSpeechTripId === trip.id && arrivalReachedAnnounced)) hideArrivalCard();
     if(!silentGpsErrors && isArrivalDocumentVisible()){
       geoNoticeEl.textContent = arrivalGeolocationFailureMessage(error);
       geoNoticeEl.hidden = false;
@@ -1766,33 +1822,8 @@ function setScreen(name){
 screenButtons.forEach(btn => btn.addEventListener("click", ()=>setScreen(btn.dataset.screenBtn)));
 
 testSpeechBtnEl.addEventListener("click",()=>{
-  const synthesis = window.speechSynthesis;
-  const Utterance = window.SpeechSynthesisUtterance;
   updateSpeechVoiceStatus();
-  if(!synthesis || typeof synthesis.speak !== "function" || typeof Utterance !== "function"){
-    speechTestStatusEl.textContent = "Speech Synthesis niet beschikbaar.";
-    return;
-  }
-  const events = [];
-  const showEvent = message=>{
-    events.push(message);
-    speechTestStatusEl.textContent = events.join(" · ");
-  };
-  try{
-    const message = new Utterance("Bestemming bereikt.");
-    message.lang = "nl-NL";
-    const {dutchVoice} = getSpeechVoiceDetails(synthesis);
-    if(dutchVoice) message.voice = dutchVoice;
-    message.onstart = ()=>showEvent("onstart ontvangen");
-    message.onend = ()=>showEvent("onend ontvangen");
-    message.onerror = event=>showEvent("onerror ontvangen: " + String(event?.error || "onbekend"));
-    showEvent("Spreekopdracht gestart");
-    synthesis.speak(message);
-  }catch(error){
-    const name = String(error?.name || "Error");
-    const detail = String(error?.message || error || "onbekende fout");
-    speechTestStatusEl.textContent = "Exception: " + name + ": " + detail;
-  }
+  speakDestinationReached({source:"manual"});
 });
 if(window.speechSynthesis && typeof window.speechSynthesis.addEventListener === "function"){
   window.speechSynthesis.addEventListener("voiceschanged",updateSpeechVoiceStatus);
@@ -2830,6 +2861,7 @@ function clearDraftSavedStatus(){
 }
 $("saveTripBtn").addEventListener("click", async ()=>{
   if(!editingTripId && !ensurePostboxesAcknowledged()) return;
+  prepareArrivalSpeechForUserAction();
   const info = await lookupPlate();
   const existing = editingTripId ? trips.find(t=>t.id===editingTripId) : null;
   const trip = buildTripObject(existing ? existing.id : null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
@@ -2867,6 +2899,7 @@ $("saveTripBtn").addEventListener("click", async ()=>{
 });
 $("saveRouteBtn").addEventListener("click", async ()=>{
   if(!ensurePostboxesAcknowledged()) return;
+  prepareArrivalSpeechForUserAction();
   const p = normalizePlate(plateEl.value);
   if(!dateEl.value || !timeStartEl.value || !fromEl.value || !toEl.value || !p){
     alert("Vul datum, starttijd, van, naar en kenteken in.");
