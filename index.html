@@ -432,6 +432,16 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       </div>
       <div class="small status" id="googleMapsApiKeyStatus" aria-live="polite"></div>
     </div>
+
+    <div class="fileblock">
+      <h3>Gesproken melding testen</h3>
+      <div class="toolbar">
+        <button type="button" class="btn-primary" id="testSpeechBtn">Test gesproken melding</button>
+      </div>
+      <div class="small status" id="speechVoiceStatus" aria-live="polite"></div>
+      <div class="small status" id="speechTestStatus" aria-live="polite"></div>
+      <div class="small status" id="automaticSpeechStatus" aria-live="polite"></div>
+    </div>
   </div>
 
   <div id="screen-ritten" class="screen">
@@ -655,6 +665,7 @@ let arrivalPollingTripId = null;
 let arrivalCheckInProgress = false;
 let arrivalSpeechTripId = null;
 let arrivalSpeechAnnounced = false;
+let automaticSpeechDiagnosticTripId = null;
 let screenWakeLock = null;
 let screenWakeLockTripId = null;
 let screenWakeLockRequest = null;
@@ -702,6 +713,10 @@ const arrivalMessageEl = document.getElementById("arrivalMessage");
 const confirmArrivalBtnEl = document.getElementById("confirmArrivalBtn");
 const wakeLockStatusEl = document.getElementById("wakeLockStatus");
 const geoNoticeEl = document.getElementById("geoNotice");
+const testSpeechBtnEl = document.getElementById("testSpeechBtn");
+const speechVoiceStatusEl = document.getElementById("speechVoiceStatus");
+const speechTestStatusEl = document.getElementById("speechTestStatus");
+const automaticSpeechStatusEl = document.getElementById("automaticSpeechStatus");
 const googleMapsApiKeyEl = document.getElementById("googleMapsApiKey");
 const googleMapsApiKeyStatusEl = document.getElementById("googleMapsApiKeyStatus");
 
@@ -1336,6 +1351,35 @@ function speakArrivalOnce(trip,synthesis=window.speechSynthesis,Utterance=window
     return false;
   }
 }
+function getSpeechVoiceDetails(synthesis=window.speechSynthesis){
+  let voices = [];
+  try{
+    const loadedVoices = synthesis && typeof synthesis.getVoices === "function" ? synthesis.getVoices() : [];
+    voices = Array.isArray(loadedVoices) ? loadedVoices : [];
+  }catch(_){
+    voices = [];
+  }
+  const dutchVoice = voices.find(voice=>String(voice.lang || "").toLowerCase() === "nl-nl")
+    || voices.find(voice=>String(voice.lang || "").toLowerCase().startsWith("nl"))
+    || null;
+  return {voices,dutchVoice};
+}
+function updateSpeechVoiceStatus(){
+  if(!window.speechSynthesis){
+    speechVoiceStatusEl.textContent = "Aantal beschikbare stemmen: 0. Nederlandse stem: nee.";
+    return;
+  }
+  const details = getSpeechVoiceDetails();
+  speechVoiceStatusEl.textContent = "Aantal beschikbare stemmen: " + details.voices.length + ". Nederlandse stem: " + (details.dutchVoice ? "ja" : "nee") + ".";
+}
+function recordAutomaticSpeechAttempt(trip,started){
+  const tripId = trip?.id || null;
+  if(!tripId || automaticSpeechDiagnosticTripId === tripId) return;
+  automaticSpeechDiagnosticTripId = tripId;
+  automaticSpeechStatusEl.textContent = started
+    ? "Automatische aankomstspraak: spreekopdracht gestart."
+    : "Automatische aankomstspraak: geen spreekopdracht gestart.";
+}
 function isArrivalDocumentVisible(){
   return document.visibilityState === "visible";
 }
@@ -1453,7 +1497,8 @@ async function checkArrivalForActiveTrip(getPosition=getCurrentPositionOnce,_cur
     const distance = haversineDistanceMeters(Number(position?.coords?.latitude),Number(position?.coords?.longitude),trip.destinationLatitude,trip.destinationLongitude);
     if(distance <= GEO_MATCH_RADIUS_METERS){
       showArrivalCard(trip);
-      speakArrivalOnce(trip,synthesis,Utterance);
+      const speechStarted = speakArrivalOnce(trip,synthesis,Utterance);
+      recordAutomaticSpeechAttempt(trip,speechStarted);
       return true;
     }
     if(arrivalSpeechTripId === trip.id && arrivalSpeechAnnounced) showArrivalCard(trip);
@@ -1719,6 +1764,42 @@ function setScreen(name){
   screenButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.screenBtn === name));
 }
 screenButtons.forEach(btn => btn.addEventListener("click", ()=>setScreen(btn.dataset.screenBtn)));
+
+testSpeechBtnEl.addEventListener("click",()=>{
+  const synthesis = window.speechSynthesis;
+  const Utterance = window.SpeechSynthesisUtterance;
+  updateSpeechVoiceStatus();
+  if(!synthesis || typeof synthesis.speak !== "function" || typeof Utterance !== "function"){
+    speechTestStatusEl.textContent = "Speech Synthesis niet beschikbaar.";
+    return;
+  }
+  const events = [];
+  const showEvent = message=>{
+    events.push(message);
+    speechTestStatusEl.textContent = events.join(" · ");
+  };
+  try{
+    const message = new Utterance("Bestemming bereikt.");
+    message.lang = "nl-NL";
+    const {dutchVoice} = getSpeechVoiceDetails(synthesis);
+    if(dutchVoice) message.voice = dutchVoice;
+    message.onstart = ()=>showEvent("onstart ontvangen");
+    message.onend = ()=>showEvent("onend ontvangen");
+    message.onerror = event=>showEvent("onerror ontvangen: " + String(event?.error || "onbekend"));
+    showEvent("Spreekopdracht gestart");
+    synthesis.speak(message);
+  }catch(error){
+    const name = String(error?.name || "Error");
+    const detail = String(error?.message || error || "onbekende fout");
+    speechTestStatusEl.textContent = "Exception: " + name + ": " + detail;
+  }
+});
+if(window.speechSynthesis && typeof window.speechSynthesis.addEventListener === "function"){
+  window.speechSynthesis.addEventListener("voiceschanged",updateSpeechVoiceStatus);
+}else if(window.speechSynthesis && "onvoiceschanged" in window.speechSynthesis){
+  window.speechSynthesis.onvoiceschanged = updateSpeechVoiceStatus;
+}
+updateSpeechVoiceStatus();
 
 function addQuickButtons(containerId, items, callback){
   const el = $(containerId);
