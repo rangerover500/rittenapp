@@ -679,6 +679,7 @@ let arrivalSpeechStarted = false;
 let arrivalSpeechFinished = false;
 let arrivalSpeechError = "";
 let retainedSpeechUtterance = null;
+let speechUnlockUtterance = null;
 let preferredDutchSpeechVoice = null;
 let lastAutomaticSpeechDiagnostic = null;
 let activeSpeechGeneration = 0;
@@ -1391,11 +1392,26 @@ function updateSpeechVoiceStatus(){
   preferredDutchSpeechVoice = details.dutchVoice;
   speechVoiceStatusEl.textContent = "Aantal beschikbare stemmen: " + details.voices.length + ". Nederlandse stem: " + (details.dutchVoice ? "ja" : "nee") + ".";
 }
-function prepareArrivalSpeechForUserAction(synthesis=window.speechSynthesis){
+function prepareArrivalSpeechForUserAction(synthesis=window.speechSynthesis,Utterance=window.SpeechSynthesisUtterance){
   updateSpeechVoiceStatus();
-  if(!synthesis || typeof synthesis.speak !== "function" || typeof window.SpeechSynthesisUtterance !== "function") return false;
+  if(!synthesis || typeof synthesis.speak !== "function" || typeof Utterance !== "function") return false;
   try{
     if(synthesis.paused && !synthesis.pending && !synthesis.speaking && typeof synthesis.resume === "function") synthesis.resume();
+    const unlockMessage = new Utterance("\u200B");
+    unlockMessage.lang = "nl-NL";
+    const {dutchVoice} = getSpeechVoiceDetails(synthesis);
+    const selectedVoice = dutchVoice || preferredDutchSpeechVoice;
+    if(selectedVoice) unlockMessage.voice = selectedVoice;
+    unlockMessage.onend = ()=>{
+      if(speechUnlockUtterance === unlockMessage) speechUnlockUtterance = null;
+    };
+    unlockMessage.onerror = ()=>{
+      if(speechUnlockUtterance === unlockMessage) speechUnlockUtterance = null;
+    };
+    speechUnlockUtterance = unlockMessage;
+    // WebKit verwijdert de iOS-user-gesture-restrictie synchroon in speak().
+    // Het zero-width-teken bereikt speak() maar produceert geen hoorbare vertrektekst.
+    synthesis.speak(unlockMessage);
     automaticSpeechStatusEl.textContent = "Automatische aankomstspraak: voorbereid via Opslaan rit.";
     return true;
   }catch(error){
@@ -1585,6 +1601,7 @@ function speakDestinationReached({source="manual",trip=null,synthesis=window.spe
         cancelExecuted = true;
         cancelAt = arrivalSpeechDiagnosticTimestamp();
         retainedSpeechUtterance = null;
+        speechUnlockUtterance = null;
       }
       const statusAfterCancel = speechSynthesisState(synthesis);
       if(synthesis.paused && typeof synthesis.resume === "function"){
@@ -3167,8 +3184,8 @@ function clearDraftSavedStatus(){
   if(!editingTripId) editStatusEl.textContent = "";
 }
 $("saveTripBtn").addEventListener("click", async ()=>{
-  if(!editingTripId && !ensurePostboxesAcknowledged()) return;
   prepareArrivalSpeechForUserAction();
+  if(!editingTripId && !ensurePostboxesAcknowledged()) return;
   const info = await lookupPlate();
   const existing = editingTripId ? trips.find(t=>t.id===editingTripId) : null;
   const trip = buildTripObject(existing ? existing.id : null, info.vehicleText, info.priceText, fromEl.value, toEl.value);
@@ -3205,8 +3222,8 @@ $("saveTripBtn").addEventListener("click", async ()=>{
     : "Rit bijgewerkt en opgeslagen. Je kunt nu Waze, Google Maps of Flitsmeister gebruiken.");
 });
 $("saveRouteBtn").addEventListener("click", async ()=>{
-  if(!ensurePostboxesAcknowledged()) return;
   prepareArrivalSpeechForUserAction();
+  if(!ensurePostboxesAcknowledged()) return;
   const p = normalizePlate(plateEl.value);
   if(!dateEl.value || !timeStartEl.value || !fromEl.value || !toEl.value || !p){
     alert("Vul datum, starttijd, van, naar en kenteken in.");
