@@ -101,6 +101,7 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
 .version{margin-top:18px;font-size:13px;color:#555;background:#f7f7f7;border:1px solid #ddd;border-radius:10px;padding:12px}
 .status{font-size:13px;color:#444;margin-top:10px;min-height:18px}
 .status.saved-ok{background:#e6f7e6;border:1px solid #88c888;color:#176b17;border-radius:10px;padding:10px;font-weight:bold}
+#arrivalSpeechDiagnostics{overflow-wrap:anywhere}
 .fileblock{margin-top:16px;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:#fafafa}
 .dayhint{margin-bottom:12px;padding:10px 12px;border-radius:10px;background:#fff6f6;border:1px solid #f0c7cf;color:#8a1327;display:none}
 .dayhint .btn-secondary{margin-top:8px;min-height:42px}
@@ -441,6 +442,11 @@ th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:to
       <div class="small status" id="speechVoiceStatus" aria-live="polite"></div>
       <div class="small status" id="speechTestStatus" aria-live="polite"></div>
       <div class="small status" id="automaticSpeechStatus" aria-live="polite"></div>
+      <h4 id="arrivalSpeechDiagnosticsTitle">Laatste automatische aankomstspraak</h4>
+      <div class="small status" id="arrivalSpeechDiagnostics" aria-labelledby="arrivalSpeechDiagnosticsTitle" aria-live="polite"></div>
+      <div class="toolbar">
+        <button type="button" class="btn-secondary" id="clearArrivalSpeechDiagnosticsBtn">Wis spraakdiagnose</button>
+      </div>
     </div>
   </div>
 
@@ -605,6 +611,7 @@ const GEOLOCATION_OPTIONS = {enableHighAccuracy:true,timeout:8000,maximumAge:600
 const ARRIVAL_CHECK_INTERVAL_MS = 10000;
 const GOOGLE_MAPS_API_KEY_STORAGE = "rittenapp_google_maps_api_key";
 const GEOCODE_CACHE_STORAGE = "rittenapp_geocode_cache_v1";
+const ARRIVAL_SPEECH_DIAGNOSTICS_STORAGE = "rittenapp_arrival_speech_diagnostics";
 const GEOCODE_CACHE_MAX_ENTRIES = 500;
 const KNOWN_LOCATION_COORDINATES = {
   "Breeland Rotterdam": {latitude:51.91009933,longitude:4.53608711},
@@ -671,6 +678,7 @@ let arrivalSpeechFinished = false;
 let arrivalSpeechError = "";
 let retainedSpeechUtterance = null;
 let preferredDutchSpeechVoice = null;
+let lastAutomaticSpeechDiagnostic = null;
 let screenWakeLock = null;
 let screenWakeLockTripId = null;
 let screenWakeLockRequest = null;
@@ -722,6 +730,8 @@ const testSpeechBtnEl = document.getElementById("testSpeechBtn");
 const speechVoiceStatusEl = document.getElementById("speechVoiceStatus");
 const speechTestStatusEl = document.getElementById("speechTestStatus");
 const automaticSpeechStatusEl = document.getElementById("automaticSpeechStatus");
+const arrivalSpeechDiagnosticsEl = document.getElementById("arrivalSpeechDiagnostics");
+const clearArrivalSpeechDiagnosticsBtnEl = document.getElementById("clearArrivalSpeechDiagnosticsBtn");
 const googleMapsApiKeyEl = document.getElementById("googleMapsApiKey");
 const googleMapsApiKeyStatusEl = document.getElementById("googleMapsApiKeyStatus");
 
@@ -1388,10 +1398,103 @@ function prepareArrivalSpeechForUserAction(synthesis=window.speechSynthesis){
     return false;
   }
 }
+function arrivalSpeechDiagnosticTimestamp(now=new Date()){
+  const pad = value=>String(value).padStart(2,"0");
+  return pad(now.getDate()) + "-" + pad(now.getMonth()+1) + "-" + now.getFullYear() + " "
+    + pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds());
+}
+function readArrivalSpeechDiagnostic(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(ARRIVAL_SPEECH_DIAGNOSTICS_STORAGE) || "null");
+    return parsed && typeof parsed === "object" ? parsed : null;
+  }catch(_){
+    return null;
+  }
+}
+function renderArrivalSpeechDiagnostic(diagnostic=lastAutomaticSpeechDiagnostic || readArrivalSpeechDiagnostic()){
+  arrivalSpeechDiagnosticsEl.replaceChildren();
+  if(!diagnostic){
+    arrivalSpeechDiagnosticsEl.textContent = "Nog geen automatische aankomstspraak geregistreerd.";
+    return;
+  }
+  const yesNo = value=>value ? "ja" : "nee";
+  const lines = [
+    "Rit-ID: " + (diagnostic.tripId || "onbekend"),
+    "Poging: " + (diagnostic.attemptDateTime || "onbekend"),
+    "Speech Synthesis beschikbaar: " + yesNo(diagnostic.speechSynthesisAvailable),
+    "Beschikbare stemmen: " + Number(diagnostic.voiceCount || 0),
+    "Nederlandse stem aanwezig: " + yesNo(diagnostic.dutchVoiceAvailable),
+    "Gekozen stem: " + (diagnostic.selectedVoiceName || "browserstandaard"),
+    "Vóór speak() — speaking: " + yesNo(diagnostic.speakingBeforeSpeak)
+      + ", pending: " + yesNo(diagnostic.pendingBeforeSpeak)
+      + ", paused: " + yesNo(diagnostic.pausedBeforeSpeak),
+    "speak() aangeroepen: " + yesNo(diagnostic.speakCalled) + (diagnostic.speakCalledAt ? " (" + diagnostic.speakCalledAt + ")" : ""),
+    "onstart ontvangen: " + yesNo(diagnostic.onstartReceived) + (diagnostic.onstartAt ? " (" + diagnostic.onstartAt + ")" : ""),
+    "onend ontvangen: " + yesNo(diagnostic.onendReceived) + (diagnostic.onendAt ? " (" + diagnostic.onendAt + ")" : ""),
+    "onerror ontvangen: " + yesNo(diagnostic.onerrorReceived)
+      + (diagnostic.onerrorCode ? " — " + diagnostic.onerrorCode : "")
+      + (diagnostic.onerrorAt ? " (" + diagnostic.onerrorAt + ")" : ""),
+    "Exception: " + (diagnostic.exception || "geen")
+  ];
+  lines.forEach(line=>{
+    const row = document.createElement("div");
+    row.textContent = line;
+    arrivalSpeechDiagnosticsEl.appendChild(row);
+  });
+}
+function storeArrivalSpeechDiagnostic(diagnostic){
+  lastAutomaticSpeechDiagnostic = diagnostic;
+  try{ localStorage.setItem(ARRIVAL_SPEECH_DIAGNOSTICS_STORAGE,JSON.stringify(diagnostic)); }
+  catch(_){ /* De diagnose blijft in deze sessie zichtbaar als lokale opslag niet beschikbaar is. */ }
+  renderArrivalSpeechDiagnostic(diagnostic);
+}
+function updateArrivalSpeechDiagnostic(attemptId,changes){
+  const current = lastAutomaticSpeechDiagnostic?.attemptId === attemptId
+    ? lastAutomaticSpeechDiagnostic
+    : readArrivalSpeechDiagnostic();
+  if(!current || current.attemptId !== attemptId) return;
+  storeArrivalSpeechDiagnostic({...current,...changes});
+}
+function beginArrivalSpeechDiagnostic(trip,synthesis,Utterance){
+  const {voices,dutchVoice} = getSpeechVoiceDetails(synthesis);
+  const now = new Date();
+  const attemptId = String(trip?.id || "onbekend") + "_" + now.getTime() + "_" + Math.random().toString(36).slice(2,8);
+  storeArrivalSpeechDiagnostic({
+    version:1,
+    attemptId,
+    tripId:String(trip?.id || ""),
+    attemptDateTime:arrivalSpeechDiagnosticTimestamp(now),
+    speechSynthesisAvailable:!!synthesis && typeof synthesis.speak === "function",
+    voiceCount:voices.length,
+    dutchVoiceAvailable:!!dutchVoice,
+    selectedVoiceName:"",
+    speakingBeforeSpeak:!!synthesis?.speaking,
+    pendingBeforeSpeak:!!synthesis?.pending,
+    pausedBeforeSpeak:!!synthesis?.paused,
+    speakCalled:false,
+    speakCalledAt:"",
+    onstartReceived:false,
+    onstartAt:"",
+    onendReceived:false,
+    onendAt:"",
+    onerrorReceived:false,
+    onerrorAt:"",
+    onerrorCode:"",
+    exception:""
+  });
+  return attemptId;
+}
+function clearArrivalSpeechDiagnostic(){
+  lastAutomaticSpeechDiagnostic = null;
+  try{ localStorage.removeItem(ARRIVAL_SPEECH_DIAGNOSTICS_STORAGE); }
+  catch(_){ /* Alleen deze diagnose wordt gewist; de app blijft verder ongewijzigd. */ }
+  renderArrivalSpeechDiagnostic(null);
+}
 function speakDestinationReached({source="manual",trip=null,synthesis=window.speechSynthesis,Utterance=window.SpeechSynthesisUtterance}={}){
   const automatic = source === "automatic";
   const statusEl = automatic ? automaticSpeechStatusEl : speechTestStatusEl;
   const prefix = automatic ? "Automatische aankomst" : "Handmatige test";
+  const diagnosticAttemptId = automatic ? beginArrivalSpeechDiagnostic(trip,synthesis,Utterance) : "";
   const events = [];
   const showEvent = message=>{
     events.push(message);
@@ -1408,23 +1511,32 @@ function speakDestinationReached({source="manual",trip=null,synthesis=window.spe
     const {dutchVoice} = getSpeechVoiceDetails(synthesis);
     const selectedVoice = dutchVoice || preferredDutchSpeechVoice;
     if(selectedVoice) message.voice = selectedVoice;
+    if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{selectedVoiceName:String(selectedVoice?.name || "")});
     message.onstart = ()=>{
       if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechStarted = true;
+      if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{onstartReceived:true,onstartAt:arrivalSpeechDiagnosticTimestamp()});
       showEvent("onstart ontvangen");
     };
     message.onend = ()=>{
       if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechFinished = true;
+      if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{onendReceived:true,onendAt:arrivalSpeechDiagnosticTimestamp()});
       if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
       showEvent("onend ontvangen");
     };
     message.onerror = event=>{
       const errorCode = String(event?.error || "onbekend");
       if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechError = errorCode;
+      if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{
+        onerrorReceived:true,
+        onerrorAt:arrivalSpeechDiagnosticTimestamp(),
+        onerrorCode:errorCode
+      });
       if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
       showEvent("onerror ontvangen: " + errorCode);
     };
     retainedSpeechUtterance = message;
     showEvent("speak() aangeroepen");
+    if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{speakCalled:true,speakCalledAt:arrivalSpeechDiagnosticTimestamp()});
     synthesis.speak(message);
     return true;
   }catch(error){
@@ -1433,6 +1545,7 @@ function speakDestinationReached({source="manual",trip=null,synthesis=window.spe
     const detail = String(error?.message || error || "onbekende fout");
     showEvent("exception: " + name + ": " + detail);
     if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechError = name;
+    if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{exception:name + ": " + detail});
     return false;
   }
 }
@@ -1825,12 +1938,15 @@ testSpeechBtnEl.addEventListener("click",()=>{
   updateSpeechVoiceStatus();
   speakDestinationReached({source:"manual"});
 });
+clearArrivalSpeechDiagnosticsBtnEl.addEventListener("click",clearArrivalSpeechDiagnostic);
 if(window.speechSynthesis && typeof window.speechSynthesis.addEventListener === "function"){
   window.speechSynthesis.addEventListener("voiceschanged",updateSpeechVoiceStatus);
 }else if(window.speechSynthesis && "onvoiceschanged" in window.speechSynthesis){
   window.speechSynthesis.onvoiceschanged = updateSpeechVoiceStatus;
 }
 updateSpeechVoiceStatus();
+lastAutomaticSpeechDiagnostic = readArrivalSpeechDiagnostic();
+renderArrivalSpeechDiagnostic();
 
 function addQuickButtons(containerId, items, callback){
   const el = $(containerId);
