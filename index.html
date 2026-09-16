@@ -609,6 +609,8 @@ const DEFAULT_ADDRESSES = {
 const GEO_MATCH_RADIUS_METERS = 100;
 const GEOLOCATION_OPTIONS = {enableHighAccuracy:true,timeout:8000,maximumAge:60000};
 const ARRIVAL_CHECK_INTERVAL_MS = 10000;
+const SPEECH_START_TIMEOUT_MS = 1500;
+const SPEECH_RESET_DELAY_MS = 0;
 const GOOGLE_MAPS_API_KEY_STORAGE = "rittenapp_google_maps_api_key";
 const GEOCODE_CACHE_STORAGE = "rittenapp_geocode_cache_v1";
 const ARRIVAL_SPEECH_DIAGNOSTICS_STORAGE = "rittenapp_arrival_speech_diagnostics";
@@ -679,6 +681,9 @@ let arrivalSpeechError = "";
 let retainedSpeechUtterance = null;
 let preferredDutchSpeechVoice = null;
 let lastAutomaticSpeechDiagnostic = null;
+let activeSpeechGeneration = 0;
+let activeSpeechAttemptToken = "";
+let speechStartWatchdogTimer = null;
 let screenWakeLock = null;
 let screenWakeLockTripId = null;
 let screenWakeLockRequest = null;
@@ -1424,18 +1429,55 @@ function renderArrivalSpeechDiagnostic(diagnostic=lastAutomaticSpeechDiagnostic 
     "Speech Synthesis beschikbaar: " + yesNo(diagnostic.speechSynthesisAvailable),
     "Beschikbare stemmen: " + Number(diagnostic.voiceCount || 0),
     "Nederlandse stem aanwezig: " + yesNo(diagnostic.dutchVoiceAvailable),
-    "Gekozen stem: " + (diagnostic.selectedVoiceName || "browserstandaard"),
-    "Vóór speak() — speaking: " + yesNo(diagnostic.speakingBeforeSpeak)
-      + ", pending: " + yesNo(diagnostic.pendingBeforeSpeak)
-      + ", paused: " + yesNo(diagnostic.pausedBeforeSpeak),
-    "speak() aangeroepen: " + yesNo(diagnostic.speakCalled) + (diagnostic.speakCalledAt ? " (" + diagnostic.speakCalledAt + ")" : ""),
-    "onstart ontvangen: " + yesNo(diagnostic.onstartReceived) + (diagnostic.onstartAt ? " (" + diagnostic.onstartAt + ")" : ""),
-    "onend ontvangen: " + yesNo(diagnostic.onendReceived) + (diagnostic.onendAt ? " (" + diagnostic.onendAt + ")" : ""),
-    "onerror ontvangen: " + yesNo(diagnostic.onerrorReceived)
-      + (diagnostic.onerrorCode ? " — " + diagnostic.onerrorCode : "")
-      + (diagnostic.onerrorAt ? " (" + diagnostic.onerrorAt + ")" : ""),
-    "Exception: " + (diagnostic.exception || "geen")
+    "Gekozen stem: " + (diagnostic.selectedVoiceName || "browserstandaard")
   ];
+  const attempts = Array.isArray(diagnostic.attempts) ? diagnostic.attempts : [];
+  if(attempts.length){
+    lines.push(
+      "Laatste pogingnummer: " + Number(diagnostic.attemptNumber || attempts.length),
+      "START_TIMEOUT: " + yesNo(diagnostic.startTimeout),
+      "Herstelpoging uitgevoerd: " + yesNo(diagnostic.recoveryAttempted)
+    );
+    attempts.forEach(attempt=>{
+      const beforeCancel = attempt.statusBeforeCancel || {};
+      const afterCancel = attempt.statusAfterCancel || {};
+      lines.push(
+        "Poging " + attempt.attemptNumber + ":",
+        "Status vóór cancel() — speaking: " + yesNo(beforeCancel.speaking)
+          + ", pending: " + yesNo(beforeCancel.pending)
+          + ", paused: " + yesNo(beforeCancel.paused),
+        "cancel() uitgevoerd: " + yesNo(attempt.cancelExecuted) + (attempt.cancelAt ? " (" + attempt.cancelAt + ")" : ""),
+        "Status direct na cancel() — speaking: " + yesNo(afterCancel.speaking)
+          + ", pending: " + yesNo(afterCancel.pending)
+          + ", paused: " + yesNo(afterCancel.paused),
+        "resume() uitgevoerd: " + yesNo(attempt.resumeExecuted) + (attempt.resumeAt ? " (" + attempt.resumeAt + ")" : ""),
+        "Status vóór speak() — speaking: " + yesNo(attempt.speakingBeforeSpeak)
+          + ", pending: " + yesNo(attempt.pendingBeforeSpeak)
+          + ", paused: " + yesNo(attempt.pausedBeforeSpeak),
+        "speak() aangeroepen: " + yesNo(attempt.speakCalled) + (attempt.speakCalledAt ? " (" + attempt.speakCalledAt + ")" : ""),
+        "onstart ontvangen: " + yesNo(attempt.onstartReceived) + (attempt.onstartAt ? " (" + attempt.onstartAt + ")" : ""),
+        "onend ontvangen: " + yesNo(attempt.onendReceived) + (attempt.onendAt ? " (" + attempt.onendAt + ")" : ""),
+        "onerror ontvangen: " + yesNo(attempt.onerrorReceived)
+          + (attempt.onerrorCode ? " — " + attempt.onerrorCode : "")
+          + (attempt.onerrorAt ? " (" + attempt.onerrorAt + ")" : ""),
+        "START_TIMEOUT: " + yesNo(attempt.startTimeout) + (attempt.startTimeoutAt ? " (" + attempt.startTimeoutAt + ")" : ""),
+        "Exception: " + (attempt.exception || "geen")
+      );
+    });
+  }else{
+    lines.push(
+      "Vóór speak() — speaking: " + yesNo(diagnostic.speakingBeforeSpeak)
+        + ", pending: " + yesNo(diagnostic.pendingBeforeSpeak)
+        + ", paused: " + yesNo(diagnostic.pausedBeforeSpeak),
+      "speak() aangeroepen: " + yesNo(diagnostic.speakCalled) + (diagnostic.speakCalledAt ? " (" + diagnostic.speakCalledAt + ")" : ""),
+      "onstart ontvangen: " + yesNo(diagnostic.onstartReceived) + (diagnostic.onstartAt ? " (" + diagnostic.onstartAt + ")" : ""),
+      "onend ontvangen: " + yesNo(diagnostic.onendReceived) + (diagnostic.onendAt ? " (" + diagnostic.onendAt + ")" : ""),
+      "onerror ontvangen: " + yesNo(diagnostic.onerrorReceived)
+        + (diagnostic.onerrorCode ? " — " + diagnostic.onerrorCode : "")
+        + (diagnostic.onerrorAt ? " (" + diagnostic.onerrorAt + ")" : ""),
+      "Exception: " + (diagnostic.exception || "geen")
+    );
+  }
   lines.forEach(line=>{
     const row = document.createElement("div");
     row.textContent = line;
@@ -1448,19 +1490,24 @@ function storeArrivalSpeechDiagnostic(diagnostic){
   catch(_){ /* De diagnose blijft in deze sessie zichtbaar als lokale opslag niet beschikbaar is. */ }
   renderArrivalSpeechDiagnostic(diagnostic);
 }
-function updateArrivalSpeechDiagnostic(attemptId,changes){
+function updateArrivalSpeechDiagnosticAttempt(attemptId,attemptNumber,changes,summaryChanges={}){
   const current = lastAutomaticSpeechDiagnostic?.attemptId === attemptId
     ? lastAutomaticSpeechDiagnostic
     : readArrivalSpeechDiagnostic();
   if(!current || current.attemptId !== attemptId) return;
-  storeArrivalSpeechDiagnostic({...current,...changes});
+  const attempts = Array.isArray(current.attempts) ? current.attempts.slice() : [];
+  const index = attempts.findIndex(attempt=>attempt.attemptNumber === attemptNumber);
+  const updatedAttempt = {...(index >= 0 ? attempts[index] : {attemptNumber}),...changes};
+  if(index >= 0) attempts[index] = updatedAttempt;
+  else attempts.push(updatedAttempt);
+  storeArrivalSpeechDiagnostic({...current,...summaryChanges,attemptNumber,attempts});
 }
-function beginArrivalSpeechDiagnostic(trip,synthesis,Utterance){
+function beginArrivalSpeechDiagnostic(trip,synthesis){
   const {voices,dutchVoice} = getSpeechVoiceDetails(synthesis);
   const now = new Date();
   const attemptId = String(trip?.id || "onbekend") + "_" + now.getTime() + "_" + Math.random().toString(36).slice(2,8);
   storeArrivalSpeechDiagnostic({
-    version:1,
+    version:2,
     attemptId,
     tripId:String(trip?.id || ""),
     attemptDateTime:arrivalSpeechDiagnosticTimestamp(now),
@@ -1480,7 +1527,11 @@ function beginArrivalSpeechDiagnostic(trip,synthesis,Utterance){
     onerrorReceived:false,
     onerrorAt:"",
     onerrorCode:"",
-    exception:""
+    exception:"",
+    attemptNumber:0,
+    startTimeout:false,
+    recoveryAttempted:false,
+    attempts:[]
   });
   return attemptId;
 }
@@ -1490,11 +1541,25 @@ function clearArrivalSpeechDiagnostic(){
   catch(_){ /* Alleen deze diagnose wordt gewist; de app blijft verder ongewijzigd. */ }
   renderArrivalSpeechDiagnostic(null);
 }
+function speechSynthesisState(synthesis){
+  return {
+    speaking:!!synthesis?.speaking,
+    pending:!!synthesis?.pending,
+    paused:!!synthesis?.paused
+  };
+}
+function clearSpeechStartWatchdog(){
+  if(speechStartWatchdogTimer !== null) clearTimeout(speechStartWatchdogTimer);
+  speechStartWatchdogTimer = null;
+}
 function speakDestinationReached({source="manual",trip=null,synthesis=window.speechSynthesis,Utterance=window.SpeechSynthesisUtterance}={}){
   const automatic = source === "automatic";
   const statusEl = automatic ? automaticSpeechStatusEl : speechTestStatusEl;
   const prefix = automatic ? "Automatische aankomst" : "Handmatige test";
-  const diagnosticAttemptId = automatic ? beginArrivalSpeechDiagnostic(trip,synthesis,Utterance) : "";
+  const diagnosticAttemptId = automatic ? beginArrivalSpeechDiagnostic(trip,synthesis) : "";
+  const generation = ++activeSpeechGeneration;
+  clearSpeechStartWatchdog();
+  activeSpeechAttemptToken = "";
   const events = [];
   const showEvent = message=>{
     events.push(message);
@@ -1504,50 +1569,176 @@ function speakDestinationReached({source="manual",trip=null,synthesis=window.spe
     showEvent("Speech Synthesis niet beschikbaar");
     return false;
   }
-  let message = null;
-  try{
-    message = new Utterance("Bestemming bereikt.");
-    message.lang = "nl-NL";
-    const {dutchVoice} = getSpeechVoiceDetails(synthesis);
-    const selectedVoice = dutchVoice || preferredDutchSpeechVoice;
-    if(selectedVoice) message.voice = selectedVoice;
-    if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{selectedVoiceName:String(selectedVoice?.name || "")});
-    message.onstart = ()=>{
-      if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechStarted = true;
-      if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{onstartReceived:true,onstartAt:arrivalSpeechDiagnosticTimestamp()});
-      showEvent("onstart ontvangen");
-    };
-    message.onend = ()=>{
-      if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechFinished = true;
-      if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{onendReceived:true,onendAt:arrivalSpeechDiagnosticTimestamp()});
-      if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
-      showEvent("onend ontvangen");
-    };
-    message.onerror = event=>{
-      const errorCode = String(event?.error || "onbekend");
-      if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechError = errorCode;
-      if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{
-        onerrorReceived:true,
-        onerrorAt:arrivalSpeechDiagnosticTimestamp(),
-        onerrorCode:errorCode
+  const runAttempt = attemptNumber=>{
+    if(generation !== activeSpeechGeneration) return;
+    clearSpeechStartWatchdog();
+    const attemptToken = generation + ":" + attemptNumber + ":" + Date.now();
+    activeSpeechAttemptToken = attemptToken;
+    const statusBeforeCancel = speechSynthesisState(synthesis);
+    let cancelExecuted = false;
+    let cancelAt = "";
+    let resumeExecuted = false;
+    let resumeAt = "";
+    try{
+      if(typeof synthesis.cancel === "function"){
+        synthesis.cancel();
+        cancelExecuted = true;
+        cancelAt = arrivalSpeechDiagnosticTimestamp();
+        retainedSpeechUtterance = null;
+      }
+      const statusAfterCancel = speechSynthesisState(synthesis);
+      if(synthesis.paused && typeof synthesis.resume === "function"){
+        synthesis.resume();
+        resumeExecuted = true;
+        resumeAt = arrivalSpeechDiagnosticTimestamp();
+      }
+      if(automatic) updateArrivalSpeechDiagnosticAttempt(diagnosticAttemptId,attemptNumber,{
+        attemptNumber,
+        statusBeforeCancel,
+        cancelExecuted,
+        cancelAt,
+        statusAfterCancel,
+        resumeExecuted,
+        resumeAt,
+        selectedVoiceName:"",
+        speakingBeforeSpeak:false,
+        pendingBeforeSpeak:false,
+        pausedBeforeSpeak:false,
+        speakCalled:false,
+        speakCalledAt:"",
+        onstartReceived:false,
+        onstartAt:"",
+        onendReceived:false,
+        onendAt:"",
+        onerrorReceived:false,
+        onerrorAt:"",
+        onerrorCode:"",
+        startTimeout:false,
+        startTimeoutAt:"",
+        exception:""
+      },{
+        cancelExecuted,
+        cancelAt,
+        statusBeforeCancel,
+        statusAfterCancel,
+        resumeExecuted,
+        resumeAt
       });
-      if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
-      showEvent("onerror ontvangen: " + errorCode);
-    };
-    retainedSpeechUtterance = message;
-    showEvent("speak() aangeroepen");
-    if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{speakCalled:true,speakCalledAt:arrivalSpeechDiagnosticTimestamp()});
-    synthesis.speak(message);
-    return true;
-  }catch(error){
-    if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
-    const name = String(error?.name || "Error");
-    const detail = String(error?.message || error || "onbekende fout");
-    showEvent("exception: " + name + ": " + detail);
-    if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechError = name;
-    if(automatic) updateArrivalSpeechDiagnostic(diagnosticAttemptId,{exception:name + ": " + detail});
-    return false;
-  }
+      showEvent("poging " + attemptNumber + ": queue gereset" + (resumeExecuted ? " en hervat" : ""));
+    }catch(error){
+      const name = String(error?.name || "Error");
+      const detail = String(error?.message || error || "onbekende fout");
+      const exception = name + ": " + detail;
+      showEvent("poging " + attemptNumber + " exception: " + exception);
+      if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechError = name;
+      if(automatic) updateArrivalSpeechDiagnosticAttempt(diagnosticAttemptId,attemptNumber,{exception},{exception});
+      return;
+    }
+    // WebKit verwerkt cancel() via een asynchrone platformcallback. De eerstvolgende taak
+    // voorkomt dat die callback de zojuist toegevoegde utterance alsnog uit de queue wist.
+    setTimeout(()=>{
+      if(generation !== activeSpeechGeneration || activeSpeechAttemptToken !== attemptToken) return;
+      let message = null;
+      let eventReceived = false;
+      try{
+        message = new Utterance("Bestemming bereikt.");
+        message.lang = "nl-NL";
+        const {voices,dutchVoice} = getSpeechVoiceDetails(synthesis);
+        const selectedVoice = dutchVoice || preferredDutchSpeechVoice;
+        if(selectedVoice) message.voice = selectedVoice;
+        const statusBeforeSpeak = speechSynthesisState(synthesis);
+        if(automatic) updateArrivalSpeechDiagnosticAttempt(diagnosticAttemptId,attemptNumber,{
+          selectedVoiceName:String(selectedVoice?.name || ""),
+          speakingBeforeSpeak:statusBeforeSpeak.speaking,
+          pendingBeforeSpeak:statusBeforeSpeak.pending,
+          pausedBeforeSpeak:statusBeforeSpeak.paused
+        },{
+          voiceCount:voices.length,
+          dutchVoiceAvailable:!!dutchVoice,
+          selectedVoiceName:String(selectedVoice?.name || ""),
+          speakingBeforeSpeak:statusBeforeSpeak.speaking,
+          pendingBeforeSpeak:statusBeforeSpeak.pending,
+          pausedBeforeSpeak:statusBeforeSpeak.paused
+        });
+        const eventIsCurrent = ()=>generation === activeSpeechGeneration && activeSpeechAttemptToken === attemptToken;
+        message.onstart = ()=>{
+          if(!eventIsCurrent()) return;
+          eventReceived = true;
+          clearSpeechStartWatchdog();
+          if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechStarted = true;
+          const onstartAt = arrivalSpeechDiagnosticTimestamp();
+          if(automatic) updateArrivalSpeechDiagnosticAttempt(diagnosticAttemptId,attemptNumber,{onstartReceived:true,onstartAt},{onstartReceived:true,onstartAt});
+          showEvent("poging " + attemptNumber + ": onstart ontvangen");
+        };
+        message.onend = ()=>{
+          if(!eventIsCurrent()) return;
+          eventReceived = true;
+          clearSpeechStartWatchdog();
+          if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechFinished = true;
+          const onendAt = arrivalSpeechDiagnosticTimestamp();
+          if(automatic) updateArrivalSpeechDiagnosticAttempt(diagnosticAttemptId,attemptNumber,{onendReceived:true,onendAt},{onendReceived:true,onendAt});
+          if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
+          activeSpeechAttemptToken = "";
+          showEvent("poging " + attemptNumber + ": onend ontvangen");
+        };
+        message.onerror = event=>{
+          if(!eventIsCurrent()) return;
+          eventReceived = true;
+          clearSpeechStartWatchdog();
+          const errorCode = String(event?.error || "onbekend");
+          if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechError = errorCode;
+          const onerrorAt = arrivalSpeechDiagnosticTimestamp();
+          if(automatic) updateArrivalSpeechDiagnosticAttempt(diagnosticAttemptId,attemptNumber,{
+            onerrorReceived:true,
+            onerrorAt,
+            onerrorCode:errorCode
+          },{
+            onerrorReceived:true,
+            onerrorAt,
+            onerrorCode:errorCode
+          });
+          if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
+          activeSpeechAttemptToken = "";
+          showEvent("poging " + attemptNumber + ": onerror ontvangen: " + errorCode);
+        };
+        retainedSpeechUtterance = message;
+        const speakCalledAt = arrivalSpeechDiagnosticTimestamp();
+        showEvent("poging " + attemptNumber + ": speak() aangeroepen");
+        if(automatic) updateArrivalSpeechDiagnosticAttempt(diagnosticAttemptId,attemptNumber,{speakCalled:true,speakCalledAt},{speakCalled:true,speakCalledAt});
+        synthesis.speak(message);
+        if(eventReceived) return;
+        speechStartWatchdogTimer = setTimeout(()=>{
+          speechStartWatchdogTimer = null;
+          if(generation !== activeSpeechGeneration || activeSpeechAttemptToken !== attemptToken || eventReceived) return;
+          const startTimeoutAt = arrivalSpeechDiagnosticTimestamp();
+          if(automatic) updateArrivalSpeechDiagnosticAttempt(diagnosticAttemptId,attemptNumber,{
+            startTimeout:true,
+            startTimeoutAt
+          },attemptNumber === 1 ? {startTimeout:true,recoveryAttempted:true} : {startTimeout:true});
+          showEvent("poging " + attemptNumber + ": START_TIMEOUT");
+          if(attemptNumber === 1){
+            showEvent("één herstelpoging gestart");
+            runAttempt(2);
+            return;
+          }
+          if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechError = "START_TIMEOUT";
+          if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
+          activeSpeechAttemptToken = "";
+        },SPEECH_START_TIMEOUT_MS);
+      }catch(error){
+        if(retainedSpeechUtterance === message) retainedSpeechUtterance = null;
+        activeSpeechAttemptToken = "";
+        const name = String(error?.name || "Error");
+        const detail = String(error?.message || error || "onbekende fout");
+        const exception = name + ": " + detail;
+        showEvent("poging " + attemptNumber + " exception: " + exception);
+        if(automatic && arrivalSpeechTripId === trip?.id) arrivalSpeechError = name;
+        if(automatic) updateArrivalSpeechDiagnosticAttempt(diagnosticAttemptId,attemptNumber,{exception},{exception});
+      }
+    },SPEECH_RESET_DELAY_MS);
+  };
+  runAttempt(1);
+  return true;
 }
 function isArrivalDocumentVisible(){
   return document.visibilityState === "visible";
